@@ -86,25 +86,51 @@ To ensure a diverse content library, RANDOMLY SELECT ONLY ONE of the 5 writing s
 
 Format & Structure Requirements for '6_website':
 - Word Count: Approximately 500 words per language.
-- Structure: Use engaging editorial Subtitles (H2/H3). Use short, punchy paragraphs.
-- The Core Narrative: Seamlessly weave the [Basic Information], [Project Outcome], [Challenge], and [Solution] into the chosen narrative angle. All written in past tense.
-- The Punch Line: The final paragraph before the FAQ must be a single, bolded, highly memorable concluding sentence about the project's impact.
-- The Fast Recap FAQ: End with a 3-question FAQ. Questions should be: (1) What was the challenge? (2) How did the team solve it? (3) What was the result? — NO questions about how to attend or register.
-
-**CRITICAL HTML STRUCTURE REQUIREMENT FOR '6_website'**:
-You MUST output valid HTML that matches the CMS parsing format exactly. The structure must be:
-<h1>Main Title</h1>
-<h2>Subtitle or Section Heading</h2>
-<p>Content paragraph...</p>
-<p>Additional content...</p>
-<h4>Q: Question 1?</h4>
-<p>A: Answer 1...</p>
-<h4>Q: Question 2?</h4>
-<p>A: Answer 2...</p>
-<h4>Q: Question 3?</h4>
-<p>A: Answer 3...</p>
-
-DO NOT use other HTML tags (no <div>, <span>, <strong>, <em>, etc. unless absolutely necessary). Keep it simple and clean.
+    - Structure: Use exactly three sections, each starting with an <h3> heading.
+    - Paragraph Count: Ensure each of the three sections contains at least one substantive paragraph (<p>). This is crucial for photo interleaving.
+    - The Core Narrative: Seamlessly weave the [Basic Information], [Project Outcome], [Challenge], and [Solution] into the chosen narrative angle. All written in past tense.
+    - The Punch Line: The final paragraph before the FAQ must be a single, bolded, highly memorable concluding sentence about the project's impact.
+    - The Fast Recap FAQ: End with exactly three Q&A pairs. Use the heading #### Fast Recap FAQ.
+    
+    **CRITICAL HTML STRUCTURE REQUIREMENT FOR '6_website'**:
+    You MUST output valid HTML that matches the CMS parsing format exactly. The structure MUST follow this pattern for photo interleaving:
+    <h1>Main Title</h1>
+    <h3>First Section Heading</h3>
+    <p>Paragraph 1...</p>
+    <h3>Second Section Heading</h3>
+    <p>Paragraph 2...</p>
+    <h3>Third Section Heading</h3>
+    <p>Paragraph 3...</p>
+    <p>The bolded punch line sentence.</p>
+    ### Fast Recap FAQ:
+    Q1: Question 1?
+    A1: Answer 1...
+    Q2: Question 2?
+    A2: Answer 2...
+    Q3: Question 3?
+    A3: Answer 3...
+    
+    STRICT RULES FOR HTML:
+    1. Use ONLY <h1>, <h3>, and <p> tags for main content.
+    2. DO NOT use <h2>, <h4>, or any other heading tags.
+    3. DO NOT use <span>, <div>, <b>, <strong>, or any style attributes (no inline colors).
+    4. After the last paragraph, add a blank line, then switch to Markdown format.
+    
+    STRICT RULES FOR Q&A SECTION (CRITICAL - MUST BE IN MARKDOWN FORMAT):
+    5. The Q&A section MUST use Markdown format, NOT HTML.
+    6. The FAQ heading MUST be exactly: ### Fast Recap FAQ:
+    7. Each question MUST start with Q1:, Q2:, Q3: (with colon, not question mark).
+    8. Each answer MUST start with A1:, A2:, A3: (with colon).
+    9. Q&A pairs MUST be on separate lines, one per line.
+    10. DO NOT use <h4>, <h3>, or any HTML tags for Q&A - use pure Markdown.
+    11. Example format:
+        ### Fast Recap FAQ:
+        Q1: What was the main challenge?
+        A1: The challenge was...
+        Q2: How did you solve it?
+        A2: We solved it by...
+        Q3: What was the outcome?
+        A3: The outcome was...
 
 Language Output Requirement for '6_website':
 - "angle_chosen": State the name of the angle you selected (e.g., "Style 2: The Contrarian").
@@ -212,7 +238,9 @@ def init_session_state():
         "debug_logs": [], "mc_questions": [], "open_question_ans": "", 
         "challenge": "", "solution": "", "visual_facts": "",
         "hero_photo_index": 0,
-        "sync_success": False  # 記錄同步是否成功
+        "sync_success": False,  # 記錄同步是否成功
+        "draft_project_id": "",  # 記錄已載入的草稿 ID（用於更新而非新增）
+        "loaded_image_urls": [],  # 記錄從草稿載入的圖片 URLs
     }
     for k, v in fields.items():
         if k not in st.session_state:
@@ -225,13 +253,16 @@ def reset_for_new_case():
         "event_year", "event_month", "category", "what_we_do", "scope",
         "project_photos", "ai_content", "logo_white", "logo_black",
         "mc_questions", "open_question_ans", "challenge", "solution",
-        "visual_facts", "hero_photo_index", "sync_success"
+        "visual_facts", "hero_photo_index", "sync_success",
+        "draft_project_id", "loaded_image_urls"
     ]
     defaults = {
         "event_year": str(CURRENT_YEAR), "event_month": "FEB",
         "category": WHO_WE_HELP_OPTIONS[0], "what_we_do": [], "scope": [],
         "project_photos": [], "ai_content": {}, "hero_photo_index": 0,
-        "sync_success": False
+        "sync_success": False,
+        "draft_project_id": "",
+        "loaded_image_urls": []
     }
     for k in keys_to_reset:
         st.session_state[k] = defaults.get(k, "")
@@ -530,6 +561,102 @@ def apply_styles(is_dark):
 
 # --- 4. Main App ---
 
+# ── Draft Save / Load Helper Functions ──
+
+def fetch_draft_list():
+    """Fetch the list of saved drafts from Google Sheet Raw_Input_DB."""
+    try:
+        r = requests.post(SHEET_SCRIPT_URL, json={"action": "get_raw_input_list"}, timeout=15)
+        if r.status_code == 200:
+            data = r.json()
+            if data.get("status") == "success":
+                return data.get("data", [])
+    except Exception as e:
+        log_debug(f"❌ 無法獲取草稿列表: {str(e)}", "error")
+    return []
+
+def load_draft_into_session(project_id):
+    """Load a specific draft from Google Sheet into session state."""
+    try:
+        r = requests.post(SHEET_SCRIPT_URL, json={"action": "get_raw_input_details", "project_id": project_id}, timeout=15)
+        if r.status_code == 200:
+            data = r.json()
+            if data.get("status") == "success":
+                d = data["data"]
+                st.session_state.client_name = d.get("client_name", "")
+                st.session_state.project_name = d.get("project_name", "")
+                st.session_state.venue = d.get("venue", "")
+                st.session_state.youtube = d.get("youtube", "")
+                st.session_state.open_question_ans = d.get("open_question", "")
+                yr = str(d.get("event_year", CURRENT_YEAR))
+                st.session_state.event_year = yr if yr in YEAR_OPTIONS else str(CURRENT_YEAR)
+                mo = d.get("event_month", "FEB").upper()
+                st.session_state.event_month = mo if mo in MONTH_OPTIONS else "FEB"
+                cat = d.get("category", WHO_WE_HELP_OPTIONS[0])
+                st.session_state.category = cat if cat in WHO_WE_HELP_OPTIONS else WHO_WE_HELP_OPTIONS[0]
+                st.session_state.what_we_do = [w for w in d.get("what_we_do", []) if w in WHAT_WE_DO_OPTIONS]
+                st.session_state.scope = [s for s in d.get("scope", []) if s in SOW_OPTIONS]
+                st.session_state.mc_questions = d.get("mc_questions", [])
+                st.session_state.loaded_image_urls = d.get("image_urls", [])
+                st.session_state.draft_project_id = project_id
+                st.session_state.project_photos = []  # Reset file uploader
+                st.session_state.ai_content = {}  # Reset AI content
+                log_debug(f"✅ 已成功載入草稿: {project_id}", "success")
+                return True
+    except Exception as e:
+        log_debug(f"❌ 載入草稿失敗: {str(e)}", "error")
+    return False
+
+def save_draft_to_sheet():
+    """Save current input data as a draft to Google Sheet Raw_Input_DB."""
+    try:
+        # Process new images to base64 if any are uploaded
+        processed_imgs = []
+        if st.session_state.project_photos:
+            for f in st.session_state.project_photos:
+                if hasattr(f, "seek"): f.seek(0)
+                try:
+                    img = Image.open(f).convert("RGB")
+                    img = ImageOps.exif_transpose(img)
+                    img.thumbnail((800, 800))  # Smaller size for drafts
+                    buf = io.BytesIO()
+                    img.save(buf, format="JPEG", quality=70)
+                    processed_imgs.append(base64.b64encode(buf.getvalue()).decode())
+                except Exception as e:
+                    if hasattr(f, "seek"): f.seek(0)
+                    processed_imgs.append(base64.b64encode(f.read()).decode())
+
+        # Use existing draft ID if available, otherwise generate a new one
+        draft_id = st.session_state.get("draft_project_id", "") or f"DRAFT_{st.session_state.client_name.replace(' ', '_')}_{int(time.time())}"
+
+        payload = {
+            "action": "save_raw_input",
+            "project_id": draft_id,
+            "client_name": st.session_state.client_name,
+            "project_name": st.session_state.project_name,
+            "venue": st.session_state.venue,
+            "event_year": st.session_state.event_year,
+            "event_month": st.session_state.event_month,
+            "youtube": st.session_state.youtube,
+            "category": st.session_state.category,
+            "what_we_do": st.session_state.what_we_do,
+            "scope": st.session_state.scope,
+            "mc_questions": st.session_state.mc_questions,
+            "open_question": st.session_state.open_question_ans,
+            "images": processed_imgs,
+            "existing_image_urls": st.session_state.get("loaded_image_urls", []) if not processed_imgs else []
+        }
+        r = requests.post(SHEET_SCRIPT_URL, json=payload, timeout=60)
+        if r.status_code == 200:
+            result = r.json()
+            if result.get("status") == "success":
+                st.session_state.draft_project_id = result.get("project_id", draft_id)
+                log_debug(f"✅ 草稿儲存成功: {st.session_state.draft_project_id}", "success")
+                return True
+    except Exception as e:
+        log_debug(f"❌ 草稿儲存失敗: {str(e)}", "error")
+    return False
+
 def main():
     st.set_page_config(page_title="Firebean Brain Collector", layout="wide")
     init_session_state()
@@ -553,21 +680,65 @@ def main():
 
     st.markdown("<br>", unsafe_allow_html=True)
     
-    nav_cols = st.columns(3)
+    nav_cols = st.columns(4)
     if nav_cols[0].button("Project Collector", use_container_width=True, type="primary" if st.session_state.active_tab == "Project Collector" else "secondary"):
         st.session_state.active_tab = "Project Collector"
         st.rerun()
     if nav_cols[1].button("Review & Multi-Sync", use_container_width=True, type="primary" if st.session_state.active_tab == "Review & Multi-Sync" else "secondary"):
         st.session_state.active_tab = "Review & Multi-Sync"
         st.rerun()
-    if nav_cols[2].button("老細一鍵填充 (深度內容測試)", use_container_width=True):
+    if nav_cols[2].button("📂 Load Project", use_container_width=True, type="primary" if st.session_state.active_tab == "Load Project" else "secondary"):
+        st.session_state.active_tab = "Load Project"
+        st.rerun()
+    if nav_cols[3].button("老細一鍵填充 (深度內容測試)", use_container_width=True):
         fill_dummy_data()
         st.rerun()
 
     st.markdown("<hr style='margin-top: 5px; margin-bottom: 20px;'>", unsafe_allow_html=True)
 
     # --- TAB 分頁內容 ---
-    if st.session_state.active_tab == "Project Collector":
+    if st.session_state.active_tab == "Load Project":
+        st.markdown('<div class="neu-card">', unsafe_allow_html=True)
+        st.markdown("### 📂 載入已儲存的草稿項目 (Load Existing Draft)")
+        load_col1, load_col2 = st.columns([3, 1])
+        with load_col1:
+            if st.button("🔄 獲取草稿列表", use_container_width=True, type="primary"):
+                with st.spinner("正在獲取草稿列表..."):
+                    drafts = fetch_draft_list()
+                    st.session_state["_draft_list"] = drafts
+                    if not drafts:
+                        st.info("目前尚未儲存任何草稿。")
+        with load_col2:
+            if st.session_state.get("draft_project_id"):
+                st.markdown(f"✅ 目前已載入: `{st.session_state.draft_project_id}`")
+
+        drafts = st.session_state.get("_draft_list", [])
+        if drafts:
+            st.markdown("<br>", unsafe_allow_html=True)
+            draft_options = {f"{d['client_name']} / {d['project_name']} ({d['project_id']})": d['project_id'] for d in drafts}
+            selected_label = st.selectbox("選擇要載入的項目", list(draft_options.keys()))
+            if st.button("⬇️ 載入此項目到表單並前往 Project Collector", type="primary", use_container_width=True):
+                with st.spinner("正在載入項目資料..."):
+                    pid = draft_options[selected_label]
+                    if load_draft_into_session(pid):
+                        st.session_state.active_tab = "Project Collector"
+                        st.rerun()
+                    else:
+                        st.error("❌ 載入失敗，請檢查 Debug Terminal。")
+
+        # Show loaded image previews if any
+        if st.session_state.get("loaded_image_urls"):
+            st.markdown("<hr>", unsafe_allow_html=True)
+            st.markdown("**🖼️ 已載入的圖片（儲存於 Google Drive）:**")
+            img_cols = st.columns(min(4, len(st.session_state.loaded_image_urls)))
+            for i, url in enumerate(st.session_state.loaded_image_urls):
+                with img_cols[i % 4]:
+                    st.markdown(f"[🖼️ 圖片 {i+1}]({url})", unsafe_allow_html=False)
+            st.info("💡 如需更換圖片，請在 Project Collector 頁面直接重新上傳新照片即可。")
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    elif st.session_state.active_tab == "Project Collector":
+
         st.markdown('<div class="neu-card">', unsafe_allow_html=True)
         col1, col2 = st.columns(2)
         with col1:
@@ -761,6 +932,22 @@ def main():
         final_percent = min(100, int((filled_count / 12) * 100))  # 總項目由 11 改為 12
         progress_placeholder.markdown(get_circle_progress_html(final_percent, is_dark), unsafe_allow_html=True)
 
+        # ── Save Draft Button (visible at any progress) ──
+        save_col1, save_col2 = st.columns([3, 1])
+        with save_col1:
+            if st.button("💾 儲存草稿到 Google Sheet (Raw_Input_DB)", use_container_width=True, help="將目前所有輸入儲存為草稿，方便日後重新載入再生成"):
+                if not st.session_state.client_name.strip() or not st.session_state.project_name.strip():
+                    st.warning("❗ 請至少填寫 Client 及 Project 名稱才能儲存草稿。")
+                else:
+                    with st.spinner("正在儲存草稿..."):
+                        if save_draft_to_sheet():
+                            st.success(f"✅ 草稿已儲存！ID: `{st.session_state.draft_project_id}`")
+                        else:
+                            st.error("❌ 儲存失敗，請檢查 Debug Terminal。")
+        with save_col2:
+            if st.session_state.get("draft_project_id"):
+                st.markdown(f"✅ 草稿: `{st.session_state.draft_project_id}`")
+
         if final_percent < 100:
             with st.expander("📌 還差一點點！點擊查看未完成項目", expanded=False):
                 for m in missing_items:
@@ -818,6 +1005,78 @@ def main():
                         if isinstance(data, list) and len(data) > 0:
                             data = data[0]
                         if isinstance(data, dict):
+                            # 🔧 Q&A FORMAT VALIDATION & CORRECTION
+                            def fix_qa_format(content):
+                                """Automatically fix Q&A format to ensure it's in Markdown with ### heading."""
+                                if not content:
+                                    return content
+
+                                # Standardize the FAQ header first
+                                content = re.sub(r'(<(h[1-6]|b|strong)[^>]*>\s*)?(?:Fast Recap\s*)?(?:FAQ|Q&A|Q & A|常見問題|よくある質問|快速回顧)(?:\s*</(h[1-6]|b|strong)>)?[:：]?', '### Fast Recap FAQ:', content, flags=re.IGNORECASE)
+
+                                # Find the standardized FAQ section
+                                qa_pattern = re.compile(r'(### Fast Recap FAQ:)(.*?)(?=(?:<h[1-6][^>]*>|###\s*[^#]|$))', re.DOTALL | re.IGNORECASE)
+                                match = qa_pattern.search(content)
+
+                                if match:
+                                    qa_header = match.group(1)
+                                    qa_raw_content = match.group(2).strip()
+                                    content_before_qa = content[:match.start()]
+                                    content_after_qa = content[match.end():]
+
+                                    # Convert HTML lists to plain text lines
+                                    qa_raw_content = re.sub(r'<ul[^>]*>|<ol[^>]*>|<\/ul>|<\/ol>', '', qa_raw_content, flags=re.IGNORECASE)
+                                    qa_raw_content = re.sub(r'<li[^>]*>(.*?)<\/li>', r'\1\n', qa_raw_content, flags=re.IGNORECASE)
+                                    qa_raw_content = re.sub(r'<p[^>]*>(.*?)<\/p>', r'\1\n', qa_raw_content, flags=re.IGNORECASE)
+                                    qa_raw_content = re.sub(r'<br[^>]*>', '\n', qa_raw_content, flags=re.IGNORECASE)
+
+                                    # Remove any remaining HTML tags
+                                    qa_raw_content = re.sub(r'<[^>]*>', '', qa_raw_content)
+
+                                    # Process lines into Qx: and Ax: format
+                                    qa_lines = qa_raw_content.strip().split('\n')
+                                    formatted_qa = []
+                                    q_count = 1
+                                    temp_q = ''
+
+                                    for line in qa_lines:
+                                        line = line.strip()
+                                        if not line: continue
+
+                                        is_q = line.upper().startswith('Q')
+                                        is_a = line.upper().startswith('A')
+
+                                        if is_q:
+                                            if temp_q: # If there was a pending Q, finalize it
+                                                formatted_qa.append(f"Q{q_count}: {temp_q}")
+                                                q_count += 1
+                                            temp_q = re.sub(r'^Q\d*[:.]?\s*', '', line, flags=re.IGNORECASE).strip()
+                                        elif is_a:
+                                            if temp_q:
+                                                formatted_qa.append(f"Q{q_count}: {temp_q}")
+                                                a_text = re.sub(r'^A\d*[:.]?\s*', '', line, flags=re.IGNORECASE).strip()
+                                                formatted_qa.append(f"A{q_count}: {a_text}")
+                                                q_count += 1
+                                                temp_q = ''
+                                        elif temp_q: # This line is a continuation of the previous Q
+                                            temp_q += ' ' + line
+                                    
+                                    if temp_q: # Add any last pending question
+                                        formatted_qa.append(f"Q{q_count}: {temp_q}")
+
+                                    qa_content_formatted = '\n'.join(formatted_qa)
+
+                                    return content_before_qa.strip() + '\n\n' + qa_header + '\n' + qa_content_formatted + '\n\n' + content_after_qa.strip()
+
+                                return content
+                            
+                            # Apply Q&A format fixes to all language versions
+                            if "6_website" in data and isinstance(data["6_website"], dict):
+                                for lang in ["en", "tc", "jp"]:
+                                    if lang in data["6_website"]:
+                                        data["6_website"][lang] = fix_qa_format(data["6_website"][lang])
+                                        log_debug(f"✅ Q&A 格式已自動修正 ({lang})", "success")
+                            
                             st.session_state.ai_content = data
                             st.session_state.challenge = data.get("challenge_summary", "尚未生成")
                             st.session_state.solution = data.get("solution_summary", "尚未生成")
