@@ -46,7 +46,7 @@ def generate_system_metadata():
 FIREBEAN_SYSTEM_PROMPT = """
 You are a Lead PR Strategist and Chief Editor for a premium B2B/B2C communications agency.
 Task: Transform diagnostic data into a professional PR strategy JSON.
-Always return a valid JSON object with keys: challenge_summary, solution_summary, 1_google_slide, 2_facebook_post, 3_threads_post, 4_instagram_post, 5_linkedin_post, 6_website.
+Always return a valid JSON object with keys: challenge_summary, solution_summary, 1_google_slide, 2_facebook_post, 3_threads_post, 4_instagram_post, 5_linkedin_post, 6_website, 7_faq.
 
 **ABSOLUTE RULE 1 — POST-EVENT RETROSPECTIVE MODE**:
 This tool is EXCLUSIVELY used AFTER an event has already taken place. All content you generate MUST be written as a retrospective case showcase — as if you are a journalist or PR strategist documenting and celebrating what already happened.
@@ -167,6 +167,30 @@ All social media posts are POST-EVENT highlights for the agency's own channels. 
    - Content: 以「案例分享」形式，由專業角度回顧此項目：我們面對的挑戰是什麼、我們的策略思維是什麼、最終成果如何。目的是向潛在 B2B 客戶展示公司的專業能力與解決問題的思維。絕對不可出現活動日期、報名資訊或邀請字眼。
    - Language: 雙語並行 (English first, followed by Traditional Chinese)。
 
+**CRITICAL INSTRUCTION FOR '7_faq' (Dedicated FAQ — Separate from Website Article)**:
+The '7_faq' key MUST be a nested JSON object containing exactly three keys: "en", "tc", and "jp".
+This FAQ is SEPARATE from the article body in '6_website'. It will be stored in its own dedicated database column and displayed in the website sidebar.
+
+Each language version must contain exactly 5 Q&A pairs covering:
+1. What was the core challenge or brief?
+2. What was the creative/strategic approach?
+3. What made this project unique or different?
+4. What was the most memorable moment or result?
+5. What can other brands or clients learn from this project?
+
+FORMAT RULES FOR '7_faq' (STRICT):
+- Each language value is a plain string (NOT a nested object).
+- Use this exact format for each language:
+  Q1: [Question in the target language]\nA1: [Answer in the target language]\nQ2: [Question]\nA2: [Answer]\nQ3: [Question]\nA3: [Answer]\nQ4: [Question]\nA4: [Answer]\nQ5: [Question]\nA5: [Answer]
+- Use \\n as the literal newline separator between Q&A pairs.
+- Answers should be 2-3 sentences, concise and professional.
+- Language requirements:
+  - "en": English (professional editorial tone)
+  - "tc": Traditional Chinese (Hong Kong localization, natural editorial style)
+  - "jp": Japanese (polite Desu/Masu business tone)
+- DO NOT include the ### Fast Recap FAQ heading in this field.
+- DO NOT duplicate the Q&A from '6_website' — write fresh, standalone questions.
+
 DO NOT output any conversational text outside the JSON object.
 """
 
@@ -241,6 +265,9 @@ def init_session_state():
         "sync_success": False,  # 記錄同步是否成功
         "draft_project_id": "",  # 記錄已載入的草稿 ID（用於更新而非新增）
         "loaded_image_urls": [],  # 記錄從草稿載入的圖片 URLs
+        "faq_en": "",  # Dedicated FAQ EN (column AB)
+        "faq_tc": "",  # Dedicated FAQ TC (column AC)
+        "faq_jp": "",  # Dedicated FAQ JP (column AD)
     }
     for k, v in fields.items():
         if k not in st.session_state:
@@ -254,7 +281,8 @@ def reset_for_new_case():
         "project_photos", "ai_content", "logo_white", "logo_black",
         "mc_questions", "open_question_ans", "challenge", "solution",
         "visual_facts", "hero_photo_index", "sync_success",
-        "draft_project_id", "loaded_image_urls"
+        "draft_project_id", "loaded_image_urls",
+        "faq_en", "faq_tc", "faq_jp"
     ]
     defaults = {
         "event_year": str(CURRENT_YEAR), "event_month": "FEB",
@@ -1080,6 +1108,12 @@ def main():
                             st.session_state.ai_content = data
                             st.session_state.challenge = data.get("challenge_summary", "尚未生成")
                             st.session_state.solution = data.get("solution_summary", "尚未生成")
+                            # Extract dedicated FAQ fields (column AB/AC/AD)
+                            faq_data = data.get("7_faq", {})
+                            if isinstance(faq_data, dict):
+                                st.session_state.faq_en = faq_data.get("en", "")
+                                st.session_state.faq_tc = faq_data.get("tc", "")
+                                st.session_state.faq_jp = faq_data.get("jp", "")
                             log_debug(f"✅ 文案生成成功，痛點數: {len(pain_points)}，強項數: {len(strengths)}", "success")
                             st.toast("✅ 策略與文案已成功生成！")
                             time.sleep(1)
@@ -1090,6 +1124,29 @@ def main():
 
         if st.session_state.ai_content:
             st.json(st.session_state.ai_content)
+
+            # ── FAQ Preview & Edit Section ──
+            if st.session_state.get("faq_en") or st.session_state.get("faq_tc") or st.session_state.get("faq_jp"):
+                st.markdown("---")
+                st.markdown("### 💬 Dedicated FAQ (Columns AB / AC / AD)")
+                st.caption("這些 FAQ 將儲存至獨立欄位，並在網站專頁右側展示。")
+                faq_tabs = st.tabs(["FAQ EN (AB)", "FAQ TC (AC)", "FAQ JP (AD)"])
+                with faq_tabs[0]:
+                    st.session_state.faq_en = st.text_area(
+                        "FAQ EN", value=st.session_state.faq_en, height=250, key="faq_en_edit",
+                        help="5 Q&A pairs in English. Format: Q1: ...\\nA1: ..."
+                    )
+                with faq_tabs[1]:
+                    st.session_state.faq_tc = st.text_area(
+                        "FAQ TC", value=st.session_state.faq_tc, height=250, key="faq_tc_edit",
+                        help="5 對問答（繁體中文）。格式：Q1: ...\\nA1: ..."
+                    )
+                with faq_tabs[2]:
+                    st.session_state.faq_jp = st.text_area(
+                        "FAQ JP", value=st.session_state.faq_jp, height=250, key="faq_jp_edit",
+                        help="5組のQ&A（日本語）。形式：Q1: ...\\nA1: ..."
+                    )
+
             if st.button("Confirm & Sync (Sheet + Slide + Drive)", type="primary", use_container_width=True):
                 with st.spinner("🔄 同步中 (自動生成系統編號與日期)..."):
                     try:
@@ -1134,7 +1191,10 @@ def main():
                             "logo_white": st.session_state.logo_white, 
                             "logo_black": st.session_state.logo_black,
                             "images": processed_imgs, 
-                            "ai_content": st.session_state.ai_content
+                            "ai_content": st.session_state.ai_content,
+                            "faq_en": st.session_state.get("faq_en", ""),
+                            "faq_tc": st.session_state.get("faq_tc", ""),
+                            "faq_jp": st.session_state.get("faq_jp", "")
                         }
                         
                         r1 = requests.post(SHEET_SCRIPT_URL, json=payload, timeout=60)
