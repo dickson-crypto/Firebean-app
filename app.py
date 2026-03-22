@@ -316,6 +316,8 @@ def init_session_state():
         "faq_en": "",  # Dedicated FAQ EN (column AB)
         "faq_tc": "",  # Dedicated FAQ TC (column AC)
         "faq_jp": "",  # Dedicated FAQ JP (column AD)
+        "user_dark_mode": None,  # 用戶手動設置的深色模式偏好 (None = 自動, True = 深色, False = 淺色)
+        "last_autosave_time": 0,  # 上次自動保存的時間戳
     }
     for k, v in fields.items():
         if k not in st.session_state:
@@ -388,8 +390,12 @@ def fill_dummy_data():
 # --- 3. UI 元件 ---
 
 def get_is_dark_mode():
-    """根據香港時間判斷是否為夜間模式 (20:00 - 07:59 為深色模式)"""
-    # 使用 UTC+8 (香港時間)
+    """根據用戶偏好或香港時間判斷是否為夜間模式 (20:00 - 07:59 為深色模式)"""
+    # 優先檢查用戶手動設置
+    if "user_dark_mode" in st.session_state and st.session_state.user_dark_mode is not None:
+        return st.session_state.user_dark_mode
+    
+    # 否則使用 UTC+8 (香港時間) 自動檢測
     from datetime import timezone, timedelta
     hk_tz = timezone(timedelta(hours=8))
     hk_hour = datetime.now(hk_tz).hour
@@ -635,9 +641,91 @@ def apply_styles(is_dark):
 
     </style>""", unsafe_allow_html=True)
 
-# --- 4. Main App ---
+# --- 4. Auto-save Helper Function ---
+
+def should_autosave():
+    """檢查是否應該執行自動保存 (防抖機制，最少間隔 3 秒)"""
+    current_time = time.time()
+    last_save = st.session_state.get("last_autosave_time", 0)
+    if current_time - last_save >= 3:
+        st.session_state.last_autosave_time = current_time
+        return True
+    return False
+
+def trigger_autosave_draft():
+    """自動保存草稿到 Google Sheet (如果有基本信息)"""
+    if should_autosave():
+        if st.session_state.client_name.strip() and st.session_state.project_name.strip():
+            try:
+                save_draft_to_sheet()
+            except Exception as e:
+                log_debug(f"⚠️ 自動保存失敗: {str(e)}", "error")
+
+# --- 5. Main App ---
 
 # ── Draft Save / Load Helper Functions ──
+
+
+def trigger_autosync_github():
+    """自動同步已生成的內容到 GitHub (projects.json)"""
+    if should_autosave():
+        if st.session_state.ai_content and st.session_state.client_name.strip():
+            try:
+                # 準備同步數據
+                project_id, sort_date = generate_system_metadata()
+                
+                processed_imgs = []
+                for f in st.session_state.project_photos:
+                    if hasattr(f, "seek"): f.seek(0) 
+                    try:
+                        img = Image.open(f).convert("RGB")
+                        img = ImageOps.exif_transpose(img)
+                        img.thumbnail((1600, 1600))
+                        buf = io.BytesIO()
+                        img.save(buf, format="JPEG", quality=85)
+                        processed_imgs.append(base64.b64encode(buf.getvalue()).decode())
+                    except Exception as e:
+                        if hasattr(f, "seek"): f.seek(0)
+                        processed_imgs.append(base64.b64encode(f.read()).decode())
+
+                hero_index = st.session_state.get("hero_photo_index", 0)
+                if processed_imgs and hero_index < len(processed_imgs):
+                    hero_img = processed_imgs.pop(hero_index)
+                    processed_imgs.insert(0, hero_img)
+
+                payload = {
+                    "action": "sync_project",
+                    "project_id": project_id,
+                    "sort_date": sort_date,
+                    "client_name": st.session_state.client_name,
+                    "project_name": st.session_state.project_name,
+                    "venue": st.session_state.venue,
+                    "date": f"{st.session_state.event_year} {st.session_state.event_month}",
+                    "youtube": st.session_state.youtube,
+                    "category": st.session_state.category, 
+                    "category_what": ", ".join(st.session_state.what_we_do),
+                    "scope": ", ".join(st.session_state.scope),       
+                    "challenge": st.session_state.challenge,
+                    "solution": st.session_state.solution,
+                    "open_question": st.session_state.open_question_ans,
+                    "logo_white": st.session_state.logo_white, 
+                    "logo_black": st.session_state.logo_black,
+                    "images": processed_imgs, 
+                    "ai_content": st.session_state.ai_content,
+                    "faq_en": st.session_state.get("faq_en", ""),
+                    "faq_tc": st.session_state.get("faq_tc", ""),
+                    "faq_jp": st.session_state.get("faq_jp", "")
+                }
+                
+                r1 = requests.post(SHEET_SCRIPT_URL, json=payload, timeout=60)
+                r2 = requests.post(SLIDE_SCRIPT_URL, json=payload, timeout=60)
+                if r1.status_code == 200 and r2.status_code == 200:
+                    log_debug(f"✅ 自動同步成功: {project_id}", "success")
+                else:
+                    log_debug(f"⚠️ 自動同步部分失敗: Sheet {r1.status_code}, Slide {r2.status_code}", "error")
+            except Exception as e:
+                log_debug(f"⚠️ 自動同步失敗: {str(e)}", "error")
+
 
 def fetch_draft_list():
     """Fetch the list of saved drafts from Google Sheet Raw_Input_DB."""
@@ -741,7 +829,7 @@ def main():
     is_dark = get_is_dark_mode()
     apply_styles(is_dark)
 
-    c1, c2 = st.columns([1, 1])
+    c1, c2, c3 = st.columns([1, 1, 0.5])
     with c1: 
         st.markdown('<span id="logo-anchor"></span>', unsafe_allow_html=True)
         # ── HOME 按鈕：若已同步成功則完全重置；否則只切換回 Tab 1 ──
@@ -753,6 +841,23 @@ def main():
             st.rerun()
     with c2: 
         progress_placeholder = st.empty()
+    with c3:
+        # ── Dark Mode Toggle ──
+        current_mode = st.session_state.user_dark_mode
+        is_dark = get_is_dark_mode()
+        
+        col_dm1, col_dm2 = st.columns(2)
+        with col_dm1:
+            if st.button("☀️" if is_dark else "🌙", key="toggle_dark", help="切換深色/淺色模式"):
+                if st.session_state.user_dark_mode is None:
+                    st.session_state.user_dark_mode = not is_dark
+                else:
+                    st.session_state.user_dark_mode = not st.session_state.user_dark_mode
+                st.rerun()
+        with col_dm2:
+            if st.button("🔄", key="reset_dark", help="重置為自動模式"):
+                st.session_state.user_dark_mode = None
+                st.rerun()
 
     st.markdown("<br>", unsafe_allow_html=True)
     
@@ -846,8 +951,11 @@ def main():
 
         b1, b2, b3 = st.columns(3)
         st.session_state.client_name = clean_field(b1.text_input("Client", st.session_state.client_name))
+        trigger_autosave_draft()  # Auto-save on client name change
         st.session_state.project_name = clean_field(b2.text_input("Project", st.session_state.project_name))
+        trigger_autosave_draft()  # Auto-save on project name change
         st.session_state.venue = clean_field(b3.text_input("Venue", st.session_state.venue))
+        trigger_autosave_draft()  # Auto-save on venue change
 
         b4, b5, b6 = st.columns(3)
         y_idx = YEAR_OPTIONS.index(st.session_state.event_year) if st.session_state.event_year in YEAR_OPTIONS else 0
@@ -855,6 +963,7 @@ def main():
         st.session_state.event_year = b4.selectbox("Event Year", YEAR_OPTIONS, index=y_idx)
         st.session_state.event_month = b5.selectbox("Event Month", MONTH_OPTIONS, index=m_idx)
         st.session_state.youtube = b6.text_input("YouTube Link (Optional)", st.session_state.youtube)
+        trigger_autosave_draft()  # Auto-save on youtube link change
 
         st.markdown("<hr style='margin-top: 10px; margin-bottom: 10px;'>", unsafe_allow_html=True)
 
@@ -862,12 +971,15 @@ def main():
         with ca:
             st.markdown("##### Category")
             st.session_state.category = st.radio("Category", WHO_WE_HELP_OPTIONS, index=WHO_WE_HELP_OPTIONS.index(st.session_state.category) if st.session_state.category in WHO_WE_HELP_OPTIONS else 0, label_visibility="collapsed")
+            trigger_autosave_draft()  # Auto-save on category change
         with cb:
             st.markdown("##### What we do")
             st.session_state.what_we_do = [o for o in WHAT_WE_DO_OPTIONS if st.checkbox(o, key=f"w_{o}", value=(o in st.session_state.what_we_do))]
+            trigger_autosave_draft()  # Auto-save on what_we_do change
         with cc:
             st.markdown("##### Scope of work")
             st.session_state.scope = [o for o in SOW_OPTIONS if st.checkbox(o, key=f"s_{o}", value=(o in st.session_state.scope))]
+            trigger_autosave_draft()  # Auto-save on scope change
         st.markdown('</div>', unsafe_allow_html=True)
 
         cl, cr = st.columns([1.2, 1])
@@ -937,12 +1049,14 @@ def main():
                             st.markdown("</div>", unsafe_allow_html=True)
 
                 st.session_state.open_question_ans = st.text_area("最核心的概念？", st.session_state.open_question_ans)
+            trigger_autosave_draft()  # Auto-save on open question change
             st.markdown('</div>', unsafe_allow_html=True)
 
         with cr:
             st.markdown('<div class="neu-card">', unsafe_allow_html=True)
             f_up = st.file_uploader("Upload 4-8 Photos", accept_multiple_files=True)
             if f_up: st.session_state.project_photos = f_up
+            trigger_autosave_draft()  # Auto-save on photo upload
             
             if st.session_state.project_photos:
                 st.markdown("##### 📸 Photo Preview & Select Hero Banner")
