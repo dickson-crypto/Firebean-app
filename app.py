@@ -527,12 +527,15 @@ def main():
 
     st.markdown("<br>", unsafe_allow_html=True)
     
-    nav_cols = st.columns(2)
+    nav_cols = st.columns(3)
     if nav_cols[0].button("Project Collector", use_container_width=True, type="primary" if st.session_state.active_tab == "Project Collector" else "secondary"):
         st.session_state.active_tab = "Project Collector"
         st.rerun()
     if nav_cols[1].button("Review & Multi-Sync", use_container_width=True, type="primary" if st.session_state.active_tab == "Review & Multi-Sync" else "secondary"):
         st.session_state.active_tab = "Review & Multi-Sync"
+        st.rerun()
+    if nav_cols[2].button("📂 Load Project", use_container_width=True, type="primary" if st.session_state.active_tab == "Load Project" else "secondary"):
+        st.session_state.active_tab = "Load Project"
         st.rerun()
 
     st.markdown("<hr style='margin-top: 5px; margin-bottom: 20px;'>", unsafe_allow_html=True)
@@ -874,6 +877,83 @@ def main():
                         st.info("💡 點擊上方 🏠 HOME 按鈕即可重置表單，開始處理下一個案例。")
                     else:
                         st.error("❌ 同步失敗，請查看 Debug Terminal。")
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    # --- Load Project Tab ---
+    elif st.session_state.active_tab == "Load Project":
+        st.markdown('<div class="neu-card">', unsafe_allow_html=True)
+        st.markdown("### 📂 載入已儲存的項目 (Load Existing Project)")
+        st.info("輸入 **Project ID**（例如：`FB2026MAR001`）或 **Client Name** 的部分關鍵字，系統會從 Master DB 搜尋並載入所有資料。")
+
+        load_col1, load_col2 = st.columns([3, 1])
+        with load_col1:
+            search_query = st.text_input("🔍 Project ID 或 Client Name", placeholder="例如：FB2026MAR001 或 Agnès b.", key="load_search_query")
+        with load_col2:
+            st.markdown("<br>", unsafe_allow_html=True)
+            do_search = st.button("🔎 搜尋並載入", type="primary", use_container_width=True)
+
+        if do_search and search_query.strip():
+            with st.spinner("正在從 Master DB 搜尋項目..."):
+                try:
+                    resp = requests.get(
+                        SHEET_SCRIPT_URL,
+                        params={"action": "get_project", "project_id": search_query.strip()},
+                        timeout=30
+                    )
+                    result = resp.json()
+                    if result.get("status") == "success":
+                        d = result["data"]
+                        # Load all fields into session state
+                        st.session_state.client_name = d.get("client_name", "")
+                        st.session_state.project_name = d.get("project_name", "")
+                        st.session_state.venue = d.get("venue", "")
+                        st.session_state.youtube = d.get("youtube", "")
+                        # Parse category
+                        cat = d.get("category", WHO_WE_HELP_OPTIONS[0])
+                        st.session_state.category = cat if cat in WHO_WE_HELP_OPTIONS else WHO_WE_HELP_OPTIONS[0]
+                        # Parse what_we_do (comma-separated string)
+                        cat_what_str = d.get("category_what", "")
+                        st.session_state.what_we_do = [x.strip() for x in cat_what_str.split(",") if x.strip() in WHAT_WE_DO_OPTIONS] if cat_what_str else []
+                        # Parse scope (comma-separated string)
+                        scope_str = d.get("scope", "")
+                        st.session_state.scope = [x.strip() for x in scope_str.split(",") if x.strip() in SOW_OPTIONS] if scope_str else []
+                        st.session_state.open_question_ans = d.get("open_question", "")
+                        st.session_state.draft_project_id = d.get("project_id", "")
+                        # Load AI content
+                        ai_data = d.get("ai_content", {})
+                        if ai_data:
+                            # Ensure 6_website and 7_faq are dicts
+                            if not isinstance(ai_data.get("6_website"), dict):
+                                ai_data["6_website"] = {"en": "", "tc": "", "jp": ""}
+                            if not isinstance(ai_data.get("7_faq"), dict):
+                                ai_data["7_faq"] = {"en": "", "tc": "", "jp": ""}
+                            # Add challenge/solution to ai_content for Review tab
+                            ai_data["challenge_summary"] = d.get("challenge_summary", "")
+                            ai_data["solution_summary"] = d.get("solution_summary", "")
+                            st.session_state.ai_content = ai_data
+                        log_debug(f"✅ 已成功載入項目: {d.get('project_id')} — {d.get('client_name')}", "success")
+                        st.success(f"✅ 成功載入：**{d.get('client_name')}** — {d.get('project_name')} (`{d.get('project_id')}`）")
+                        st.info("💡 資料已載入！你可以切換到 **Project Collector** 修改基本資料，或直接到 **Review & Multi-Sync** 編輯 AI 文案後重新 Sync。")
+                        st.warning("⚠️ 注意：Logo 和照片需要重新上傳，因為圖片不儲存在 Master DB 的文字欄位中。")
+                    else:
+                        st.error(f"❌ 找不到項目：{result.get('message', '未知錯誤')}。請確認 Project ID 正確，或嘗試輸入 Client Name 關鍵字。")
+                        log_debug(f"❌ Load Project 失敗: {result.get('message')}", "error")
+                except Exception as load_err:
+                    st.error(f"❌ 搜尋失敗：{str(load_err)}")
+                    log_debug(f"❌ Load Project 例外: {str(load_err)}", "error")
+
+        # Show currently loaded project info
+        if st.session_state.get("draft_project_id"):
+            st.markdown("---")
+            st.markdown(f"**目前已載入項目：** `{st.session_state.draft_project_id}` — {st.session_state.client_name} / {st.session_state.project_name}")
+            col_nav1, col_nav2 = st.columns(2)
+            if col_nav1.button("✏️ 前往 Project Collector 修改", use_container_width=True):
+                st.session_state.active_tab = "Project Collector"
+                st.rerun()
+            if col_nav2.button("📝 前往 Review & Multi-Sync 編輯文案", use_container_width=True):
+                st.session_state.active_tab = "Review & Multi-Sync"
+                st.rerun()
+
         st.markdown('</div>', unsafe_allow_html=True)
 
     # --- Debug Terminal (Collapsible) ---
