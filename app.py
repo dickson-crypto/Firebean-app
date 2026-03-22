@@ -1035,13 +1035,13 @@ def trigger_full_sync():
             "event_month": st.session_state.event_month,
             "youtube": st.session_state.youtube,
             "category": st.session_state.category,
-            "what_we_do": ", ".join(st.session_state.what_we_do),
+            "category_what": ", ".join(st.session_state.what_we_do),
             "scope": ", ".join(st.session_state.scope),
             "open_question": st.session_state.open_question_ans,
             
             # AI 生成內容
-            "challenge_en": ai.get("challenge_summary", ""),
-            "solution_en": ai.get("solution_summary", ""),
+            "challenge": ai.get("challenge_summary", ""),
+            "solution": ai.get("solution_summary", ""),
             "web_en": web.get("en", ""),
             "web_tc": web.get("tc", ""),
             "web_jp": web.get("jp", ""),
