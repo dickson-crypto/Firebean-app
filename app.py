@@ -929,7 +929,17 @@ def trigger_full_sync():
         }
         
         r = requests.post(SHEET_SCRIPT_URL, json=payload, timeout=90)
-        is_success = r.status_code == 200 and r.json().get("status") == "success"
+        
+        # Handle both JSON response and plain text "Sync Success" from Apps Script
+        is_success = False
+        if r.status_code == 200:
+            if "Sync Success" in r.text:
+                is_success = True
+            else:
+                try:
+                    is_success = r.json().get("status") == "success"
+                except:
+                    pass
         
         if is_success:
             # 儲存 Raw Data 到 GitHub
