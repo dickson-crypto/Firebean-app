@@ -194,7 +194,55 @@ FORMAT RULES FOR '7_faq' (STRICT):
 DO NOT output any conversational text outside the JSON object.
 """
 
-# --- 2. 核心邏輯 ---
+# --- 2. Input Sanitiser — strips Google Sheets clipboard noise ---
+def clean_field(value: str) -> str:
+    """Remove Google Sheets UI noise that gets pasted from clipboard.
+
+    When a user copies a cell from Google Sheets on Mac and pastes into Streamlit,
+    the clipboard sometimes captures surrounding UI text alongside the actual value:
+      - Sheet name (e.g. 'Firebean_Master_DB')
+      - Zoom level (e.g. '100%')
+      - Cell reference (e.g. 'C20', 'B3')
+      - 'Summarize this data'
+      - 'Turn on screen reader support'
+      - 'To enable screen reader support, press Cmd+Option+Z'
+      - 'To learn about keyboard shortcuts, press Cmd+slash'
+
+    The actual cell value often appears twice in the noise.
+    Strategy: strip all known noise patterns, then deduplicate repeated text.
+    """
+    if not value:
+        return value
+
+    noise_patterns = [
+        r'Firebean_Master_DB\s*',
+        r'\b\d{1,3}%\s*',                          # zoom % like '100%'
+        r'\b[A-Z]{1,2}\d{1,3}\b\s*',              # cell ref like 'C20', 'AB3'
+        r'Summarize this data\s*',
+        r'Turn on screen reader support\s*',
+        r'To enable screen reader support[^.]*\.?\s*',
+        r'To learn about keyboard shortcuts[^.]*\.?\s*',
+        r'press [\u2318Ctrl]\+[^\s]+\s*',          # keyboard shortcut hints
+    ]
+
+    cleaned = value
+    for pattern in noise_patterns:
+        cleaned = re.sub(pattern, ' ', cleaned, flags=re.IGNORECASE)
+
+    # Collapse multiple spaces and strip
+    cleaned = re.sub(r'  +', ' ', cleaned).strip()
+
+    # If the same text appears twice (copy artifact), keep only the first occurrence
+    # e.g. 'Project Name Project Name' -> 'Project Name'
+    words = cleaned.split()
+    half = len(words) // 2
+    if half > 2 and words[:half] == words[half:]:
+        cleaned = ' '.join(words[:half])
+
+    return cleaned
+
+
+# --- 3. 核心邏輯 ---
 
 def log_debug(msg, type="info"):
     if "debug_logs" not in st.session_state: st.session_state.debug_logs = []
@@ -797,9 +845,9 @@ def main():
                 ''', unsafe_allow_html=True)
 
         b1, b2, b3 = st.columns(3)
-        st.session_state.client_name = b1.text_input("Client", st.session_state.client_name)
-        st.session_state.project_name = b2.text_input("Project", st.session_state.project_name)
-        st.session_state.venue = b3.text_input("Venue", st.session_state.venue)
+        st.session_state.client_name = clean_field(b1.text_input("Client", st.session_state.client_name))
+        st.session_state.project_name = clean_field(b2.text_input("Project", st.session_state.project_name))
+        st.session_state.venue = clean_field(b3.text_input("Venue", st.session_state.venue))
 
         b4, b5, b6 = st.columns(3)
         y_idx = YEAR_OPTIONS.index(st.session_state.event_year) if st.session_state.event_year in YEAR_OPTIONS else 0
