@@ -70,8 +70,10 @@ INSTEAD, always use retrospective language:
 - 繁中: 「活動已圓滿結束」、「當日現場」、「是次項目成功」、「回顧今次」
 - Time references: Use vague retrospective references only (e.g. "recently", "at the event", "on the day"). DO NOT state specific year, month, date, or time in the body text — these details belong in metadata only, not in the narrative.
 
-**CRITICAL INSTRUCTION FOR 'challenge_summary'**:
+**CRITICAL INSTRUCTION FOR 'challenge_summary' AND 'solution_summary'**:
+BOTH 'challenge_summary' AND 'solution_summary' MUST be written in ENGLISH ONLY. Do NOT use Chinese, Japanese, or any other language for these two fields.
 You MUST keep the client's pain points and challenges extremely concise. Use only 1 to 2 short, punchy sentences (maximum 50 words) to define the core challenge. Do not elaborate excessively on the negative impacts.
+Similarly, 'solution_summary' must be 1 to 2 concise English sentences (maximum 50 words) summarising how the challenge was resolved.
 
 **CRITICAL INSTRUCTION FOR '6_website' (Magazine Feature Article)**:
 The '6_website' key MUST be a nested JSON object containing exactly four keys: "angle_chosen", "en", "tc", and "jp".
