@@ -538,7 +538,8 @@ def main():
         with col1:
             ub = st.file_uploader("Black Logo ✱ (Required)", type=['png'], key="l_b")
             if ub is not None: 
-                st.session_state.logo_black = base64.b64encode(ub.read()).decode()
+                # 確保是乾淨的 base64 字符串
+                st.session_state.logo_black = base64.b64encode(ub.read()).decode('utf-8')
             
             if st.session_state.logo_black:
                 preview_bg = "#1E2128" if is_dark else "#f9f9f9"
@@ -552,7 +553,8 @@ def main():
         with col2:
             uw = st.file_uploader("White Logo ✱ (Required)", type=['png'], key="l_w")
             if uw is not None: 
-                st.session_state.logo_white = base64.b64encode(uw.read()).decode()
+                # 確保是乾淨的 base64 字符串
+                st.session_state.logo_white = base64.b64encode(uw.read()).decode('utf-8')
                 
             if st.session_state.logo_white:
                 st.markdown(f'''
@@ -886,9 +888,23 @@ def trigger_full_sync():
                     processed_imgs.append(base64.b64encode(f.read()).decode())
 
         # 3. 準備 Payload
-        ai = st.session_state.ai_content
+        ai = st.session_state.ai_content if st.session_state.ai_content else {}
         web = ai.get("6_website", {})
         faq = ai.get("7_faq", {})
+        
+        # 確保即使沒有點擊 AI 生成，社交媒體欄位也有預設值，避免傳送 None 導致錯誤
+        if not ai:
+            ai = {
+                "1_google_slide": "",
+                "2_facebook_post": "",
+                "3_threads_post": "",
+                "4_instagram_post": "",
+                "5_linkedin_post": "",
+                "6_website": {"en": "", "tc": "", "jp": ""},
+                "7_faq": {"en": "", "tc": "", "jp": ""},
+                "challenge_summary": "",
+                "solution_summary": ""
+            }
         
         # 準備 DATE 欄位 (e.g. "MAR 2026")
         display_date = f"{st.session_state.event_month} {st.session_state.event_year}"
