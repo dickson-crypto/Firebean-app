@@ -890,12 +890,16 @@ def trigger_full_sync():
         web = ai.get("6_website", {})
         faq = ai.get("7_faq", {})
         
+        # 準備 DATE 欄位 (e.g. "MAR 2026")
+        display_date = f"{st.session_state.event_month} {st.session_state.event_year}"
+        
         payload = {
             "action": "sync_project",
             "client_name": st.session_state.client_name,
             "project_name": st.session_state.project_name,
             "project_id": project_id,
             "sort_date": sort_date,
+            "date": display_date,  # Added missing date field
             "venue": st.session_state.venue,
             "event_year": st.session_state.event_year,
             "event_month": st.session_state.event_month,
@@ -905,20 +909,17 @@ def trigger_full_sync():
             "scope": ", ".join(st.session_state.scope),
             "open_question": st.session_state.open_question_ans,
             
-            # AI 生成內容
+            # 頂層挑戰與解決方案
             "challenge": ai.get("challenge_summary", ""),
             "solution": ai.get("solution_summary", ""),
-            "web_en": web.get("en", ""),
-            "web_tc": web.get("tc", ""),
-            "web_jp": web.get("jp", ""),
+            
+            # FAQ 也可以放頂層 (Apps Script 支援從頂層或 ai_content 讀取)
             "faq_en": str(faq.get("en", "")),
             "faq_tc": str(faq.get("tc", "")),
             "faq_jp": str(faq.get("jp", "")),
-            "fb_post": ai.get("2_facebook_post", ""),
-            "ig_post": ai.get("4_instagram_post", ""),
-            "threads_post": ai.get("3_threads_post", ""),
-            "linkedin_post": ai.get("5_linkedin_post", ""),
-            "google_slide": ai.get("1_google_slide", ""),
+            
+            # AI 生成內容 (完整傳遞給 Apps Script 的 ai_content 物件)
+            "ai_content": ai,
             
             # 圖片
             "logo_black": st.session_state.logo_black,
