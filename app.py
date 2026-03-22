@@ -1066,6 +1066,40 @@ def trigger_full_sync():
                     pass
         
         if is_success:
+            # 觸發 Google Slide 生成
+            try:
+                # 取得 Logo White 的 Drive URL (從 session state 或 payload response)
+                logo_white_url = ""
+                if st.session_state.get("logo_white_drive_url"):
+                    logo_white_url = st.session_state.logo_white_drive_url
+                
+                slide_payload = {
+                    "action": "create_slide",
+                    "project_id": project_id,
+                    "client_name": st.session_state.client_name,
+                    "project_name": st.session_state.project_name,
+                    "category": st.session_state.category,
+                    "date": display_date,
+                    "venue": st.session_state.venue,
+                    "scope": ", ".join(st.session_state.scope),
+                    "challenge": ai.get("challenge_summary", ""),
+                    "solution": ai.get("solution_summary", ""),
+                    "logo_white_url": logo_white_url
+                }
+                slide_r = requests.post(SLIDE_SCRIPT_URL, json=slide_payload, timeout=120)
+                if slide_r.status_code == 200:
+                    try:
+                        slide_data = slide_r.json()
+                        if slide_data.get("status") == "success":
+                            st.session_state.generated_slide_url = slide_data.get("slide_url", "")
+                            log_debug(f"✅ Google Slide 已生成: {slide_data.get('slide_url', '')}", "success")
+                        else:
+                            log_debug(f"⚠️ Slide 生成回應: {slide_data.get('message', '')}", "warning")
+                    except:
+                        log_debug("⚠️ Slide 生成回應格式異常", "warning")
+            except Exception as slide_err:
+                log_debug(f"⚠️ Slide 生成失敗 (不影響主要同步): {str(slide_err)}", "warning")
+            
             # 儲存 Raw Data 到 GitHub
             try:
                 # 準備要儲存的完整原始資料
