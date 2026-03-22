@@ -434,12 +434,8 @@ def should_autosave():
 
 def trigger_autosave_draft():
     """自動保存草稿到 Google Sheet (如果有基本信息)"""
-    if should_autosave():
-        if st.session_state.client_name.strip() and st.session_state.project_name.strip():
-            try:
-                save_draft_to_sheet()
-            except Exception as e:
-                log_debug(f"⚠️ 自動保存失敗: {str(e)}", "error")
+    # Autosave removed as it is not supported by Apps Script
+    pass
 
 # --- 5. Main App ---
 
@@ -777,8 +773,6 @@ def main():
                             st.session_state.mc_questions = json.loads(res)
                             status.update(label="✅ 分析與題目生成完畢！", state="complete", expanded=False)
                             time.sleep(1)
-                            # 🚀 生成後強制執行一次草稿儲存
-                            save_draft_to_sheet()
                             st.rerun()
 
             if st.session_state.mc_questions:
@@ -931,8 +925,6 @@ def main():
                             data = data[0]
                         if isinstance(data, dict):
                             st.session_state.ai_content = data
-                            # 🚀 生成後強制執行一次草稿儲存
-                            save_draft_to_sheet()
                             st.rerun()
                     except:
                         st.error("❌ AI 返回數據格式錯誤。")
