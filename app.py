@@ -630,9 +630,7 @@ def main():
     if nav_cols[2].button("📂 Load Project", use_container_width=True, type="primary" if st.session_state.active_tab == "Load Project" else "secondary"):
         st.session_state.active_tab = "Load Project"
         st.rerun()
-    if nav_cols[3].button("老細一鍵填充 (深度內容測試)", use_container_width=True):
-        fill_dummy_data()
-        st.rerun()
+    # Boss test button removed
 
     st.markdown("<hr style='margin-top: 5px; margin-bottom: 20px;'>", unsafe_allow_html=True)
 
@@ -1078,7 +1076,74 @@ def trigger_full_sync():
         }
         
         r = requests.post(SHEET_SCRIPT_URL, json=payload, timeout=90)
-        return r.status_code == 200 and r.json().get("status") == "success"
+        is_success = r.status_code == 200 and r.json().get("status") == "success"
+        
+        if is_success:
+            # 儲存 Raw Data 到 GitHub
+            try:
+                # 準備要儲存的完整原始資料
+                raw_data = {
+                    "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+                    "project_id": project_id,
+                    "client_name": st.session_state.client_name,
+                    "project_name": st.session_state.project_name,
+                    "venue": st.session_state.venue,
+                    "event_year": st.session_state.event_year,
+                    "event_month": st.session_state.event_month,
+                    "category": st.session_state.category,
+                    "what_we_do": st.session_state.what_we_do,
+                    "scope": st.session_state.scope,
+                    "youtube": st.session_state.youtube,
+                    "open_question": st.session_state.open_question_ans,
+                    "mc_questions": st.session_state.mc_questions,
+                    "mc_answers": {i: st.session_state.get(f"ans_{i}", []) for i in range(1, 16)},
+                    "ai_content": st.session_state.ai_content
+                }
+                
+                # 建立臨時檔案
+                import tempfile
+                import os
+                import subprocess
+                
+                with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json') as temp_file:
+                    json.dump(raw_data, temp_file, ensure_ascii=False, indent=2)
+                    temp_path = temp_file.name
+                
+                # 取得當前年份和月份作為資料夾結構
+                year_month = time.strftime("%Y-%m")
+                github_path = f"raw_data/{year_month}/{project_id}.json"
+                
+                # 寫入一個簡單的 bash script 來執行 gh api 呼叫 (避免引號跳脫問題)
+                script_content = f'''#!/bin/bash
+REPO="dickson-crypto/Firebean-app"
+FILE_PATH="{github_path}"
+MESSAGE="Save raw data for {project_id}"
+CONTENT=$(base64 -w 0 "{temp_path}")
+
+# 檢查檔案是否已存在，以取得 SHA
+SHA=$(gh api repos/$REPO/contents/$FILE_PATH -q .sha 2>/dev/null)
+
+if [ -z "$SHA" ]; then
+  # 建立新檔案
+  gh api -X PUT repos/$REPO/contents/$FILE_PATH -f message="$MESSAGE" -f content="$CONTENT" > /dev/null
+else
+  # 更新現有檔案
+  gh api -X PUT repos/$REPO/contents/$FILE_PATH -f message="$MESSAGE" -f content="$CONTENT" -f sha="$SHA" > /dev/null
+fi
+'''
+                script_path = "/tmp/upload_raw_data.sh"
+                with open(script_path, "w") as f:
+                    f.write(script_content)
+                
+                os.chmod(script_path, 0o755)
+                subprocess.run([script_path], check=True)
+                
+                log_debug(f"✅ 原始資料已成功備份至 GitHub ({github_path})", "success")
+                
+            except Exception as backup_err:
+                log_debug(f"⚠️ 原始資料備份至 GitHub 失敗: {str(backup_err)}", "warning")
+                
+        return is_success
     except Exception as e:
         log_debug(f"❌ 同步失敗: {str(e)}", "error")
         return False
