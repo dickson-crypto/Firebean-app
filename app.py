@@ -754,6 +754,29 @@ def main():
 
     elif st.session_state.active_tab == "Review & Multi-Sync":
         st.markdown('<div class="neu-card">', unsafe_allow_html=True)
+        
+        # --- Gemini API Key 連線測試 ---
+        with st.expander("🔑 Gemini API Key 連線測試", expanded=False):
+            if st.button("測試 API Key 連線", key="test_api_key"):
+                try:
+                    client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
+                    test_response = client.models.generate_content(
+                        model=STABLE_MODEL_ID,
+                        contents=["Reply with exactly: OK"]
+                    )
+                    if test_response and test_response.text:
+                        st.success(f"✅ API Key 連線成功！模型回應：{test_response.text.strip()[:50]}")
+                    else:
+                        st.error("❌ API Key 連線失敗：模型無回應")
+                except Exception as e:
+                    err_msg = str(e)
+                    if "API_KEY_INVALID" in err_msg or "PERMISSION_DENIED" in err_msg:
+                        st.error(f"❌ API Key 無效或已被撤銷：{err_msg[:200]}")
+                    elif "leaked" in err_msg.lower():
+                        st.error(f"❌ API Key 已被 Google 標記為洩露，請立即更換新 Key！")
+                    else:
+                        st.error(f"❌ 連線錯誤：{err_msg[:200]}")
+        
         if st.button("生成六大平台對接文案"):
             with st.spinner("AI Strategist 正在構思文案..."):
                 pain_points = []
