@@ -79,6 +79,9 @@ Similarly, 'solution_summary' must be 1 to 2 concise English sentences (maximum 
 The '6_website' key MUST be a nested JSON object containing exactly four keys: "angle_chosen", "en", "tc", and "jp".
 Write a highly engaging, 500-word POST-EVENT feature article. This is a case study showcase for the agency's portfolio website, intended to impress prospective clients — NOT to promote a future event.
 
+**IMPORTANT: EXCLUDE FAQ FROM WEBSITE ARTICLE**
+The '6_website' article content MUST NOT contain any FAQ, Q&A, or "Fast Recap" section. The FAQ content is handled separately in the '7_faq' field. DO NOT repeat it in the '6_website' body text.
+
 To ensure a diverse content library, RANDOMLY SELECT ONLY ONE of the 5 writing styles/angles below. Do not mix styles:
 1. The Thought Leadership Angle: Reflect on the industry challenge. Frame the Pain Point as a systemic flaw that this project addressed, and the outcome as a visionary blueprint for the industry.
 2. The Contrarian / Disruptor Angle: Start with a bold, counter-intuitive hook about what most events get wrong. Show how this project disrupted the norm and delivered something unexpected.
@@ -91,8 +94,7 @@ Format & Structure Requirements for '6_website':
     - Structure: Use exactly three sections, each starting with an <h3> heading.
     - Paragraph Count: Ensure each of the three sections contains at least one substantive paragraph (<p>). This is crucial for photo interleaving.
     - The Core Narrative: Seamlessly weave the [Basic Information], [Project Outcome], [Challenge], and [Solution] into the chosen narrative angle. All written in past tense.
-    - The Punch Line: The final paragraph before the FAQ must be a single, bolded, highly memorable concluding sentence about the project's impact.
-    - The Fast Recap FAQ: End with exactly three Q&A pairs. Use the heading #### Fast Recap FAQ.
+    - The Punch Line: The final paragraph must be a single, bolded, highly memorable concluding sentence about the project's impact.
     
     **CRITICAL HTML STRUCTURE REQUIREMENT FOR '6_website'**:
     You MUST output valid HTML that matches the CMS parsing format exactly. The structure MUST follow this pattern for photo interleaving:
@@ -104,36 +106,12 @@ Format & Structure Requirements for '6_website':
     <h3>Third Section Heading</h3>
     <p>Paragraph 3...</p>
     <p>The bolded punch line sentence.</p>
-    ### Fast Recap FAQ:
-    Q1: Question 1?
-    A1: Answer 1...
-    Q2: Question 2?
-    A2: Answer 2...
-    Q3: Question 3?
-    A3: Answer 3...
     
     STRICT RULES FOR HTML:
     1. Use ONLY <h1>, <h3>, and <p> tags for main content.
     2. DO NOT use <h2>, <h4>, or any other heading tags.
     3. DO NOT use <span>, <div>, <b>, <strong>, or any style attributes (no inline colors).
-    4. After the last paragraph, add a blank line, then switch to Markdown format.
     
-    STRICT RULES FOR Q&A SECTION (CRITICAL - MUST BE IN MARKDOWN FORMAT):
-    5. The Q&A section MUST use Markdown format, NOT HTML.
-    6. The FAQ heading MUST be exactly: ### Fast Recap FAQ:
-    7. Each question MUST start with Q1:, Q2:, Q3: (with colon, not question mark).
-    8. Each answer MUST start with A1:, A2:, A3: (with colon).
-    9. Q&A pairs MUST be on separate lines, one per line.
-    10. DO NOT use <h4>, <h3>, or any HTML tags for Q&A - use pure Markdown.
-    11. Example format:
-        ### Fast Recap FAQ:
-        Q1: What was the main challenge?
-        A1: The challenge was...
-        Q2: How did you solve it?
-        A2: We solved it by...
-        Q3: What was the outcome?
-        A3: The outcome was...
-
 Language Output Requirement for '6_website':
 - "angle_chosen": State the name of the angle you selected (e.g., "Style 2: The Contrarian").
 - "en": English (Premium editorial, past-tense retrospective tone, valid HTML structure)
@@ -175,330 +153,122 @@ This FAQ is SEPARATE from the article body in '6_website'. It will be stored in 
 
 Each language version must contain exactly 5 Q&A pairs covering:
 1. What was the core challenge or brief?
-2. What was the creative/strategic approach?
-3. What made this project unique or different?
-4. What was the most memorable moment or result?
-5. What can other brands or clients learn from this project?
+2. How did the agency's creative concept address this challenge?
+3. What was the most impactful or innovative element of the project?
+4. How did the audience or client react to the final result?
+5. What long-term value or industry benchmark did this project establish?
 
-FORMAT RULES FOR '7_faq' (STRICT):
-- Each language value is a plain string (NOT a nested object).
-- Use this exact format for each language:
-  Q1: [Question in the target language]\nA1: [Answer in the target language]\nQ2: [Question]\nA2: [Answer]\nQ3: [Question]\nA3: [Answer]\nQ4: [Question]\nA4: [Answer]\nQ5: [Question]\nA5: [Answer]
-- Use \\n as the literal newline separator between Q&A pairs.
-- Answers should be 2-3 sentences, concise and professional.
-- Language requirements:
-  - "en": English (professional editorial tone)
-  - "tc": Traditional Chinese (Hong Kong localization, natural editorial style)
-  - "jp": Japanese (polite Desu/Masu business tone)
-- DO NOT include the ### Fast Recap FAQ heading in this field.
-- DO NOT duplicate the Q&A from '6_website' — write fresh, standalone questions.
-
-DO NOT output any conversational text outside the JSON object.
+FAQ Formatting Rules:
+- Return a simple list of 5 Q&A pairs.
+- Each language must have its own 5 pairs.
+- Language: 'en' (English), 'tc' (Traditional Chinese), 'jp' (Japanese).
 """
 
-# --- 2. Input Sanitiser — strips Google Sheets clipboard noise ---
-def clean_field(value: str) -> str:
-    """Remove Google Sheets UI noise that gets pasted from clipboard.
-
-    When a user copies a cell from Google Sheets on Mac and pastes into Streamlit,
-    the clipboard sometimes captures surrounding UI text alongside the actual value:
-      - Sheet name (e.g. 'Firebean_Master_DB')
-      - Zoom level (e.g. '100%')
-      - Cell reference (e.g. 'C20', 'B3')
-      - 'Summarize this data'
-      - 'Turn on screen reader support'
-      - 'To enable screen reader support, press Cmd+Option+Z'
-      - 'To learn about keyboard shortcuts, press Cmd+slash'
-
-    The actual cell value often appears twice in the noise.
-    Strategy: strip all known noise patterns, then deduplicate repeated text.
-    """
-    if not value:
-        return value
-
-    noise_patterns = [
-        r'Firebean_Master_DB\s*',
-        r'\b\d{1,3}%\s*',                          # zoom % like '100%'
-        r'\b[A-Z]{1,2}\d{1,3}\b\s*',              # cell ref like 'C20', 'AB3'
-        r'Summarize this data\s*',
-        r'Turn on screen reader support\s*',
-        r'To enable screen reader support[^.]*\.?\s*',
-        r'To learn about keyboard shortcuts[^.]*\.?\s*',
-        r'press [\u2318Ctrl]\+[^\s]+\s*',          # keyboard shortcut hints
-    ]
-
-    cleaned = value
-    for pattern in noise_patterns:
-        cleaned = re.sub(pattern, ' ', cleaned, flags=re.IGNORECASE)
-
-    # Collapse multiple spaces and strip
-    cleaned = re.sub(r'  +', ' ', cleaned).strip()
-
-    # If the same text appears twice (copy artifact), keep only the first occurrence
-    # e.g. 'Project Name Project Name' -> 'Project Name'
-    words = cleaned.split()
-    half = len(words) // 2
-    if half > 2 and words[:half] == words[half:]:
-        cleaned = ' '.join(words[:half])
-
-    return cleaned
-
-
-# --- 3. 核心邏輯 ---
-
+# --- 2. 輔助函數 ---
 def log_debug(msg, type="info"):
+    """將日誌存入 session_state"""
+    ts = datetime.now().strftime("%H:%M:%S")
     if "debug_logs" not in st.session_state: st.session_state.debug_logs = []
-    timestamp = datetime.now().strftime("%H:%M:%S")
-    st.session_state.debug_logs.append({"time": timestamp, "msg": msg, "type": type})
+    st.session_state.debug_logs.append(f"[{ts}] [{type.upper()}] {msg}")
 
-def call_gemini_sdk(prompt, image_files=None, is_json=False, max_retries=2):
-    """呼叫 Gemini API，內建 JSON 容錯重試機制 (優化 C)"""
-    secret_key = st.secrets.get("GEMINI_API_KEY", "")
-    if not secret_key:
-        st.error("🚨 找不到 API Key")
+def clean_field(text):
+    """移除 Google Sheet 剪貼板帶來的噪音"""
+    if not text: return ""
+    noise = ["Basic Info", "Firebean_Master_DB", "100%", "Explore", "Summarize this data", "Explore this data"]
+    for n in noise: text = text.replace(n, "")
+    return text.strip()
+
+def call_gemini_sdk(prompt, image_files=None, is_json=False):
+    """呼叫 Google Gemini SDK (支援 Vision)"""
+    try:
+        genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+        model = genai.GenerativeModel(STABLE_MODEL_ID)
+        
+        contents = [FIREBEAN_SYSTEM_PROMPT, prompt]
+        if image_files:
+            for f in image_files:
+                if hasattr(f, "seek"): f.seek(0)
+                img = Image.open(f).convert("RGB")
+                # 🚀 修復：在傳給 AI 之前，先旋轉為正確方向
+                img = ImageOps.exif_transpose(img)
+                contents.append(img)
+        
+        response = model.generate_content(contents, generation_config={"response_mime_type": "application/json"} if is_json else None)
+        return response.text
+    except Exception as e:
+        log_debug(f"Gemini API Error: {str(e)}", "error")
         return None
 
-    for attempt in range(max_retries):
-        try:
-            genai.configure(api_key=secret_key)
-            model = genai.GenerativeModel(model_name=STABLE_MODEL_ID, system_instruction=FIREBEAN_SYSTEM_PROMPT)
-            contents = [prompt]
-
-            if image_files:
-                for f in image_files:
-                    if hasattr(f, "seek"): f.seek(0)
-                    img = Image.open(f)
-                    img = ImageOps.exif_transpose(img)
-                    img.thumbnail((800, 800))
-                    contents.append(img)
-
-            response = model.generate_content(contents, generation_config={
-                "response_mime_type": "application/json" if is_json else "text/plain",
-                "temperature": 0.2
-            })
-
-            if response and response.text:
-                text = response.text.strip()
-                if not is_json:
-                    return text
-                # 嘗試提取 JSON
-                match = re.search(r'(\{.*\})|(\[.*\])', text, re.DOTALL)
-                json_str = match.group(0) if match else text
-                # 驗證 JSON 是否有效
-                json.loads(json_str)
-                return json_str
-
-        except json.JSONDecodeError as je:
-            log_debug(f"⚠️ JSON 解析失敗 (第 {attempt+1} 次)，正在重試... 錯誤: {str(je)}", "error")
-            if attempt < max_retries - 1:
-                time.sleep(1)
-                continue
-            else:
-                st.warning("⚠️ AI 返回格式不穩定，請再試一次。")
-        except Exception as e:
-            log_debug(f"❌ API 錯誤: {str(e)}", "error")
-            st.error("❌ AI 運算發生錯誤，請查看 Debug Terminal 日誌。")
-            break
-    return None
-
-def init_session_state():
-    fields = {
-        "active_tab": "Project Collector",
-        "client_name": "", "project_name": "", "venue": "", "youtube": "",
-        "event_year": str(CURRENT_YEAR), 
-        "event_month": "FEB",
-        "category": WHO_WE_HELP_OPTIONS[0], "what_we_do": [], "scope": [],
-        "project_photos": [], "ai_content": {}, "logo_white": "", "logo_black": "", 
-        "debug_logs": [], "mc_questions": [], "open_question_ans": "", 
-        "challenge": "", "solution": "", "visual_facts": "",
-        "hero_photo_index": 0,
-        "sync_success": False,  # 記錄同步是否成功
-        "draft_project_id": "",  # 記錄已載入的草稿 ID（用於更新而非新增）
-        "loaded_image_urls": [],  # 記錄從草稿載入的圖片 URLs
-        "faq_en": "",  # Dedicated FAQ EN (column AB)
-        "faq_tc": "",  # Dedicated FAQ TC (column AC)
-        "faq_jp": "",  # Dedicated FAQ JP (column AD)
-        "user_dark_mode": None,  # 用戶手動設置的深色模式偏好 (None = 自動, True = 深色, False = 淺色)
-        "last_autosave_time": 0,  # 上次自動保存的時間戳
-    }
-    for k, v in fields.items():
-        if k not in st.session_state:
-            st.session_state[k] = v
-
-def reset_for_new_case():
-    """完全清空所有資料，準備輸入下一個案例"""
-    keys_to_reset = [
-        "client_name", "project_name", "venue", "youtube",
-        "event_year", "event_month", "category", "what_we_do", "scope",
-        "project_photos", "ai_content", "logo_white", "logo_black",
-        "mc_questions", "open_question_ans", "challenge", "solution",
-        "visual_facts", "hero_photo_index", "sync_success",
-        "draft_project_id", "loaded_image_urls",
-        "faq_en", "faq_tc", "faq_jp"
-    ]
-    defaults = {
-        "event_year": str(CURRENT_YEAR), "event_month": "FEB",
-        "category": WHO_WE_HELP_OPTIONS[0], "what_we_do": [], "scope": [],
-        "project_photos": [], "ai_content": {}, "hero_photo_index": 0,
-        "sync_success": False,
-        "draft_project_id": "",
-        "loaded_image_urls": []
-    }
-    for k in keys_to_reset:
-        st.session_state[k] = defaults.get(k, "")
-    # 清除 15 題答案
-    for i in range(1, 16):
-        if f"ans_{i}" in st.session_state:
-            del st.session_state[f"ans_{i}"]
-    # 清除 logo uploader 的 widget key
-    for key in ["l_b", "l_w"]:
-        if key in st.session_state:
-            del st.session_state[key]
-    st.session_state.active_tab = "Project Collector"
-    log_debug("🔄 已重置，準備輸入下一個案例。", "success")
-
-def create_dummy_image(color, label):
-    img = Image.new('RGB', (800, 600), color=color)
-    d = ImageDraw.Draw(img)
-    d.text((40, 40), label, fill=(255, 255, 255))
-    buf = io.BytesIO()
-    img.save(buf, format="JPEG")
-    buf.seek(0)
-    return buf
-
-def fill_dummy_data():
-    st.session_state.client_name = "Firebean HQ"
-    st.session_state.project_name = f"{CURRENT_YEAR} 旗艦同步測試" 
-    st.session_state.venue = "香港會議展覽中心"
-    st.session_state.youtube = "https://youtube.com/firebean_sync_demo"
-    st.session_state.event_year = str(CURRENT_YEAR) 
-    st.session_state.event_month = "FEB"
-    st.session_state.category = "LIFESTYLE & CONSUMER"
-    st.session_state.what_we_do = ["INTERACTIVE & TECH", "PR & MEDIA"]
-    st.session_state.scope = ["Theme Design", "Event Production", "Concept Development"]
-    st.session_state.open_question_ans = "將 15 個通用診斷問題轉化為一套連貫、引人入勝且可操作的跨平台策略。"
-    
-    colors = ["#FF5733", "#33FF57", "#3357FF", "#F333FF", "#33FFF3", "#F3FF33", "#999999", "#222222"]
-    st.session_state.project_photos = [create_dummy_image(c, f"P{i+1}") for i, c in enumerate(colors)]
-    
-    st.session_state.mc_questions = [{"id": i+1, "question": f"診斷指標 {i+1}？", "options": ["戰略優化", "維持"]} for i in range(15)]
-    for i in range(1, 16): st.session_state[f"ans_{i}"] = ["戰略優化"]
-    
-    dummy_logo = base64.b64encode(create_dummy_image("#000000", "LOGO").getvalue()).decode()
-    st.session_state.logo_black = dummy_logo
-    st.session_state.logo_white = dummy_logo
-    log_debug("🚀 高質量測試數據填充完成，進度將達 100%。", "success")
-
-# --- 3. UI 元件 ---
-
+# --- 3. UI 樣式 (Neumorphism) ---
 def get_is_dark_mode():
-    """根據用戶偏好或香港時間判斷是否為夜間模式 (20:00 - 07:59 為深色模式)"""
-    # 優先檢查用戶手動設置
-    if "user_dark_mode" in st.session_state and st.session_state.user_dark_mode is not None:
+    """根據用戶設定或時間自動決定深淺色模式"""
+    if st.session_state.get("user_dark_mode") is not None:
         return st.session_state.user_dark_mode
-    
-    # 否則使用 UTC+8 (香港時間) 自動檢測
-    from datetime import timezone, timedelta
-    hk_tz = timezone(timedelta(hours=8))
-    hk_hour = datetime.now(hk_tz).hour
-    # 晚上 8 點 (20:00) 至 早上 7 點 (07:59) 為 Dark Mode
-    return hk_hour >= 20 or hk_hour < 8
+    # 預設：晚上 7 點到早上 7 點為深色模式
+    hour = datetime.now().hour
+    return hour >= 19 or hour < 7
 
 def get_circle_progress_html(percent, is_dark):
-    circum = 439.8
-    offset = circum * (1 - percent/100)
-    if is_dark:
-        bg = "#2A2D35"
-        shadow_dark = "#1a1d23"
-        shadow_light = "#3a3f4d"
-        text_color = "#E0E5EC"
-        track_color = "#1E2128"
-    else:
-        bg = "#E0E5EC"
-        shadow_dark = "#bec3c9"
-        shadow_light = "#ffffff"
-        text_color = "#2D3436"
-        track_color = "#d1d9e6"
-    return f"""<div style='display: flex; justify-content: flex-end;'><div style='position: relative; width: 110px; height: 110px; border-radius: 50%; background: {bg}; box-shadow: 9px 9px 16px {shadow_dark}, -9px -9px 16px {shadow_light}; display: flex; align-items: center; justify-content: center;'><svg width='110' height='110'><circle stroke='{track_color}' stroke-width='8' fill='transparent' r='45' cx='55' cy='55'/><circle stroke='#FF0000' stroke-width='8' stroke-dasharray='{circum}' stroke-dashoffset='{offset}' stroke-linecap='round' fill='transparent' r='45' cx='55' cy='55' style='transition: all 0.8s; transform: rotate(-90deg); transform-origin: center;'/></svg><div style='position: absolute; font-size: 20px; font-weight: 900; color: {text_color};'>{percent}%</div></div></div>"""
+    """生成圓形進度條 HTML"""
+    color = "#FF2A2A" # Firebean Red
+    bg = "#333" if is_dark else "#eee"
+    text = "#fff" if is_dark else "#333"
+    return f'''
+    <div style="display: flex; flex-direction: column; align-items: center; justify-content: center;">
+        <div style="position: relative; width: 100px; height: 100px; border-radius: 50%; background: conic-gradient({color} {percent*3.6}deg, {bg} 0deg); display: flex; align-items: center; justify-content: center; box-shadow: 6px 6px 12px {'#1a1d23' if is_dark else '#d1d9e6'}, -6px -6px 12px {'#2a2f38' if is_dark else '#ffffff'};">
+            <div style="position: absolute; width: 80px; height: 80px; border-radius: 50%; background: {'#21252B' if is_dark else '#E0E5EC'}; display: flex; align-items: center; justify-content: center;">
+                <span style="font-size: 22px; font-weight: 800; color: {text};">{percent}%</span>
+            </div>
+        </div>
+        <span style="margin-top: 10px; font-size: 12px; font-weight: 700; color: {text};">COMPLETION</span>
+    </div>
+    '''
 
 def apply_styles(is_dark):
-    if is_dark:
-        # ── Dark Mode Neumorphism ──
-        # 底色：深灰藍 #1E2128
-        # 凸起陰影：更深 #14161C (暗面) + 稍亮 #282C38 (亮面)
-        # 凹陷陰影：反向
-        bg_color       = "#1E2128"
-        card_bg        = "#1E2128"
-        shadow_dark    = "#14161C"
-        shadow_light   = "#282C38"
-        text_color     = "#E0E5EC"
-        subtext_color  = "#A0A8B8"
-        hr_color       = "#3A3F4D"
-        input_bg       = "#252830"
-        input_border   = "#3A3F4D"
-        toggle_label   = "🌙 夜間模式"
-        toggle_bg      = "#252830"
-        toggle_border  = "#3A3F4D"
-    else:
-        # ── Light Mode Neumorphism ──
-        bg_color       = "#E0E5EC"
-        card_bg        = "#E0E5EC"
-        shadow_dark    = "#bec3c9"
-        shadow_light   = "#ffffff"
-        text_color     = "#2D3436"
-        subtext_color  = "#636e72"
-        hr_color       = "#c8cdd4"
-        input_bg       = "#e8ecf2"
-        input_border   = "#d0d5dc"
-        toggle_label   = "☀️ 日間模式"
-        toggle_bg      = "#E0E5EC"
-        toggle_border  = "#c8cdd4"
+    """套用 Neumorphism 樣式"""
+    bg_color = "#21252B" if is_dark else "#E0E5EC"
+    text_color = "#FFFFFF" if is_dark else "#31344B"
+    card_bg = "#21252B" if is_dark else "#E0E5EC"
+    input_bg = "#21252B" if is_dark else "#E0E5EC"
+    input_border = "#3E4451" if is_dark else "#D1D9E6"
+    shadow_dark = "#1a1d23" if is_dark else "#a3b1c6"
+    shadow_light = "#2a2f38" if is_dark else "#ffffff"
+    toggle_bg = "#2D3436" if is_dark else "#D1D9E6"
+    toggle_border = "#3E4451" if is_dark else "#BFC9D4"
 
-    st.markdown(f"""<style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap');
-
-        header {{visibility: hidden;}} footer {{visibility: hidden;}}
-
-        /* ── 全域底色與字色 ── */
-        .stApp {{
+    st.markdown(f"""
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&display=swap');
+        
+        html, body, [data-testid="stAppViewContainer"] {{
             background-color: {bg_color} !important;
-            color: {text_color} !important;
-            font-family: 'Inter', sans-serif;
-            transition: background-color 0.6s ease, color 0.6s ease;
-        }}
-
-        /* ── 所有文字元素 ── */
-        .stApp p, .stApp span, .stApp label, .stApp div,
-        .stApp h1, .stApp h2, .stApp h3, .stApp h4, .stApp h5, .stApp h6,
-        .stMarkdown, .stText {{
+            font-family: 'Google Sans', sans-serif !important;
             color: {text_color} !important;
         }}
 
-        /* ── Neumorphism 卡片（凸起效果） ── */
+        /* ── Neumorphic 卡片 ── */
         .neu-card {{
-            background: {card_bg};
+            background-color: {card_bg};
             border-radius: 20px;
-            box-shadow: 9px 9px 16px {shadow_dark}, -9px -9px 16px {shadow_light};
             padding: 25px;
-            margin-bottom: 20px;
-            transition: background 0.6s ease, box-shadow 0.6s ease;
-        }}
-
-        /* ── 分隔線 ── */
-        hr {{
-            border-color: {hr_color} !important;
+            box-shadow: 9px 9px 18px {shadow_dark}, -9px -9px 18px {shadow_light};
+            margin-bottom: 25px;
+            border: 1px solid {input_border};
         }}
 
         /* ── 輸入框 ── */
-        .stTextInput > div > div > input,
-        .stTextArea > div > div > textarea,
-        .stSelectbox > div > div > div {{
+        .stTextInput input, .stTextArea textarea {{
             background-color: {input_bg} !important;
             color: {text_color} !important;
             border: 1px solid {input_border} !important;
-            border-radius: 10px !important;
-            box-shadow: inset 3px 3px 6px {shadow_dark}, inset -3px -3px 6px {shadow_light} !important;
-            transition: all 0.4s ease;
+            border-radius: 12px !important;
+            padding: 12px !important;
+            box-shadow: inset 4px 4px 8px {shadow_dark}, inset -4px -4px 8px {shadow_light} !important;
+            transition: all 0.3s ease !important;
+        }}
+        .stTextInput input:focus, .stTextArea textarea:focus {{
+            border: 1px solid #FF2A2A !important;
+            box-shadow: inset 2px 2px 4px {shadow_dark}, inset -2px -2px 4px {shadow_light} !important;
         }}
 
         /* ── Selectbox 下拉選項 ── */
@@ -667,136 +437,104 @@ def trigger_autosave_draft():
 
 # ── Draft Save / Load Helper Functions ──
 
+def init_session_state():
+    """初始化所有變量"""
+    defaults = {
+        "active_tab": "Project Collector",
+        "client_name": "", "project_name": "", "venue": "",
+        "event_year": str(CURRENT_YEAR), "event_month": "JAN",
+        "youtube": "", "category": WHO_WE_HELP_OPTIONS[0],
+        "what_we_do": [], "scope": [], "project_photos": [],
+        "mc_questions": None, "open_question_ans": "",
+        "ai_content": None, "debug_logs": [], "draft_project_id": None,
+        "user_dark_mode": None, "last_autosave_time": 0,
+        "logo_black": None, "logo_white": None, "hero_photo_index": 0,
+        "sync_success": False
+    }
+    for k, v in defaults.items():
+        if k not in st.session_state: st.session_state[k] = v
 
-def trigger_autosync_github():
-    """自動同步已生成的內容到 GitHub (projects.json)"""
-    if should_autosave():
-        if st.session_state.ai_content and st.session_state.client_name.strip():
-            try:
-                # 準備同步數據
-                project_id, sort_date = generate_system_metadata()
-                
-                processed_imgs = []
-                for f in st.session_state.project_photos:
-                    if hasattr(f, "seek"): f.seek(0) 
-                    try:
-                        img = Image.open(f).convert("RGB")
-                        img = ImageOps.exif_transpose(img)
-                        img.thumbnail((1600, 1600))
-                        buf = io.BytesIO()
-                        img.save(buf, format="JPEG", quality=85)
-                        processed_imgs.append(base64.b64encode(buf.getvalue()).decode())
-                    except Exception as e:
-                        if hasattr(f, "seek"): f.seek(0)
-                        processed_imgs.append(base64.b64encode(f.read()).decode())
-
-                hero_index = st.session_state.get("hero_photo_index", 0)
-                if processed_imgs and hero_index < len(processed_imgs):
-                    hero_img = processed_imgs.pop(hero_index)
-                    processed_imgs.insert(0, hero_img)
-
-                payload = {
-                    "action": "sync_project",
-                    "project_id": project_id,
-                    "sort_date": sort_date,
-                    "client_name": st.session_state.client_name,
-                    "project_name": st.session_state.project_name,
-                    "venue": st.session_state.venue,
-                    "date": f"{st.session_state.event_year} {st.session_state.event_month}",
-                    "youtube": st.session_state.youtube,
-                    "category": st.session_state.category, 
-                    "category_what": ", ".join(st.session_state.what_we_do),
-                    "scope": ", ".join(st.session_state.scope),       
-                    "challenge": st.session_state.challenge,
-                    "solution": st.session_state.solution,
-                    "open_question": st.session_state.open_question_ans,
-                    "logo_white": st.session_state.logo_white, 
-                    "logo_black": st.session_state.logo_black,
-                    "images": processed_imgs, 
-                    "ai_content": st.session_state.ai_content,
-                    "faq_en": st.session_state.get("faq_en", ""),
-                    "faq_tc": st.session_state.get("faq_tc", ""),
-                    "faq_jp": st.session_state.get("faq_jp", "")
-                }
-                
-                r1 = requests.post(SHEET_SCRIPT_URL, json=payload, timeout=60)
-                r2 = requests.post(SLIDE_SCRIPT_URL, json=payload, timeout=60)
-                if r1.status_code == 200 and r2.status_code == 200:
-                    log_debug(f"✅ 自動同步成功: {project_id}", "success")
-                else:
-                    log_debug(f"⚠️ 自動同步部分失敗: Sheet {r1.status_code}, Slide {r2.status_code}", "error")
-            except Exception as e:
-                log_debug(f"⚠️ 自動同步失敗: {str(e)}", "error")
-
+def reset_for_new_case():
+    """完全重置所有輸入，準備處理下一個案例"""
+    st.session_state.client_name = ""
+    st.session_state.project_name = ""
+    st.session_state.venue = ""
+    st.session_state.youtube = ""
+    st.session_state.what_we_do = []
+    st.session_state.scope = []
+    st.session_state.project_photos = []
+    st.session_state.mc_questions = None
+    st.session_state.open_question_ans = ""
+    st.session_state.ai_content = None
+    st.session_state.draft_project_id = None
+    st.session_state.sync_success = False
+    st.session_state.active_tab = "Project Collector"
+    # 清除所有動態生成的 MC 答案
+    for k in list(st.session_state.keys()):
+        if k.startswith("ans_") or k.startswith("chk_"):
+            del st.session_state[k]
 
 def fetch_draft_list():
-    """Fetch the list of saved drafts from Google Sheet Raw_Input_DB."""
+    """從 Google Sheet 獲取草稿列表"""
     try:
-        r = requests.post(SHEET_SCRIPT_URL, json={"action": "get_raw_input_list"}, timeout=15)
-        if r.status_code == 200:
-            data = r.json()
-            if data.get("status") == "success":
-                return data.get("data", [])
+        r = requests.get(SHEET_SCRIPT_URL + "?action=get_draft_list", timeout=10)
+        if r.status_code == 200: return r.json()
     except Exception as e:
-        log_debug(f"❌ 無法獲取草稿列表: {str(e)}", "error")
+        log_debug(f"❌ 獲取列表失敗: {str(e)}", "error")
     return []
 
 def load_draft_into_session(project_id):
-    """Load a specific draft from Google Sheet into session state."""
+    """從 Google Sheet 載入特定草稿"""
     try:
-        r = requests.post(SHEET_SCRIPT_URL, json={"action": "get_raw_input_details", "project_id": project_id}, timeout=15)
+        r = requests.get(SHEET_SCRIPT_URL + f"?action=get_draft&project_id={project_id}", timeout=15)
         if r.status_code == 200:
-            data = r.json()
-            if data.get("status") == "success":
-                d = data["data"]
-                st.session_state.client_name = d.get("client_name", "")
-                st.session_state.project_name = d.get("project_name", "")
-                st.session_state.venue = d.get("venue", "")
-                st.session_state.youtube = d.get("youtube", "")
-                st.session_state.open_question_ans = d.get("open_question", "")
-                yr = str(d.get("event_year", CURRENT_YEAR))
-                st.session_state.event_year = yr if yr in YEAR_OPTIONS else str(CURRENT_YEAR)
-                mo = d.get("event_month", "FEB").upper()
-                st.session_state.event_month = mo if mo in MONTH_OPTIONS else "FEB"
-                cat = d.get("category", WHO_WE_HELP_OPTIONS[0])
-                st.session_state.category = cat if cat in WHO_WE_HELP_OPTIONS else WHO_WE_HELP_OPTIONS[0]
-                st.session_state.what_we_do = [w for w in d.get("what_we_do", []) if w in WHAT_WE_DO_OPTIONS]
-                st.session_state.scope = [s for s in d.get("scope", []) if s in SOW_OPTIONS]
-                st.session_state.mc_questions = d.get("mc_questions", [])
-                st.session_state.loaded_image_urls = d.get("image_urls", [])
-                st.session_state.draft_project_id = project_id
-                st.session_state.project_photos = []  # Reset file uploader
-                st.session_state.ai_content = {}  # Reset AI content
-                log_debug(f"✅ 已成功載入草稿: {project_id}", "success")
-                return True
+            d = r.json()
+            st.session_state.client_name = d.get("client_name", "")
+            st.session_state.project_name = d.get("project_name", "")
+            st.session_state.venue = d.get("venue", "")
+            st.session_state.event_year = d.get("event_year", str(CURRENT_YEAR))
+            st.session_state.event_month = d.get("event_month", "JAN")
+            st.session_state.youtube = d.get("youtube", "")
+            st.session_state.category = d.get("category", WHO_WE_HELP_OPTIONS[0])
+            st.session_state.what_we_do = d.get("what_we_do", [])
+            st.session_state.scope = d.get("scope", [])
+            st.session_state.mc_questions = d.get("mc_questions")
+            st.session_state.open_question_ans = d.get("open_question", "")
+            st.session_state.draft_project_id = project_id
+            st.session_state.loaded_image_urls = d.get("images", [])
+            
+            # 載入 MC 答案
+            mc_ans = d.get("mc_answers", {})
+            for k, v in mc_ans.items():
+                st.session_state[f"ans_{k}"] = v
+            return True
     except Exception as e:
-        log_debug(f"❌ 載入草稿失敗: {str(e)}", "error")
+        log_debug(f"❌ 載入失敗: {str(e)}", "error")
     return False
 
 def save_draft_to_sheet():
-    """Save current input data as a draft to Google Sheet Raw_Input_DB."""
+    """將當前狀態儲存為草稿"""
     try:
-        # Process new images to base64 if any are uploaded
+        draft_id = st.session_state.draft_project_id or f"DRAFT_{int(time.time())}"
+        
+        # 處理圖片 (只處理新上傳的，不重複處理已在雲端的)
         processed_imgs = []
         if st.session_state.project_photos:
             for f in st.session_state.project_photos:
                 if hasattr(f, "seek"): f.seek(0)
                 try:
                     img = Image.open(f).convert("RGB")
-                    img = ImageOps.exif_transpose(img)
-                    img.thumbnail((800, 800))  # Smaller size for drafts
+                    img = ImageOps.exif_transpose(img) # 自動轉正
+                    img.thumbnail((1600, 1600))
                     buf = io.BytesIO()
-                    img.save(buf, format="JPEG", quality=70)
+                    img.save(buf, format="JPEG", quality=85)
                     processed_imgs.append(base64.b64encode(buf.getvalue()).decode())
-                except Exception as e:
+                except:
                     if hasattr(f, "seek"): f.seek(0)
                     processed_imgs.append(base64.b64encode(f.read()).decode())
 
-        # Use existing draft ID if available, otherwise generate a new one
-        draft_id = st.session_state.get("draft_project_id", "") or f"DRAFT_{st.session_state.client_name.replace(' ', '_')}_{int(time.time())}"
-
         payload = {
-            "action": "save_raw_input",
+            "action": "save_draft",
             "project_id": draft_id,
             "client_name": st.session_state.client_name,
             "project_name": st.session_state.project_name,
@@ -808,6 +546,7 @@ def save_draft_to_sheet():
             "what_we_do": st.session_state.what_we_do,
             "scope": st.session_state.scope,
             "mc_questions": st.session_state.mc_questions,
+            "mc_answers": {i: st.session_state.get(f"ans_{i}", []) for i in range(1, 16)},
             "open_question": st.session_state.open_question_ans,
             "images": processed_imgs,
             "existing_image_urls": st.session_state.get("loaded_image_urls", []) if not processed_imgs else []
@@ -952,36 +691,30 @@ def main():
                 ''', unsafe_allow_html=True)
 
         b1, b2, b3 = st.columns(3)
-        st.session_state.client_name = clean_field(b1.text_input("Client", st.session_state.client_name))
-        trigger_autosave_draft()  # Auto-save on client name change
-        st.session_state.project_name = clean_field(b2.text_input("Project", st.session_state.project_name))
-        trigger_autosave_draft()  # Auto-save on project name change
-        st.session_state.venue = clean_field(b3.text_input("Venue", st.session_state.venue))
-        trigger_autosave_draft()  # Auto-save on venue change
+        # 🚀 使用 key 綁定 session_state，避免輸入時 refresh 丟失
+        st.session_state.client_name = clean_field(b1.text_input("Client", value=st.session_state.client_name, key="client_name_input"))
+        st.session_state.project_name = clean_field(b2.text_input("Project", value=st.session_state.project_name, key="project_name_input"))
+        st.session_state.venue = clean_field(b3.text_input("Venue", value=st.session_state.venue, key="venue_input"))
 
         b4, b5, b6 = st.columns(3)
         y_idx = YEAR_OPTIONS.index(st.session_state.event_year) if st.session_state.event_year in YEAR_OPTIONS else 0
         m_idx = MONTH_OPTIONS.index(st.session_state.event_month) if st.session_state.event_month in MONTH_OPTIONS else 1
-        st.session_state.event_year = b4.selectbox("Event Year", YEAR_OPTIONS, index=y_idx)
-        st.session_state.event_month = b5.selectbox("Event Month", MONTH_OPTIONS, index=m_idx)
-        st.session_state.youtube = b6.text_input("YouTube Link (Optional)", st.session_state.youtube)
-        trigger_autosave_draft()  # Auto-save on youtube link change
+        st.session_state.event_year = b4.selectbox("Event Year", YEAR_OPTIONS, index=y_idx, key="year_select")
+        st.session_state.event_month = b5.selectbox("Event Month", MONTH_OPTIONS, index=m_idx, key="month_select")
+        st.session_state.youtube = b6.text_input("YouTube Link (Optional)", value=st.session_state.youtube, key="youtube_input")
 
         st.markdown("<hr style='margin-top: 10px; margin-bottom: 10px;'>", unsafe_allow_html=True)
 
         ca, cb, cc = st.columns(3)
         with ca:
             st.markdown("##### Category")
-            st.session_state.category = st.radio("Category", WHO_WE_HELP_OPTIONS, index=WHO_WE_HELP_OPTIONS.index(st.session_state.category) if st.session_state.category in WHO_WE_HELP_OPTIONS else 0, label_visibility="collapsed")
-            trigger_autosave_draft()  # Auto-save on category change
+            st.session_state.category = st.radio("Category", WHO_WE_HELP_OPTIONS, index=WHO_WE_HELP_OPTIONS.index(st.session_state.category) if st.session_state.category in WHO_WE_HELP_OPTIONS else 0, label_visibility="collapsed", key="cat_radio")
         with cb:
             st.markdown("##### What we do")
             st.session_state.what_we_do = [o for o in WHAT_WE_DO_OPTIONS if st.checkbox(o, key=f"w_{o}", value=(o in st.session_state.what_we_do))]
-            trigger_autosave_draft()  # Auto-save on what_we_do change
         with cc:
             st.markdown("##### Scope of work")
             st.session_state.scope = [o for o in SOW_OPTIONS if st.checkbox(o, key=f"s_{o}", value=(o in st.session_state.scope))]
-            trigger_autosave_draft()  # Auto-save on scope change
         st.markdown('</div>', unsafe_allow_html=True)
 
         cl, cr = st.columns([1.2, 1])
@@ -1002,7 +735,6 @@ def main():
                         4. 人流規模 (Crowd & 參與度)
                         5. 餐飲細節 (F&B 服務水準)
                         """
-                        # 圖片自動轉正後傳給 AI
                         facts = call_gemini_sdk(vision_prompt, image_files=st.session_state.project_photos)
                         
                         st.write("📊 視覺分析完成！正在消化 SOW 與客戶背景資料...")
@@ -1029,6 +761,8 @@ def main():
                             st.session_state.mc_questions = json.loads(res)
                             status.update(label="✅ 分析與題目生成完畢！", state="complete", expanded=False)
                             time.sleep(1)
+                            # 🚀 生成後強制執行一次草稿儲存
+                            save_draft_to_sheet()
                             st.rerun()
 
             if st.session_state.mc_questions:
@@ -1050,15 +784,13 @@ def main():
                             st.session_state[ans_key] = new_selections
                             st.markdown("</div>", unsafe_allow_html=True)
 
-                st.session_state.open_question_ans = st.text_area("最核心的概念？", st.session_state.open_question_ans)
-            trigger_autosave_draft()  # Auto-save on open question change
+                st.session_state.open_question_ans = st.text_area("最核心的概念？", value=st.session_state.open_question_ans, key="open_question_input")
             st.markdown('</div>', unsafe_allow_html=True)
 
         with cr:
             st.markdown('<div class="neu-card">', unsafe_allow_html=True)
-            f_up = st.file_uploader("Upload 4-8 Photos", accept_multiple_files=True)
+            f_up = st.file_uploader("Upload 4-8 Photos", accept_multiple_files=True, key="photo_uploader")
             if f_up: st.session_state.project_photos = f_up
-            trigger_autosave_draft()  # Auto-save on photo upload
             
             if st.session_state.project_photos:
                 st.markdown("##### 📸 Photo Preview & Select Hero Banner")
@@ -1068,7 +800,8 @@ def main():
                     "請選擇一張作為 Website 的 Hero Banner (這張將會被設定為 Hero Photo Link):",
                     options=range(len(st.session_state.project_photos)),
                     format_func=lambda x: photo_names[x],
-                    horizontal=True
+                    horizontal=True,
+                    key="hero_radio"
                 )
                 
                 g_cols = st.columns(4)
@@ -1077,7 +810,6 @@ def main():
                         try: 
                             if hasattr(f, "seek"): f.seek(0)
                             img = Image.open(f)
-                            # 🚀 修復：在 UI 畫面上顯示前，先旋轉為正確方向
                             img = ImageOps.exif_transpose(img)
                             st.image(img, use_container_width=True)
                             if i == st.session_state.hero_photo_index:
@@ -1090,7 +822,6 @@ def main():
         # 進度計算
         filled_count = 0
         missing_items = []
-        # ── 修復：Logo Black 與 White 兩個都必須上傳 ──
         logo_ok = bool(st.session_state.logo_black) and bool(st.session_state.logo_white)
         if logo_ok: filled_count += 1
         else:
@@ -1121,10 +852,10 @@ def main():
         if st.session_state.open_question_ans.strip(): filled_count += 1
         else: missing_items.append("最核心的概念 (文字不可留白)")
 
-        final_percent = min(100, int((filled_count / 12) * 100))  # 總項目由 11 改為 12
+        final_percent = min(100, int((filled_count / 12) * 100))
         progress_placeholder.markdown(get_circle_progress_html(final_percent, is_dark), unsafe_allow_html=True)
 
-        # ── Save Draft Button (visible at any progress) ──
+        # ── Save Draft Button ──
         save_col1, save_col2 = st.columns([3, 1])
         with save_col1:
             if st.button("💾 儲存草稿到 Google Sheet (Raw_Input_DB)", use_container_width=True, help="將目前所有輸入儲存為草稿，方便日後重新載入再生成"):
@@ -1155,7 +886,6 @@ def main():
         st.markdown('<div class="neu-card">', unsafe_allow_html=True)
         if st.button("生成六大平台對接文案"):
             with st.spinner("AI Strategist 正在構思文案..."):
-                # ── 優化 B：智能壓縮診斷數據，分類「痛點」與「強項」──
                 pain_points = []
                 strengths = []
                 for q in st.session_state.mc_questions:
@@ -1163,7 +893,6 @@ def main():
                     ans = st.session_state.get(f"ans_{q['id']}", [])
                     ans_str = "、".join(ans) if ans else "未作答"
                     q_text = q.get('question', '')
-                    # 判斷答案是否含有負面/優化關鍵字
                     negative_keywords = ["優化", "改善", "不足", "欠缺", "低", "差", "未達", "問題", "挑戰", "弱", "缺乏"]
                     is_negative = any(kw in ans_str for kw in negative_keywords)
                     if is_negative:
@@ -1172,7 +901,7 @@ def main():
                         strengths.append(f"[強項] {q_text} → {ans_str}")
 
                 pain_summary = "\n".join(pain_points) if pain_points else "診斷結果顯示整體表現良好，無明顯痛點。"
-                strength_summary = "\n".join(strengths[:5]) if strengths else ""  # 只取前5條強項避免 token 過多
+                strength_summary = "\n".join(strengths[:5]) if strengths else ""
 
                 prompt = f"""
 分析專案: {st.session_state.project_name}. 生成 JSON。IG < 150 字。
@@ -1197,213 +926,160 @@ def main():
                         if isinstance(data, list) and len(data) > 0:
                             data = data[0]
                         if isinstance(data, dict):
-                            # 🔧 Q&A FORMAT VALIDATION & CORRECTION
-                            def fix_qa_format(content):
-                                """Automatically fix Q&A format to ensure it's in Markdown with ### heading."""
-                                if not content:
-                                    return content
-
-                                # Standardize the FAQ header first
-                                content = re.sub(r'(<(h[1-6]|b|strong)[^>]*>\s*)?(?:Fast Recap\s*)?(?:FAQ|Q&A|Q & A|常見問題|よくある質問|快速回顧)(?:\s*</(h[1-6]|b|strong)>)?[:：]?', '### Fast Recap FAQ:', content, flags=re.IGNORECASE)
-
-                                # Find the standardized FAQ section
-                                qa_pattern = re.compile(r'(### Fast Recap FAQ:)(.*?)(?=(?:<h[1-6][^>]*>|###\s*[^#]|$))', re.DOTALL | re.IGNORECASE)
-                                match = qa_pattern.search(content)
-
-                                if match:
-                                    qa_header = match.group(1)
-                                    qa_raw_content = match.group(2).strip()
-                                    content_before_qa = content[:match.start()]
-                                    content_after_qa = content[match.end():]
-
-                                    # Convert HTML lists to plain text lines
-                                    qa_raw_content = re.sub(r'<ul[^>]*>|<ol[^>]*>|<\/ul>|<\/ol>', '', qa_raw_content, flags=re.IGNORECASE)
-                                    qa_raw_content = re.sub(r'<li[^>]*>(.*?)<\/li>', r'\1\n', qa_raw_content, flags=re.IGNORECASE)
-                                    qa_raw_content = re.sub(r'<p[^>]*>(.*?)<\/p>', r'\1\n', qa_raw_content, flags=re.IGNORECASE)
-                                    qa_raw_content = re.sub(r'<br[^>]*>', '\n', qa_raw_content, flags=re.IGNORECASE)
-
-                                    # Remove any remaining HTML tags
-                                    qa_raw_content = re.sub(r'<[^>]*>', '', qa_raw_content)
-
-                                    # Process lines into Qx: and Ax: format
-                                    qa_lines = qa_raw_content.strip().split('\n')
-                                    formatted_qa = []
-                                    q_count = 1
-                                    temp_q = ''
-
-                                    for line in qa_lines:
-                                        line = line.strip()
-                                        if not line: continue
-
-                                        is_q = line.upper().startswith('Q')
-                                        is_a = line.upper().startswith('A')
-
-                                        if is_q:
-                                            if temp_q: # If there was a pending Q, finalize it
-                                                formatted_qa.append(f"Q{q_count}: {temp_q}")
-                                                q_count += 1
-                                            temp_q = re.sub(r'^Q\d*[:.]?\s*', '', line, flags=re.IGNORECASE).strip()
-                                        elif is_a:
-                                            if temp_q:
-                                                formatted_qa.append(f"Q{q_count}: {temp_q}")
-                                                a_text = re.sub(r'^A\d*[:.]?\s*', '', line, flags=re.IGNORECASE).strip()
-                                                formatted_qa.append(f"A{q_count}: {a_text}")
-                                                q_count += 1
-                                                temp_q = ''
-                                        elif temp_q: # This line is a continuation of the previous Q
-                                            temp_q += ' ' + line
-                                    
-                                    if temp_q: # Add any last pending question
-                                        formatted_qa.append(f"Q{q_count}: {temp_q}")
-
-                                    qa_content_formatted = '\n'.join(formatted_qa)
-
-                                    return content_before_qa.strip() + '\n\n' + qa_header + '\n' + qa_content_formatted + '\n\n' + content_after_qa.strip()
-
-                                return content
-                            
-                            # Apply Q&A format fixes to all language versions
-                            if "6_website" in data and isinstance(data["6_website"], dict):
-                                for lang in ["en", "tc", "jp"]:
-                                    if lang in data["6_website"]:
-                                        data["6_website"][lang] = fix_qa_format(data["6_website"][lang])
-                                        log_debug(f"✅ Q&A 格式已自動修正 ({lang})", "success")
-                            
                             st.session_state.ai_content = data
-                            st.session_state.challenge = data.get("challenge_summary", "尚未生成")
-                            st.session_state.solution = data.get("solution_summary", "尚未生成")
-                            # Extract dedicated FAQ fields (column AB/AC/AD)
-                            faq_data = data.get("7_faq", {})
-                            if isinstance(faq_data, dict):
-                                st.session_state.faq_en = faq_data.get("en", "")
-                                st.session_state.faq_tc = faq_data.get("tc", "")
-                                st.session_state.faq_jp = faq_data.get("jp", "")
-                            log_debug(f"✅ 文案生成成功，痛點數: {len(pain_points)}，強項數: {len(strengths)}", "success")
-                            st.toast("✅ 策略與文案已成功生成！")
-                            time.sleep(1)
+                            # 🚀 生成後強制執行一次草稿儲存
+                            save_draft_to_sheet()
                             st.rerun()
-                    except json.JSONDecodeError as e:
-                        log_debug(f"❌ 最終 JSON 解析失敗: {str(e)}", "error")
-                        st.error("❌ AI 返回格式異常，請重新點擊生成按鈕再試一次。") 
+                    except:
+                        st.error("❌ AI 返回數據格式錯誤。")
 
         if st.session_state.ai_content:
-            st.json(st.session_state.ai_content)
+            st.markdown("### 📋 Review Content")
+            c = st.session_state.ai_content
+            
+            # --- Challenge & Solution Summary ---
+            col_s1, col_s2 = st.columns(2)
+            with col_s1:
+                st.session_state.ai_content["challenge_summary"] = st.text_area("Challenge Summary (EN)", c.get("challenge_summary", ""))
+            with col_s2:
+                st.session_state.ai_content["solution_summary"] = st.text_area("Solution Summary (EN)", c.get("solution_summary", ""))
 
-            # ── FAQ Preview & Edit Section ──
-            if st.session_state.get("faq_en") or st.session_state.get("faq_tc") or st.session_state.get("faq_jp"):
-                st.markdown("---")
-                st.markdown("### 💬 Dedicated FAQ (Columns AB / AC / AD)")
-                st.caption("這些 FAQ 將儲存至獨立欄位，並在網站專頁右側展示。")
-                faq_tabs = st.tabs(["FAQ EN (AB)", "FAQ TC (AC)", "FAQ JP (AD)"])
-                with faq_tabs[0]:
-                    st.session_state.faq_en = st.text_area(
-                        "FAQ EN", value=st.session_state.faq_en, height=250, key="faq_en_edit",
-                        help="5 Q&A pairs in English. Format: Q1: ...\\nA1: ..."
-                    )
-                with faq_tabs[1]:
-                    st.session_state.faq_tc = st.text_area(
-                        "FAQ TC", value=st.session_state.faq_tc, height=250, key="faq_tc_edit",
-                        help="5 對問答（繁體中文）。格式：Q1: ...\\nA1: ..."
-                    )
-                with faq_tabs[2]:
-                    st.session_state.faq_jp = st.text_area(
-                        "FAQ JP", value=st.session_state.faq_jp, height=250, key="faq_jp_edit",
-                        help="5組のQ&A（日本語）。形式：Q1: ...\\nA1: ..."
-                    )
+            # --- 6_website ---
+            st.markdown("#### 🌐 Website Article (Interleaved Layout)")
+            web = c.get("6_website", {})
+            st.info(f"Selected Angle: {web.get('angle_chosen', 'Standard')}")
+            
+            w_tab_en, w_tab_tc, w_tab_jp = st.tabs(["English", "繁中", "日本語"])
+            with w_tab_en:
+                st.session_state.ai_content["6_website"]["en"] = st.text_area("Article (EN)", web.get("en", ""), height=300)
+            with w_tab_tc:
+                st.session_state.ai_content["6_website"]["tc"] = st.text_area("Article (TC)", web.get("tc", ""), height=300)
+            with w_tab_jp:
+                st.session_state.ai_content["6_website"]["jp"] = st.text_area("Article (JP)", web.get("jp", ""), height=300)
 
-            if st.button("Confirm & Sync (Sheet + Slide + Drive)", type="primary", use_container_width=True):
-                with st.spinner("🔄 同步中 (自動生成系統編號與日期)..."):
-                    try:
-                        # 🚀 新增：生成 Project_id 與 Sort_date
-                        project_id, sort_date = generate_system_metadata()
-                        
-                        processed_imgs = []
-                        for f in st.session_state.project_photos:
-                            if hasattr(f, "seek"): f.seek(0) 
-                            try:
-                                img = Image.open(f).convert("RGB")
-                                # 🚀 修復：在壓縮儲存前，先轉正
-                                img = ImageOps.exif_transpose(img)
-                                img.thumbnail((1600, 1600))
-                                buf = io.BytesIO()
-                                img.save(buf, format="JPEG", quality=85)
-                                processed_imgs.append(base64.b64encode(buf.getvalue()).decode())
-                            except Exception as e:
-                                if hasattr(f, "seek"): f.seek(0)
-                                processed_imgs.append(base64.b64encode(f.read()).decode())
+            # --- 7_faq ---
+            st.markdown("#### ❓ Sidebar FAQ (Structured Data)")
+            faq = c.get("7_faq", {})
+            f_tab_en, f_tab_tc, f_tab_jp = st.tabs(["FAQ EN", "FAQ TC", "FAQ JP"])
+            with f_tab_en:
+                st.session_state.ai_content["7_faq"]["en"] = st.text_area("FAQ List (EN)", str(faq.get("en", "")), height=200)
+            with f_tab_tc:
+                st.session_state.ai_content["7_faq"]["tc"] = st.text_area("FAQ List (TC)", str(faq.get("tc", "")), height=200)
+            with f_tab_jp:
+                st.session_state.ai_content["7_faq"]["jp"] = st.text_area("FAQ List (JP)", str(faq.get("jp", "")), height=200)
 
-                        hero_index = st.session_state.get("hero_photo_index", 0)
-                        if processed_imgs and hero_index < len(processed_imgs):
-                            hero_img = processed_imgs.pop(hero_index)
-                            processed_imgs.insert(0, hero_img) 
+            # --- Social Media ---
+            st.markdown("#### 📱 Social Media Posts")
+            col_sm1, col_sm2 = st.columns(2)
+            with col_sm1:
+                st.session_state.ai_content["2_facebook_post"] = st.text_area("Facebook", c.get("2_facebook_post", ""), height=150)
+                st.session_state.ai_content["3_threads_post"] = st.text_area("Threads", c.get("3_threads_post", ""), height=100)
+            with col_sm2:
+                st.session_state.ai_content["4_instagram_post"] = st.text_area("Instagram", c.get("4_instagram_post", ""), height=150)
+                st.session_state.ai_content["5_linkedin_post"] = st.text_area("LinkedIn", c.get("5_linkedin_post", ""), height=150)
 
-                        payload = {
-                            "action": "sync_project",
-                            "project_id": project_id,      # 新增
-                            "sort_date": sort_date,        # 新增
-                            "client_name": st.session_state.client_name,
-                            "project_name": st.session_state.project_name,
-                            "venue": st.session_state.venue,
-                            "date": f"{st.session_state.event_year} {st.session_state.event_month}",
-                            "youtube": st.session_state.youtube,
-                            "category": st.session_state.category, 
-                            "category_what": ", ".join(st.session_state.what_we_do),
-                            "scope": ", ".join(st.session_state.scope),       
-                            "challenge": st.session_state.challenge,
-                            "solution": st.session_state.solution,
-                            "open_question": st.session_state.open_question_ans,
-                            "logo_white": st.session_state.logo_white, 
-                            "logo_black": st.session_state.logo_black,
-                            "images": processed_imgs, 
-                            "ai_content": st.session_state.ai_content,
-                            "faq_en": st.session_state.get("faq_en", ""),
-                            "faq_tc": st.session_state.get("faq_tc", ""),
-                            "faq_jp": st.session_state.get("faq_jp", "")
-                        }
-                        
-                        r1 = requests.post(SHEET_SCRIPT_URL, json=payload, timeout=60)
-                        r2 = requests.post(SLIDE_SCRIPT_URL, json=payload, timeout=60)
-                        log_debug(f"Sync: {project_id}, Sheet {r1.status_code}, Slide {r2.status_code}", "success")
-                        st.balloons()
-                        st.success(f"✅ 全部數據同步對位成功！(編號: {project_id})")
+            st.markdown("<hr style='border: 2px solid #FF2A2A;'>", unsafe_allow_html=True)
+            
+            if st.button("🚀 Confirm & Sync ALL to Master DB", type="primary", use_container_width=True):
+                with st.spinner("正在將數據與圖片同步至 Google Master DB..."):
+                    if trigger_full_sync():
                         st.session_state.sync_success = True
-                        st.rerun()
-                    except Exception as e: 
-                        log_debug(f"Sync Fail: {str(e)}", "error")
-                        st.error(f"同步失敗: {e}")
-
-        # ── 同步成功後顯示「準備輸入下一個案例」按鈕 ──
-        if st.session_state.get("sync_success", False):
-            st.markdown("<br>", unsafe_allow_html=True)
-            st.success("✅ 資料已成功同步至 Google Sheet！")
-            st.markdown("""
-                <div style='text-align:center; padding: 20px 0;'>
-                    <p style='font-size: 16px; font-weight: 600; margin-bottom: 12px;'>🎉 案例已存檔完畢！</p>
-                    <p style='font-size: 13px; color: #888;'>點擊下方按鈕開始輸入下一個案例，所有欄位將會清空重置。</p>
-                </div>
-            """, unsafe_allow_html=True)
-            if st.button("➕ 準備輸入下一個案例", type="primary", use_container_width=True):
-                reset_for_new_case()
-                st.rerun()
-
+                        st.balloons()
+                        st.success("🎉 同步成功！所有數據與圖片已安全存入 Master DB。")
+                        st.info("💡 點擊上方 🏠 HOME 按鈕即可重置表單，開始處理下一個案例。")
+                    else:
+                        st.error("❌ 同步失敗，請查看 Debug Terminal。")
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # Debug Terminal
-    st.markdown("<br><br>", unsafe_allow_html=True)
+    # --- Debug Terminal (Collapsible) ---
     with st.expander("🛠️ Debug Terminal & System Logs", expanded=False):
-        if st.button("執行連線測試", use_container_width=True):
-            with st.spinner("連線中..."):
-                secret_key = st.secrets.get("GEMINI_API_KEY", "")
-                if not secret_key: st.error("❌ 找不到 API Key")
-                else:
-                    try:
-                        genai.configure(api_key=secret_key)
-                        model = genai.GenerativeModel(STABLE_MODEL_ID)
-                        res = model.generate_content("Reply SUCCESS")
-                        st.success("✅ API Key 測試成功！")
-                    except Exception as e: st.error(f"❌ 錯誤: {e}")
+        logs = st.session_state.get("debug_logs", [])
+        log_text = "\n".join(logs) if logs else "No logs yet."
+        st.markdown(f'<div class="debug-terminal">{log_text}</div>', unsafe_allow_html=True)
 
-        logs = "".join([f"<div>[{l['time']}] {l['msg']}</div>" for l in reversed(st.session_state.get("debug_logs", []))])
-        st.markdown(f"<div class='debug-terminal'>{logs}</div>", unsafe_allow_html=True)
+def trigger_full_sync():
+    """執行完整同步到 Master DB (含圖片與 FAQ)"""
+    try:
+        # 1. 生成元數據
+        project_id, sort_date = generate_system_metadata()
+        
+        # 2. 處理圖片 (base64)
+        processed_imgs = []
+        if st.session_state.project_photos:
+            for i, f in enumerate(st.session_state.project_photos):
+                if hasattr(f, "seek"): f.seek(0)
+                try:
+                    img = Image.open(f).convert("RGB")
+                    img = ImageOps.exif_transpose(img)
+                    img.thumbnail((1600, 1600))
+                    buf = io.BytesIO()
+                    img.save(buf, format="JPEG", quality=85)
+                    processed_imgs.append(base64.b64encode(buf.getvalue()).decode())
+                except:
+                    if hasattr(f, "seek"): f.seek(0)
+                    processed_imgs.append(base64.b64encode(f.read()).decode())
 
-if __name__ == "__main__": main()
+        # 3. 準備 Payload
+        ai = st.session_state.ai_content
+        web = ai.get("6_website", {})
+        faq = ai.get("7_faq", {})
+        
+        payload = {
+            "action": "sync_full",
+            "client_name": st.session_state.client_name,
+            "project_name": st.session_state.project_name,
+            "project_id": project_id,
+            "sort_date": sort_date,
+            "venue": st.session_state.venue,
+            "event_year": st.session_state.event_year,
+            "event_month": st.session_state.event_month,
+            "youtube": st.session_state.youtube,
+            "category": st.session_state.category,
+            "what_we_do": ", ".join(st.session_state.what_we_do),
+            "scope": ", ".join(st.session_state.scope),
+            "open_question": st.session_state.open_question_ans,
+            
+            # AI 生成內容
+            "challenge_en": ai.get("challenge_summary", ""),
+            "solution_en": ai.get("solution_summary", ""),
+            "web_en": web.get("en", ""),
+            "web_tc": web.get("tc", ""),
+            "web_jp": web.get("jp", ""),
+            "faq_en": str(faq.get("en", "")),
+            "faq_tc": str(faq.get("tc", "")),
+            "faq_jp": str(faq.get("jp", "")),
+            "fb_post": ai.get("2_facebook_post", ""),
+            "ig_post": ai.get("4_instagram_post", ""),
+            "threads_post": ai.get("3_threads_post", ""),
+            "linkedin_post": ai.get("5_linkedin_post", ""),
+            "google_slide": ai.get("1_google_slide", ""),
+            
+            # 圖片
+            "logo_black": st.session_state.logo_black,
+            "logo_white": st.session_state.logo_white,
+            "hero_index": st.session_state.hero_photo_index,
+            "images": processed_imgs
+        }
+        
+        r = requests.post(SHEET_SCRIPT_URL, json=payload, timeout=90)
+        return r.status_code == 200 and r.json().get("status") == "success"
+    except Exception as e:
+        log_debug(f"❌ 同步失敗: {str(e)}", "error")
+        return False
+
+def fill_dummy_data():
+    """一鍵填充測試數據"""
+    st.session_state.client_name = "Agnès b. / New Balance / JILL STUART"
+    st.session_state.project_name = "ABC Online Conference 2026"
+    st.session_state.venue = "101 Studio"
+    st.session_state.event_year = "2026"
+    st.session_state.event_month = "MAR"
+    st.session_state.youtube = "https://youtube.com/test"
+    st.session_state.category = "LIFESTYLE & CONSUMER"
+    st.session_state.what_we_do = ["SOCIAL & CONTENT", "PR & MEDIA", "INTERACTIVE & TECH"]
+    st.session_state.scope = ["Event Planning", "Concept Development", "Social Media Management"]
+    st.session_state.open_question_ans = "這是一個跨品牌的高端線上發佈會，旨在展示 2026 春夏系列。"
+    st.info("✅ 已填充測試數據。")
+
+if __name__ == "__main__":
+    main()
