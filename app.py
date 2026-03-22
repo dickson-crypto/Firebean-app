@@ -855,21 +855,9 @@ def main():
         final_percent = min(100, int((filled_count / 12) * 100))
         progress_placeholder.markdown(get_circle_progress_html(final_percent, is_dark), unsafe_allow_html=True)
 
-        # ── Save Draft Button ──
-        save_col1, save_col2 = st.columns([3, 1])
-        with save_col1:
-            if st.button("💾 儲存草稿到 Google Sheet (Raw_Input_DB)", use_container_width=True, help="將目前所有輸入儲存為草稿，方便日後重新載入再生成"):
-                if not st.session_state.client_name.strip() or not st.session_state.project_name.strip():
-                    st.warning("❗ 請至少填寫 Client 及 Project 名稱才能儲存草稿。")
-                else:
-                    with st.spinner("正在儲存草稿..."):
-                        if save_draft_to_sheet():
-                            st.success(f"✅ 草稿已儲存！ID: `{st.session_state.draft_project_id}`")
-                        else:
-                            st.error("❌ 儲存失敗，請檢查 Debug Terminal。")
-        with save_col2:
-            if st.session_state.get("draft_project_id"):
-                st.markdown(f"✅ 草稿: `{st.session_state.draft_project_id}`")
+        # ── Draft ID Status (Automatic) ──
+        if st.session_state.get("draft_project_id"):
+            st.markdown(f"✅ **Auto-save Active**: Draft ID `{st.session_state.draft_project_id}`")
 
         if final_percent < 100:
             with st.expander("📌 還差一點點！點擊查看未完成項目", expanded=False):
