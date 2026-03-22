@@ -1,5 +1,5 @@
 import streamlit as st
-import google.generativeai as genai
+from google import genai
 import io
 import base64
 import time
@@ -181,8 +181,7 @@ def clean_field(text):
 def call_gemini_sdk(prompt, image_files=None, is_json=False):
     """呼叫 Google Gemini SDK (支援 Vision)"""
     try:
-        genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-        model = genai.GenerativeModel(STABLE_MODEL_ID)
+        client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
         
         contents = [FIREBEAN_SYSTEM_PROMPT, prompt]
         if image_files:
@@ -201,7 +200,15 @@ def call_gemini_sdk(prompt, image_files=None, is_json=False):
                 img = ImageOps.exif_transpose(img)
                 contents.append(img)
         
-        response = model.generate_content(contents, generation_config={"response_mime_type": "application/json"} if is_json else None)
+        config = None
+        if is_json:
+            config = genai.types.GenerateContentConfig(response_mime_type="application/json")
+            
+        response = client.models.generate_content(
+            model=STABLE_MODEL_ID,
+            contents=contents,
+            config=config
+        )
         return response.text
     except Exception as e:
         log_debug(f"Gemini API Error: {str(e)}", "error")
@@ -782,14 +789,28 @@ def main():
                 res = call_gemini_sdk(prompt, is_json=True)
                 if res:
                     try:
-                        data = json.loads(res)
+                        # Clean up potential markdown code blocks
+                        clean_res = res.strip()
+                        if clean_res.startswith("```json"):
+                            clean_res = clean_res[7:]
+                        if clean_res.startswith("```"):
+                            clean_res = clean_res[3:]
+                        if clean_res.endswith("```"):
+                            clean_res = clean_res[:-3]
+                        clean_res = clean_res.strip()
+                        
+                        data = json.loads(clean_res)
                         if isinstance(data, list) and len(data) > 0:
                             data = data[0]
                         if isinstance(data, dict):
                             st.session_state.ai_content = data
                             st.rerun()
-                    except:
-                        st.error("❌ AI 返回數據格式錯誤。")
+                        else:
+                            st.error("❌ AI 返回數據格式錯誤：結果不是字典。")
+                            log_debug(f"JSON is not dict: {res}", "error")
+                    except Exception as e:
+                        st.error(f"❌ AI 返回數據格式錯誤：無法解析 JSON ({str(e)})")
+                        log_debug(f"JSON Parse Error: {str(e)}\nRaw Response: {res}", "error")
 
         if st.session_state.ai_content:
             st.markdown("### 📋 Review Content")
