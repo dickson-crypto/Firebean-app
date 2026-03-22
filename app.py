@@ -1041,7 +1041,7 @@ def trigger_full_sync():
         faq = ai.get("7_faq", {})
         
         payload = {
-            "action": "sync_full",
+            "action": "sync_project",
             "client_name": st.session_state.client_name,
             "project_name": st.session_state.project_name,
             "project_id": project_id,
