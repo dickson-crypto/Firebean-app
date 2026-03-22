@@ -478,103 +478,7 @@ def reset_for_new_case():
         if k.startswith("ans_") or k.startswith("chk_"):
             del st.session_state[k]
 
-def fetch_draft_list():
-    """從 Google Sheet 獲取草稿列表"""
-    try:
-        r = requests.get(SHEET_SCRIPT_URL + "?action=get_draft_list", timeout=10)
-        if r.status_code == 200: return r.json()
-    except Exception as e:
-        log_debug(f"❌ 獲取列表失敗: {str(e)}", "error")
-    return []
-
-def load_draft_into_session(project_id):
-    """從 Google Sheet 載入特定草稿"""
-    try:
-        r = requests.get(SHEET_SCRIPT_URL + f"?action=get_draft&project_id={project_id}", timeout=15)
-        if r.status_code == 200:
-            d = r.json()
-            st.session_state.client_name = d.get("client_name", "")
-            st.session_state.project_name = d.get("project_name", "")
-            st.session_state.venue = d.get("venue", "")
-            st.session_state.event_year = d.get("event_year", str(CURRENT_YEAR))
-            st.session_state.event_month = d.get("event_month", "JAN")
-            st.session_state.youtube = d.get("youtube", "")
-            st.session_state.category = d.get("category", WHO_WE_HELP_OPTIONS[0])
-            st.session_state.what_we_do = d.get("what_we_do", [])
-            st.session_state.scope = d.get("scope", [])
-            st.session_state.mc_questions = d.get("mc_questions")
-            st.session_state.open_question_ans = d.get("open_question", "")
-            st.session_state.draft_project_id = project_id
-            st.session_state.loaded_image_urls = d.get("images", [])
-            
-            # 載入 MC 答案
-            mc_ans = d.get("mc_answers", {})
-            for k, v in mc_ans.items():
-                st.session_state[f"ans_{k}"] = v
-            return True
-    except Exception as e:
-        log_debug(f"❌ 載入失敗: {str(e)}", "error")
-    return False
-
-def save_draft_to_sheet():
-    """將當前狀態儲存為草稿"""
-    try:
-        draft_id = st.session_state.draft_project_id or f"DRAFT_{int(time.time())}"
-        
-        # 處理圖片 (只處理新上傳的，不重複處理已在雲端的)
-        processed_imgs = []
-        if st.session_state.project_photos:
-            for f in st.session_state.project_photos:
-                if hasattr(f, "seek"): f.seek(0)
-                try:
-                    # Fix broken PNG error by handling image formats properly
-                    img = Image.open(f)
-                    img.load() # Force loading the image data to catch broken PNG errors early
-                    if img.mode in ('RGBA', 'P'):
-                        # Create a white background image and paste the transparent image on it
-                        background = Image.new("RGB", img.size, (255, 255, 255))
-                        background.paste(img, mask=img.split()[3] if img.mode == 'RGBA' else None)
-                        img = background
-                    else:
-                        img = img.convert('RGB')
-                    img = ImageOps.exif_transpose(img) # 自動轉正
-                    img.thumbnail((1600, 1600))
-                    buf = io.BytesIO()
-                    img.save(buf, format="JPEG", quality=85)
-                    processed_imgs.append(base64.b64encode(buf.getvalue()).decode())
-                except Exception as img_err:
-                    log_debug(f"Image processing error: {str(img_err)}", "warning")
-                    if hasattr(f, "seek"): f.seek(0)
-                    processed_imgs.append(base64.b64encode(f.read()).decode())
-
-        payload = {
-            "action": "save_draft",
-            "project_id": draft_id,
-            "client_name": st.session_state.client_name,
-            "project_name": st.session_state.project_name,
-            "venue": st.session_state.venue,
-            "event_year": st.session_state.event_year,
-            "event_month": st.session_state.event_month,
-            "youtube": st.session_state.youtube,
-            "category": st.session_state.category,
-            "what_we_do": st.session_state.what_we_do,
-            "scope": st.session_state.scope,
-            "mc_questions": st.session_state.mc_questions,
-            "mc_answers": {i: st.session_state.get(f"ans_{i}", []) for i in range(1, 16)},
-            "open_question": st.session_state.open_question_ans,
-            "images": processed_imgs,
-            "existing_image_urls": st.session_state.get("loaded_image_urls", []) if not processed_imgs else []
-        }
-        r = requests.post(SHEET_SCRIPT_URL, json=payload, timeout=60)
-        if r.status_code == 200:
-            result = r.json()
-            if result.get("status") == "success":
-                st.session_state.draft_project_id = result.get("project_id", draft_id)
-                log_debug(f"✅ 草稿儲存成功: {st.session_state.draft_project_id}", "success")
-                return True
-    except Exception as e:
-        log_debug(f"❌ 草稿儲存失敗: {str(e)}", "error")
-    return False
+# Draft functions removed as Apps Script no longer supports them
 
 def main():
     st.set_page_config(page_title="Firebean Brain Collector", layout="wide")
@@ -616,62 +520,18 @@ def main():
 
     st.markdown("<br>", unsafe_allow_html=True)
     
-    nav_cols = st.columns(4)
+    nav_cols = st.columns(2)
     if nav_cols[0].button("Project Collector", use_container_width=True, type="primary" if st.session_state.active_tab == "Project Collector" else "secondary"):
         st.session_state.active_tab = "Project Collector"
         st.rerun()
     if nav_cols[1].button("Review & Multi-Sync", use_container_width=True, type="primary" if st.session_state.active_tab == "Review & Multi-Sync" else "secondary"):
         st.session_state.active_tab = "Review & Multi-Sync"
         st.rerun()
-    if nav_cols[2].button("📂 Load Project", use_container_width=True, type="primary" if st.session_state.active_tab == "Load Project" else "secondary"):
-        st.session_state.active_tab = "Load Project"
-        st.rerun()
-    # Boss test button removed
 
     st.markdown("<hr style='margin-top: 5px; margin-bottom: 20px;'>", unsafe_allow_html=True)
 
     # --- TAB 分頁內容 ---
-    if st.session_state.active_tab == "Load Project":
-        st.markdown('<div class="neu-card">', unsafe_allow_html=True)
-        st.markdown("### 📂 載入已儲存的草稿項目 (Load Existing Draft)")
-        load_col1, load_col2 = st.columns([3, 1])
-        with load_col1:
-            if st.button("🔄 獲取草稿列表", use_container_width=True, type="primary"):
-                with st.spinner("正在獲取草稿列表..."):
-                    drafts = fetch_draft_list()
-                    st.session_state["_draft_list"] = drafts
-                    if not drafts:
-                        st.info("目前尚未儲存任何草稿。")
-        with load_col2:
-            if st.session_state.get("draft_project_id"):
-                st.markdown(f"✅ 目前已載入: `{st.session_state.draft_project_id}`")
-
-        drafts = st.session_state.get("_draft_list", [])
-        if drafts:
-            st.markdown("<br>", unsafe_allow_html=True)
-            draft_options = {f"{d['client_name']} / {d['project_name']} ({d['project_id']})": d['project_id'] for d in drafts}
-            selected_label = st.selectbox("選擇要載入的項目", list(draft_options.keys()))
-            if st.button("⬇️ 載入此項目到表單並前往 Project Collector", type="primary", use_container_width=True):
-                with st.spinner("正在載入項目資料..."):
-                    pid = draft_options[selected_label]
-                    if load_draft_into_session(pid):
-                        st.session_state.active_tab = "Project Collector"
-                        st.rerun()
-                    else:
-                        st.error("❌ 載入失敗，請檢查 Debug Terminal。")
-
-        # Show loaded image previews if any
-        if st.session_state.get("loaded_image_urls"):
-            st.markdown("<hr>", unsafe_allow_html=True)
-            st.markdown("**🖼️ 已載入的圖片（儲存於 Google Drive）:**")
-            img_cols = st.columns(min(4, len(st.session_state.loaded_image_urls)))
-            for i, url in enumerate(st.session_state.loaded_image_urls):
-                with img_cols[i % 4]:
-                    st.markdown(f"[🖼️ 圖片 {i+1}]({url})", unsafe_allow_html=False)
-            st.info("💡 如需更換圖片，請在 Project Collector 頁面直接重新上傳新照片即可。")
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    elif st.session_state.active_tab == "Project Collector":
+    if st.session_state.active_tab == "Project Collector":
 
         st.markdown('<div class="neu-card">', unsafe_allow_html=True)
         col1, col2 = st.columns(2)
