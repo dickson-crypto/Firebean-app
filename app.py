@@ -188,7 +188,15 @@ def call_gemini_sdk(prompt, image_files=None, is_json=False):
         if image_files:
             for f in image_files:
                 if hasattr(f, "seek"): f.seek(0)
-                img = Image.open(f).convert("RGB")
+                img = Image.open(f)
+                img.load() # Force loading the image data to catch broken PNG errors early
+                if img.mode in ('RGBA', 'P'):
+                    # Create a white background image and paste the transparent image on it
+                    background = Image.new("RGB", img.size, (255, 255, 255))
+                    background.paste(img, mask=img.split()[3] if img.mode == 'RGBA' else None)
+                    img = background
+                else:
+                    img = img.convert('RGB')
                 # 🚀 修復：在傳給 AI 之前，先旋轉為正確方向
                 img = ImageOps.exif_transpose(img)
                 contents.append(img)
@@ -523,13 +531,23 @@ def save_draft_to_sheet():
             for f in st.session_state.project_photos:
                 if hasattr(f, "seek"): f.seek(0)
                 try:
-                    img = Image.open(f).convert("RGB")
+                    # Fix broken PNG error by handling image formats properly
+                    img = Image.open(f)
+                    img.load() # Force loading the image data to catch broken PNG errors early
+                    if img.mode in ('RGBA', 'P'):
+                        # Create a white background image and paste the transparent image on it
+                        background = Image.new("RGB", img.size, (255, 255, 255))
+                        background.paste(img, mask=img.split()[3] if img.mode == 'RGBA' else None)
+                        img = background
+                    else:
+                        img = img.convert('RGB')
                     img = ImageOps.exif_transpose(img) # 自動轉正
                     img.thumbnail((1600, 1600))
                     buf = io.BytesIO()
                     img.save(buf, format="JPEG", quality=85)
                     processed_imgs.append(base64.b64encode(buf.getvalue()).decode())
-                except:
+                except Exception as img_err:
+                    log_debug(f"Image processing error: {str(img_err)}", "warning")
                     if hasattr(f, "seek"): f.seek(0)
                     processed_imgs.append(base64.b64encode(f.read()).decode())
 
@@ -997,13 +1015,23 @@ def trigger_full_sync():
             for i, f in enumerate(st.session_state.project_photos):
                 if hasattr(f, "seek"): f.seek(0)
                 try:
-                    img = Image.open(f).convert("RGB")
+                    # Fix broken PNG error by handling image formats properly
+                    img = Image.open(f)
+                    img.load() # Force loading the image data to catch broken PNG errors early
+                    if img.mode in ('RGBA', 'P'):
+                        # Create a white background image and paste the transparent image on it
+                        background = Image.new("RGB", img.size, (255, 255, 255))
+                        background.paste(img, mask=img.split()[3] if img.mode == 'RGBA' else None)
+                        img = background
+                    else:
+                        img = img.convert('RGB')
                     img = ImageOps.exif_transpose(img)
                     img.thumbnail((1600, 1600))
                     buf = io.BytesIO()
                     img.save(buf, format="JPEG", quality=85)
                     processed_imgs.append(base64.b64encode(buf.getvalue()).decode())
-                except:
+                except Exception as img_err:
+                    log_debug(f"Image processing error: {str(img_err)}", "warning")
                     if hasattr(f, "seek"): f.seek(0)
                     processed_imgs.append(base64.b64encode(f.read()).decode())
 
