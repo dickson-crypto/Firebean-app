@@ -841,11 +841,17 @@ def main():
             faq = c.get("7_faq", {})
             f_tab_en, f_tab_tc, f_tab_jp = st.tabs(["FAQ EN", "FAQ TC", "FAQ JP"])
             with f_tab_en:
-                st.session_state.ai_content["7_faq"]["en"] = st.text_area("FAQ List (EN)", str(faq.get("en", "")), height=200)
+                faq_en_val = faq.get("en", "")
+                faq_en_str = json.dumps(faq_en_val, ensure_ascii=False) if isinstance(faq_en_val, (list, dict)) else str(faq_en_val)
+                st.session_state.ai_content["7_faq"]["en"] = st.text_area("FAQ List (EN)", faq_en_str, height=200)
             with f_tab_tc:
-                st.session_state.ai_content["7_faq"]["tc"] = st.text_area("FAQ List (TC)", str(faq.get("tc", "")), height=200)
+                faq_tc_val = faq.get("tc", "")
+                faq_tc_str = json.dumps(faq_tc_val, ensure_ascii=False) if isinstance(faq_tc_val, (list, dict)) else str(faq_tc_val)
+                st.session_state.ai_content["7_faq"]["tc"] = st.text_area("FAQ List (TC)", faq_tc_str, height=200)
             with f_tab_jp:
-                st.session_state.ai_content["7_faq"]["jp"] = st.text_area("FAQ List (JP)", str(faq.get("jp", "")), height=200)
+                faq_jp_val = faq.get("jp", "")
+                faq_jp_str = json.dumps(faq_jp_val, ensure_ascii=False) if isinstance(faq_jp_val, (list, dict)) else str(faq_jp_val)
+                st.session_state.ai_content["7_faq"]["jp"] = st.text_area("FAQ List (JP)", faq_jp_str, height=200)
 
             # --- Social Media ---
             st.markdown("#### 📱 Social Media Posts")
@@ -951,9 +957,10 @@ def trigger_full_sync():
             "solution": ai.get("solution_summary", ""),
             
             # FAQ 也可以放頂層 (Apps Script 支援從頂層或 ai_content 讀取)
-            "faq_en": str(faq.get("en", "")),
-            "faq_tc": str(faq.get("tc", "")),
-            "faq_jp": str(faq.get("jp", "")),
+            # Use json.dumps to preserve list/dict structure as valid JSON string
+            "faq_en": json.dumps(faq.get("en", ""), ensure_ascii=False) if isinstance(faq.get("en"), (list, dict)) else str(faq.get("en", "")),
+            "faq_tc": json.dumps(faq.get("tc", ""), ensure_ascii=False) if isinstance(faq.get("tc"), (list, dict)) else str(faq.get("tc", "")),
+            "faq_jp": json.dumps(faq.get("jp", ""), ensure_ascii=False) if isinstance(faq.get("jp"), (list, dict)) else str(faq.get("jp", "")),
             
             # AI 生成內容 (完整傳遞給 Apps Script 的 ai_content 物件)
             "ai_content": ai,
