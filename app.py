@@ -935,54 +935,110 @@ def main():
             do_search = st.button("🔎 搜尋並載入", type="primary", use_container_width=True)
 
         if do_search and search_query.strip():
-            with st.spinner("正在從 Master DB 搜尋項目..."):
+            query = search_query.strip()
+            with st.spinner(f"正在搜尋 '{query}'..."):
                 try:
-                    resp = requests.get(
+                    # 1. First, get the list of all projects to support keyword search
+                    list_resp = requests.post(SHEET_SCRIPT_URL, json={"action": "get_raw_input_list"}, timeout=30)
+                    list_result = list_resp.json()
+                    
+                    if list_result.get("success"):
+                        projects = list_result.get("projects", [])
+                        # Filter by Project ID (exact) or Client Name (keyword)
+                        matches = [p for p in projects if query.upper() == p['project_id'].upper() or query.lower() in p['client'].lower() or query.lower() in p['project_name'].lower()]
+                        
+                        if not matches:
+                            st.error(f"❌ 找不到與 '{query}' 相關的項目。")
+                        elif len(matches) > 1:
+                            st.warning(f"🔍 找到多個相符項目，請選擇一個：")
+                            for m in matches:
+                                if st.button(f"📂 載入: {m['project_id']} — {m['client']} / {m['project_name']}", key=f"load_{m['project_id']}"):
+                                    # This will trigger the next step in the next run
+                                    st.session_state.load_target_id = m['project_id']
+                                    st.rerun()
+                        else:
+                            # Exactly one match, load it directly
+                            st.session_state.load_target_id = matches[0]['project_id']
+                            st.rerun()
+                    else:
+                        st.error(f"❌ 搜尋失敗：{list_result.get('error', '未知錯誤')}")
+                except Exception as load_err:
+                    st.error(f"❌ 搜尋發生例外：{str(load_err)}")
+                    log_debug(f"❌ Load Project Search 例外: {str(load_err)}", "error")
+
+        # Handle the actual loading of project details if a target ID is set
+        if st.session_state.get("load_target_id"):
+            target_id = st.session_state.pop("load_target_id")
+            with st.spinner(f"正在載入項目 {target_id}..."):
+                try:
+                    resp = requests.post(
                         SHEET_SCRIPT_URL,
-                        params={"action": "get_project", "project_id": search_query.strip()},
+                        json={"action": "get_raw_input_details", "project_id": target_id},
                         timeout=30
                     )
                     result = resp.json()
-                    if result.get("status") == "success":
-                        d = result["data"]
+                    if result.get("success"):
+                        d = result["project"]
                         # Load all fields into session state
-                        st.session_state.client_name = d.get("client_name", "")
+                        st.session_state.client_name = d.get("client", "")
                         st.session_state.project_name = d.get("project_name", "")
                         st.session_state.venue = d.get("venue", "")
                         st.session_state.youtube = d.get("youtube", "")
+                        
+                        # Parse event date (e.g. "2024-APR")
+                        date_str = d.get("date", "")
+                        if "-" in date_str:
+                            y, m = date_str.split("-")
+                            if y in YEAR_OPTIONS: st.session_state.event_year = y
+                            if m.upper() in MONTH_OPTIONS: st.session_state.event_month = m.upper()
+
                         # Parse category
                         cat = d.get("category", WHO_WE_HELP_OPTIONS[0])
                         st.session_state.category = cat if cat in WHO_WE_HELP_OPTIONS else WHO_WE_HELP_OPTIONS[0]
+                        
                         # Parse what_we_do (comma-separated string)
-                        cat_what_str = d.get("category_what", "")
+                        cat_what_str = d.get("what_we_do", "")
                         st.session_state.what_we_do = [x.strip() for x in cat_what_str.split(",") if x.strip() in WHAT_WE_DO_OPTIONS] if cat_what_str else []
+                        
                         # Parse scope (comma-separated string)
                         scope_str = d.get("scope", "")
                         st.session_state.scope = [x.strip() for x in scope_str.split(",") if x.strip() in SOW_OPTIONS] if scope_str else []
+                        
                         st.session_state.open_question_ans = d.get("open_question", "")
                         st.session_state.draft_project_id = d.get("project_id", "")
-                        # Load AI content
-                        ai_data = d.get("ai_content", {})
-                        if ai_data:
-                            # Ensure 6_website and 7_faq are dicts
-                            if not isinstance(ai_data.get("6_website"), dict):
-                                ai_data["6_website"] = {"en": "", "tc": "", "jp": ""}
-                            if not isinstance(ai_data.get("7_faq"), dict):
-                                ai_data["7_faq"] = {"en": "", "tc": "", "jp": ""}
-                            # Add challenge/solution to ai_content for Review tab
-                            ai_data["challenge_summary"] = d.get("challenge_summary", "")
-                            ai_data["solution_summary"] = d.get("solution_summary", "")
-                            st.session_state.ai_content = ai_data
-                        log_debug(f"✅ 已成功載入項目: {d.get('project_id')} — {d.get('client_name')}", "success")
-                        st.success(f"✅ 成功載入：**{d.get('client_name')}** — {d.get('project_name')} (`{d.get('project_id')}`）")
+                        
+                        # Reconstruct AI content object for Review tab
+                        ai_data = {
+                            "challenge_summary": d.get("challenge", ""),
+                            "solution_summary": d.get("solution", ""),
+                            "1_google_slide": d.get("google_slide", ""),
+                            "2_facebook_post": d.get("facebook", ""),
+                            "3_threads_post": d.get("threads", ""),
+                            "4_instagram_post": d.get("instagram", ""),
+                            "5_linkedin_post": d.get("linkedin", ""),
+                            "6_website": {
+                                "en": d.get("web_en", ""),
+                                "tc": d.get("web_tc", ""),
+                                "jp": d.get("web_jp", "")
+                            },
+                            "7_faq": {
+                                "en": d.get("faq_en", ""),
+                                "tc": d.get("faq_tc", ""),
+                                "jp": d.get("faq_jp", "")
+                            }
+                        }
+                        st.session_state.ai_content = ai_data
+                        
+                        log_debug(f"✅ 已成功載入項目: {d.get('project_id')} — {d.get('client')}", "success")
+                        st.success(f"✅ 成功載入：**{d.get('client')}** — {d.get('project_name')} (`{d.get('project_id')}`）")
                         st.info("💡 資料已載入！你可以切換到 **Project Collector** 修改基本資料，或直接到 **Review & Multi-Sync** 編輯 AI 文案後重新 Sync。")
                         st.warning("⚠️ 注意：Logo 和照片需要重新上傳，因為圖片不儲存在 Master DB 的文字欄位中。")
                     else:
-                        st.error(f"❌ 找不到項目：{result.get('message', '未知錯誤')}。請確認 Project ID 正確，或嘗試輸入 Client Name 關鍵字。")
-                        log_debug(f"❌ Load Project 失敗: {result.get('message')}", "error")
+                        st.error(f"❌ 載入失敗：{result.get('error', '未知錯誤')}")
+                        log_debug(f"❌ Load Project Details 失敗: {result.get('error')}", "error")
                 except Exception as load_err:
-                    st.error(f"❌ 搜尋失敗：{str(load_err)}")
-                    log_debug(f"❌ Load Project 例外: {str(load_err)}", "error")
+                    st.error(f"❌ 載入發生例外：{str(load_err)}")
+                    log_debug(f"❌ Load Project Details 例外: {str(load_err)}", "error")
 
         # Show currently loaded project info
         if st.session_state.get("draft_project_id"):
