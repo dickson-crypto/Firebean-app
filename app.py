@@ -4,6 +4,25 @@ import io
 import base64
 import time
 import json
+
+def format_faq_to_python_string(faq_list):
+    if not faq_list:
+        return "[]"
+    
+    formatted_pairs = []
+    for qa_pair in faq_list:
+        # Assuming keys are always 'Qx' and 'Ax'
+        q_key = list(qa_pair.keys())[0]
+        a_key = list(qa_pair.keys())[1]
+        
+        # Escape single quotes in the content to prevent breaking the string literal
+        question = qa_pair[q_key].replace("'", "\\'")
+        answer = qa_pair[a_key].replace("'", "\\'")
+        
+        formatted_pairs.append(f"{{'" + q_key + "': '" + question + "', '" + a_key + "': '" + answer + "'}}")
+    
+    return f"[" + ", ".join(formatted_pairs) + "]"
+
 import requests
 import re
 from PIL import Image, ImageDraw, ImageOps # 確保匯入 ImageOps
@@ -1061,9 +1080,9 @@ def trigger_full_sync():
             
             # FAQ 也可以放頂層 (Apps Script 支援從頂層或 ai_content 讀取)
             # Use json.dumps to preserve list/dict structure as valid JSON string
-            "faq_en": json.dumps(faq.get("en", ""), ensure_ascii=False) if isinstance(faq.get("en"), (list, dict)) else str(faq.get("en", "")),
-            "faq_tc": json.dumps(faq.get("tc", ""), ensure_ascii=False) if isinstance(faq.get("tc"), (list, dict)) else str(faq.get("tc", "")),
-            "faq_jp": json.dumps(faq.get("jp", ""), ensure_ascii=False) if isinstance(faq.get("jp"), (list, dict)) else str(faq.get("jp", "")),
+            "faq_en": format_faq_to_python_string(faq.get("en", [])) if isinstance(faq.get("en"), list) else str(faq.get("en", "")),
+            "faq_tc": format_faq_to_python_string(faq.get("tc", [])) if isinstance(faq.get("tc"), list) else str(faq.get("tc", "")),
+            "faq_jp": format_faq_to_python_string(faq.get("jp", [])) if isinstance(faq.get("jp"), list) else str(faq.get("jp", "")),
             
             # AI 生成內容 (完整傳遞給 Apps Script 的 ai_content 物件)
             "ai_content": ai,
