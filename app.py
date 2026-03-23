@@ -1138,9 +1138,9 @@ def trigger_full_sync():
             
             # FAQ 也可以放頂層 (Apps Script 支援從頂層或 ai_content 讀取)
             # Use json.dumps to preserve list/dict structure as valid JSON string
-            "faq_en": json.dumps(faq.get("en", ""), ensure_ascii=False) if isinstance(faq.get("en"), (list, dict)) else str(faq.get("en", "")),
-            "faq_tc": json.dumps(faq.get("tc", ""), ensure_ascii=False) if isinstance(faq.get("tc"), (list, dict)) else str(faq.get("tc", "")),
-            "faq_jp": json.dumps(faq.get("jp", ""), ensure_ascii=False) if isinstance(faq.get("jp"), (list, dict)) else str(faq.get("jp", "")),
+            "faq_en": format_faq_to_python_string(faq.get("en", [])),
+            "faq_tc": format_faq_to_python_string(faq.get("tc", [])),
+            "faq_jp": format_faq_to_python_string(faq.get("jp", [])),
             
             # AI 生成內容 (完整傳遞給 Apps Script 的 ai_content 物件)
             "ai_content": ai,
