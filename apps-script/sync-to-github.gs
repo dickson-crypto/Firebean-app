@@ -527,6 +527,7 @@ function doSync(changedOnly, targetRowOnly) {
     }
 
     var project = {
+      id: pid,
       index: i - 1,
       client: String(row[CONFIG.COL.CLIENT - 1] || ''),
       project: projectName,
