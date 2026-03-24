@@ -1100,9 +1100,9 @@ def trigger_full_sync():
                     else:
                         img = img.convert('RGB')
                     img = ImageOps.exif_transpose(img)
-                    img.thumbnail((1600, 1600))
+                    img.thumbnail((1200, 1200)) # Smaller size for better sync performance
                     buf = io.BytesIO()
-                    img.save(buf, format="JPEG", quality=85)
+                    img.save(buf, format="JPEG", quality=75) # Slightly lower quality for smaller payload
                     processed_imgs.append(base64.b64encode(buf.getvalue()).decode())
                 except Exception as img_err:
                     log_debug(f"Image processing error: {str(img_err)}", "warning")
@@ -1167,7 +1167,8 @@ def trigger_full_sync():
             "images": processed_imgs
         }
         
-        r = requests.post(SHEET_SCRIPT_URL, json=payload, timeout=90)
+        log_debug(f"📤 Sending payload to Master DB (Payload size: {len(json.dumps(payload))/1024:.1f} KB)...", "info")
+        r = requests.post(SHEET_SCRIPT_URL, json=payload, timeout=120)
         
         # Handle both JSON response and plain text "Sync Success" from Apps Script
         is_success = False
@@ -1176,9 +1177,14 @@ def trigger_full_sync():
                 is_success = True
             else:
                 try:
-                    is_success = r.json().get("status") == "success"
+                    resp_json = r.json()
+                    is_success = resp_json.get("success") == True or resp_json.get("status") == "success"
+                    if not is_success:
+                        log_debug(f"❌ Apps Script error: {resp_json.get('error', 'Unknown error')}", "error")
                 except:
                     pass
+        else:
+            log_debug(f"❌ HTTP Error {r.status_code}: {r.text[:200]}", "error")
         
         if is_success:
             # 觸發 Google Slide 生成
