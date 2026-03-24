@@ -50,7 +50,7 @@ def generate_system_metadata():
         next_index = int(count_res.text) + 1 if (count_res.status_code == 200 and count_res.text.isdigit()) else 999
     except:
         next_index = 999
-    project_id = f"FB{st.session_state.event_year}{st.session_state.event_month}{str(next_index).zfill(3)}"
+    project_id = f"FB{st.session_state.event_year}{str(next_index).zfill(3)}"
     return project_id, sort_date
 
 def log_debug(msg):
