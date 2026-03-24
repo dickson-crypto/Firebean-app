@@ -506,6 +506,7 @@ def init_session_state():
         "ai_content": None, "debug_logs": [], "draft_project_id": None,
         "user_dark_mode": None, "last_autosave_time": 0,
         "logo_black": None, "logo_white": None, "hero_photo_index": 0,
+        "drive_folder": "", "hero_photo": "",
         "sync_success": False
     }
     for k, v in defaults.items():
@@ -526,6 +527,10 @@ def reset_for_new_case():
     st.session_state.draft_project_id = None
     st.session_state.sync_success = False
     st.session_state.active_tab = "Project Collector"
+    st.session_state.drive_folder = ""
+    st.session_state.hero_photo = ""
+    st.session_state.logo_black = None
+    st.session_state.logo_white = None
     # 清除所有動態生成的 MC 答案
     for k in list(st.session_state.keys()):
         if k.startswith("ans_") or k.startswith("chk_"):
@@ -1075,6 +1080,20 @@ def main():
                         st.session_state.open_question_ans = d.get("open_question", "")
                         st.session_state.draft_project_id = d.get("project_id", "")
                         
+                        # ── Preserve existing Drive URLs so they are reused on re-sync ──
+                        # (Apps Script reuses any value that starts with 'https://')
+                        existing_drive_folder = d.get("drive_folder", "")
+                        existing_hero_photo   = d.get("hero_photo", "")
+                        existing_logo_black   = d.get("logo_black", "")
+                        existing_logo_white   = d.get("logo_white", "")
+                        if existing_drive_folder: st.session_state.drive_folder = existing_drive_folder
+                        if existing_hero_photo:   st.session_state.hero_photo   = existing_hero_photo
+                        # Only pre-fill logos if user hasn't uploaded new ones
+                        if existing_logo_black and not st.session_state.logo_black:
+                            st.session_state.logo_black = existing_logo_black
+                        if existing_logo_white and not st.session_state.logo_white:
+                            st.session_state.logo_white = existing_logo_white
+                        
                         # Reconstruct AI content object for Review tab
                         ai_data = {
                             "challenge_summary": d.get("challenge", ""),
@@ -1209,8 +1228,11 @@ def trigger_full_sync():
             
             "logo_black": st.session_state.logo_black,
             "logo_white": st.session_state.logo_white,
-            "hero_photo_index": st.session_state.hero_photo_index, # Fixed: changed hero_index to hero_photo_index
-            "images": processed_imgs
+            "hero_photo_index": st.session_state.hero_photo_index,
+            "images": processed_imgs,
+            # ── Pass existing Drive URLs so Apps Script reuses folder & hero photo ──
+            "drive_folder": st.session_state.get("drive_folder", ""),
+            "hero_photo":   st.session_state.get("hero_photo", "")
         }
         
         log_debug(f"📤 Sending payload to Master DB (Payload size: {len(json.dumps(payload))/1024:.1f} KB)...", "info")
