@@ -84,8 +84,8 @@ def generate_system_metadata():
         import random
         next_index = random.randint(100, 999)
     
-    # 格式：FB + 年份 + 三位序號 (如 FB2026005)
-    project_id = f"FB{st.session_state.event_year}{str(next_index).zfill(3)}"
+    # 格式：FB + 年份 + 月份(3位) + 三位序號 (如 FB2026MAR001)
+    project_id = f"FB{st.session_state.event_year}{st.session_state.event_month}{str(next_index).zfill(3)}"
     
     return project_id, sort_date
 
