@@ -88,11 +88,6 @@ function onOpen() {
   SpreadsheetApp.getUi().createMenu('🔥 Firebean CMS')
     .addItem('Sync Changed Only', 'syncChangedToGitHub')
     .addItem('⚡ Sync Selected Project', 'syncSelectedProjectToGitHub')
-    .addItem('🖼️ Re-sync Images for Selected Row', 'markSelectedRowForImageSync')
-    .addSeparator()
-    .addItem('Sync ALL to Website', 'syncAllToGitHub')
-    .addSeparator()
-    .addItem('Setup Auto-Sync Trigger', 'setupTriggers')
     .addToUi();
 }
 
