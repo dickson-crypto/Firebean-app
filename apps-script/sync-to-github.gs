@@ -486,8 +486,8 @@ function doSync(changedOnly, targetRowOnly) {
 
   showProgress_('Loading image hashes from GitHub...', '🔥 CMS Sync');
   var existingHashes = loadImageHashes_(token);
+  var existingProjects_ = loadExistingProjects_(token); // keyed by pid for gallery fallback
   var newHashes = {};
-
   var processedCount = 0;
 
   for (var i = 1; i < data.length; i++) {
@@ -610,6 +610,7 @@ function doSync(changedOnly, targetRowOnly) {
           pushIfChanged_(imagesToPush, existingHashes, newHashes, galleryPath, galleryFiles[g].id, CONFIG.GALLERY_WIDTH);
         }
       } else {
+        // Restore gallery paths from hash cache OR from existing projects.json
         var gIdx = 0;
         while (true) {
           var gPath = CONFIG.IMAGES_PATH + '/' + pid + '-gallery-' + gIdx + '.webp';
@@ -618,7 +619,20 @@ function doSync(changedOnly, targetRowOnly) {
             newHashes[gPath] = existingHashes[gPath];
             gIdx++;
           } else {
-            break;
+            // Fallback: check if this gallery path exists in the existing JSON
+            var existsInJson = false;
+            if (existingProjects_) {
+              var ep = existingProjects_[pid];
+              if (ep && ep.galleryPhotos && ep.galleryPhotos.indexOf(gPath) !== -1) {
+                existsInJson = true;
+              }
+            }
+            if (existsInJson) {
+              galleryPhotos.push(gPath);
+              gIdx++;
+            } else {
+              break;
+            }
           }
         }
       }
@@ -779,6 +793,27 @@ function loadImageHashes_(token) {
   return {};
 }
 
+function loadExistingProjects_(token) {
+  // Returns a map of pid -> project object from the current projects.json on GitHub
+  var url = 'https://api.github.com/repos/' + CONFIG.GITHUB_OWNER + '/' + CONFIG.GITHUB_REPO + '/contents/' + CONFIG.JSON_PATH + '?ref=' + CONFIG.GITHUB_BRANCH;
+  try {
+    var resp = UrlFetchApp.fetch(url, {
+      headers: { 'Authorization': 'token ' + token, 'Accept': 'application/vnd.github.v3+json' },
+      muteHttpExceptions: true
+    });
+    if (resp.getResponseCode() === 200) {
+      var data = JSON.parse(resp.getContentText());
+      var content = Utilities.newBlob(Utilities.base64Decode(data.content)).getDataAsString();
+      var json = JSON.parse(content);
+      var map = {};
+      (json.projects || []).forEach(function(p) {
+        if (p.id) map[p.id] = p;
+      });
+      return map;
+    }
+  } catch (e) {}
+  return {};
+}
 function computeHash_(bytes) {
   var digest = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, bytes);
   return digest.map(function(b) {
