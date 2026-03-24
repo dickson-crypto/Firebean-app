@@ -871,18 +871,56 @@ def main():
                             clean_res = clean_res[:-3]
                         clean_res = clean_res.strip()
                         
-                        data = json.loads(clean_res)
-                        if isinstance(data, list) and len(data) > 0:
-                            data = data[0]
-                        if isinstance(data, dict):
-                            st.session_state.ai_content = data
-                            st.rerun()
-                        else:
-                            st.error("❌ AI 返回數據格式錯誤：結果不是字典。")
-                            log_debug(f"JSON is not dict: {res}", "error")
-                    except Exception as e:
-                        st.error(f"❌ AI 返回數據格式錯誤：無法解析 JSON ({str(e)})")
-                        log_debug(f"JSON Parse Error: {str(e)}\nRaw Response: {res}", "error")
+                        # 🛠️ Robust JSON Repair Logic
+                        def repair_json(s):
+                            s = s.strip()
+                            # Remove Markdown code blocks
+                            if s.startswith("```"):
+                                s = re.sub(r'^```(?:json)?\s*', '', s)
+                                s = re.sub(r'\s*```$', '', s)
+                            s = s.strip()
+                            # Basic fixes for common AI mistakes
+                            s = re.sub(r',\s*}', '}', s) # Trailing commas in dicts
+                            s = re.sub(r',\s*]', ']', s) # Trailing commas in lists
+                            # Fix common unescaped newlines inside strings
+                            def fix_newlines(match):
+                                return match.group(0).replace('\n', '\\n')
+                            s = re.sub(r'":\s*"[^"]*"', fix_newlines, s)
+                            return s
+
+                        try:
+                            clean_res = repair_json(res)
+                            data = json.loads(clean_res)
+                            if isinstance(data, list) and len(data) > 0:
+                                data = data[0]
+                            if isinstance(data, dict):
+                                st.session_state.ai_content = data
+                                st.rerun()
+                            else:
+                                raise ValueError("Result is not a dictionary")
+                        except Exception as e:
+                            # 🚨 Final fallback: Regex extraction for critical fields if JSON is totally broken
+                            st.warning("⚠️ JSON 格式有誤，正在嘗試手動修復...")
+                            log_debug(f"JSON Parse Error: {str(e)}", "warning")
+                            
+                            fallback_data = {
+                                "challenge_summary": re.search(r'"challenge_summary":\s*"([^"]*)"', res).group(1) if re.search(r'"challenge_summary":\s*"([^"]*)"', res) else "",
+                                "solution_summary": re.search(r'"solution_summary":\s*"([^"]*)"', res).group(1) if re.search(r'"solution_summary":\s*"([^"]*)"', res) else "",
+                                "6_website": {"en": "", "tc": "", "jp": ""},
+                                "7_faq": {"en": "[]", "tc": "[]", "jp": "[]"}
+                            }
+                            # Try to extract more if possible
+                            for lang in ["en", "tc", "jp"]:
+                                match = re.search(f'"{lang}":\\s*"([^"]*)"', res)
+                                if match: fallback_data["6_website"][lang] = match.group(1)
+                            
+                            if fallback_data["challenge_summary"]:
+                                st.session_state.ai_content = fallback_data
+                                st.success("✅ 已從損壞的數據中救回部分內容，請檢查後再同步。")
+                                st.rerun()
+                            else:
+                                st.error(f"❌ AI 返回數據格式嚴重錯誤，無法修復：{str(e)}")
+                                log_debug(f"Critical JSON Error: {res}", "error")
 
         if st.session_state.ai_content:
             st.markdown("### 📋 Review Content")
