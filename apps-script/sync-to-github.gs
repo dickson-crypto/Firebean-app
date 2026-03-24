@@ -4,7 +4,7 @@
  * ============================================================
  * 
  * v7.0: Restored v4.4 image download + MD5 hash + GitHub Tree batch push logic
- *       - Targets dickson-crypto/Firebean-app repository
+ *       - Targets cs627/Firebean-Website (the live website repo)
  *       - Supports Streamlit app (doPost, syncProjectFromStreamlit)
  *       - Supports "Sync Selected Project" (syncSelectedProjectToGitHub)
  *       - Fixes long running time by pushing everything in ONE commit via Git Tree API
@@ -22,8 +22,8 @@
 // ─── CONFIG ────────────────────────────────────────────────
 var CONFIG = {
   SHEET_NAME: 'Basic Info',
-  GITHUB_OWNER: 'dickson-crypto',
-  GITHUB_REPO: 'Firebean-app',
+  GITHUB_OWNER: 'cs627',
+  GITHUB_REPO: 'Firebean-Website',
   GITHUB_BRANCH: 'main',
   IMAGES_PATH: 'data/images',
   JSON_PATH: 'data/projects.json',
@@ -597,7 +597,7 @@ function doSync(changedOnly, targetRowOnly) {
   var msg = 'Sync complete! (' + elapsed + ' seconds)\n\n' +
     '• Projects: ' + projects.length + '\n' +
     '• New/updated images pushed: ' + imagesToPush.length + '\n\n' +
-    'Website updates in ~1 min:\nhttps://dickson-crypto.github.io/Firebean-app/';
+    'Website updates in ~1 min:\nhttps://cs627.github.io/Firebean-Website/';
 
   try { SpreadsheetApp.getUi().alert(msg); } catch(e) {}
 }

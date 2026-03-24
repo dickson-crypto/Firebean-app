@@ -1,0 +1,2 @@
+# This directory holds project images synced from Google Drive via Apps Script.
+# Images are pushed as .webp filenames and auto-converted to real WebP by GitHub Actions.
