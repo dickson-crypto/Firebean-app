@@ -6,22 +6,37 @@ import time
 import json
 
 def format_faq_to_python_string(faq_list):
+    """
+    Safely converts a list of Q&A dicts into a standardized Python-style string for the Master DB.
+    Handles both lists (from AI generation) and existing strings (from project loading).
+    """
     if not faq_list:
         return "[]"
     
+    # If it's already a string (e.g. from a previous load or already formatted), just return it
+    if isinstance(faq_list, str):
+        if faq_list.strip().startswith('['):
+            return faq_list
+        return "[]"
+
+    if not isinstance(faq_list, list):
+        return "[]"
+
     formatted_pairs = []
     for qa_pair in faq_list:
-        # Assuming keys are always 'Qx' and 'Ax'
+        if not isinstance(qa_pair, dict): continue
+        
+        # Extract keys dynamically (usually 'Q1', 'A1' etc.)
         keys = list(qa_pair.keys())
         if len(keys) < 2: continue
         q_key = keys[0]
         a_key = keys[1]
         
-        # Escape single quotes in the content to prevent breaking the string literal
-        question = str(qa_pair[q_key]).replace("'", "\'")
-        answer = str(qa_pair[a_key]).replace("'", "\'")
+        # Escape single quotes and backslashes to prevent breaking the string literal
+        question = str(qa_pair[q_key]).replace("\\", "\\\\").replace("'", "\\'")
+        answer = str(qa_pair[a_key]).replace("\\", "\\\\").replace("'", "\\'")
         
-        formatted_pairs.append(f"{{'" + q_key + "': '" + question + "', '" + a_key + "': '" + answer + "'}}")
+        formatted_pairs.append(f"{{'{q_key}': '{question}', '{a_key}': '{answer}'}}")
     
     return f"[" + ", ".join(formatted_pairs) + "]"
 
@@ -31,7 +46,7 @@ from PIL import Image, ImageDraw, ImageOps # 確保匯入 ImageOps
 from datetime import datetime
 
 # --- 1. 核心配置 ---
-SHEET_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzaQu2KpJ06I0yWL4dEwk0naB1FOlHkt7Ta340xH84IDwQI7jQNUI3eSmxrwKyQHNj5/exec"
+SHEET_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzhcI7mHa1gDczg94SskPJDs6hECG8ohHllYz4kN4ouBs4gtxYpVJ--rP2YJm-fruy3/exec"
 SLIDE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyZvtm8M8a5sLYF3vz9kLyAdimzzwpSlnTkzIeQ3DJxkklNYNlwSoJc5j5CkorM6w5V/exec"
 STABLE_MODEL_ID = "gemini-2.5-flash"
 
