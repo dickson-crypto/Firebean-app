@@ -1,8 +1,9 @@
 /**
  * ============================================================
- * FIREBEAN CMS → GITHUB SYNC PIPELINE  v7.1 (FULL PIPELINE FIX)
+ * FIREBEAN CMS → GITHUB SYNC PIPELINE  v7.3 (CLEAN MENU — manual sync only)
  * ============================================================
  * 
+ * v7.3: Removed setupTriggers and onEditTrigger (not needed for manual-only workflow)
  * v7.1: Fixed syncProjectFromStreamlit to match app.py payload exactly
  *       - ai_content (app.py) now correctly read (was ai_generated)
  *       - faq_en/faq_tc/faq_jp flat fields now read (was nested faq_texts)
@@ -21,7 +22,6 @@
  *   1. Open Google Sheet → Extensions > Apps Script
  *   2. Paste this script
  *   3. Project Settings > Script Properties → add GITHUB_TOKEN
- *   4. Run setupTriggers() once
  *
  * ============================================================
  */
@@ -91,22 +91,6 @@ function onOpen() {
     .addToUi();
 }
 
-function setupTriggers() {
-  var triggers = ScriptApp.getProjectTriggers();
-  triggers.forEach(function(t) { ScriptApp.deleteTrigger(t); });
-
-  ScriptApp.newTrigger('onEditTrigger')
-    .forSpreadsheet(SpreadsheetApp.getActive())
-    .onEdit()
-    .create();
-
-  ScriptApp.newTrigger('onOpen')
-    .forSpreadsheet(SpreadsheetApp.getActive())
-    .onOpen()
-    .create();
-
-  SpreadsheetApp.getUi().alert('✅ Auto-sync triggers installed successfully.');
-}
 
 // ─── STREAMLIT AUTO-SAVE ENDPOINT ──────────────────────────
 
@@ -328,63 +312,6 @@ function saveBase64ToDrive_(folder, filename, base64Data, mimeType) {
   }
 }
 
-function onEditTrigger(e) {
-  if (!e || !e.range) return;
-  var sheet = e.range.getSheet();
-  if (sheet.getName() !== CONFIG.SHEET_NAME) return;
-
-  var row = e.range.getRow();
-  if (row <= 1) return;
-
-  var col = e.range.getColumn();
-  var val = e.value;
-
-  if (col === CONFIG.COL.HERO_PHOTO && val && !val.match(/^http/i)) {
-    try {
-      var folderUrl = String(sheet.getRange(row, CONFIG.COL.DRIVE_FOLDER).getValue() || '').trim();
-      var folderId = extractDriveFolderId_(folderUrl);
-      if (folderId) {
-        var folder = DriveApp.getFolderById(folderId);
-        var files = folder.getFiles();
-        var allFiles = [];
-        while(files.hasNext()) allFiles.push(files.next());
-        
-        allFiles.sort(function(a,b){ return a.getName().localeCompare(b.getName()); });
-        var galleryFiles = allFiles.filter(function(f) { return !f.getName().match(/^(Hero|Logo)_/i); });
-        
-        var targetFile = null;
-        if (val.match(/^\d+$/)) {
-          var idx = parseInt(val, 10) - 1;
-          if (idx >= 0 && idx < galleryFiles.length) targetFile = galleryFiles[idx];
-        } else {
-          for (var i = 0; i < allFiles.length; i++) {
-            if (allFiles[i].getName().toLowerCase() === val.toLowerCase() || 
-                allFiles[i].getName().toLowerCase().replace(/\.[a-z]+$/, '') === val.toLowerCase()) {
-              targetFile = allFiles[i];
-              break;
-            }
-          }
-        }
-        
-        if (targetFile) {
-          var fileUrl = 'https://drive.google.com/file/d/' + targetFile.getId() + '/view';
-          sheet.getRange(row, col).clearDataValidations().setValue(fileUrl);
-        }
-      }
-    } catch(err) {
-      Logger.log('Hero link auto-resolve failed: ' + err.message);
-    }
-  }
-
-  var currentStatus = String(sheet.getRange(row, CONFIG.COL.SYNC_STATUS).getValue() || '').trim();
-  var isImageCol = IMAGE_COLUMNS_.indexOf(col) !== -1;
-
-  if (isImageCol) {
-    sheet.getRange(row, CONFIG.COL.SYNC_STATUS).setValue('Pending (images)');
-  } else if (currentStatus !== 'Pending (images)') {
-    sheet.getRange(row, CONFIG.COL.SYNC_STATUS).setValue('Pending');
-  }
-}
 
 function markSelectedRowForImageSync() {
   var sheet = SpreadsheetApp.getActive().getSheetByName(CONFIG.SHEET_NAME);
