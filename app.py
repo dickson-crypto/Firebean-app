@@ -440,13 +440,14 @@ def main():
                             st.rerun()
 
             if st.session_state.mc_questions:
-                for q in st.session_state.mc_questions:
-                    st.markdown(f"<div class='mc-question'>Q{q['id']}. {q['question']}</div>", unsafe_allow_html=True)
-                    ans_key = f"ans_{q['id']}"
+                for i, q in enumerate(st.session_state.mc_questions):
+                    q_id = q.get('id', q.get('number', q.get('q_id', i + 1)))
+                    st.markdown(f"<div class='mc-question'>Q{q_id}. {q.get('question', '')}</div>", unsafe_allow_html=True)
+                    ans_key = f"ans_{q_id}"
                     current_selections = st.session_state.get(ans_key, [])
                     new_selections = []
-                    for opt in q['options']:
-                        if st.checkbox(opt, value=(opt in current_selections), key=f"chk_{q['id']}_{opt}"):
+                    for opt in q.get('options', []):
+                        if st.checkbox(opt, value=(opt in current_selections), key=f"chk_{q_id}_{opt}"):
                             new_selections.append(opt)
                     st.session_state[ans_key] = new_selections
             st.markdown('</div>', unsafe_allow_html=True)
