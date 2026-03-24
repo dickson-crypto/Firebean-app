@@ -67,12 +67,22 @@ def generate_system_metadata():
     sort_date = f"{st.session_state.event_year}-{m_num}-01"
 
     # 2. 獲取當前行數生成 ID (向 Sheet 索取當前總行數)
+    # 如果已經載入了現有的 Project ID，優先使用它，避免重複生成
+    if st.session_state.get("draft_project_id"):
+        return st.session_state.draft_project_id, sort_date
+
     try:
         # 這裡會觸發 Google Sheet Script 的 action=get_row_count 
-        count_res = requests.get(SHEET_SCRIPT_URL + "?action=get_row_count", timeout=5)
-        next_index = int(count_res.text) + 1 if count_res.status_code == 200 else 100
-    except:
-        next_index = 999 
+        count_res = requests.get(SHEET_SCRIPT_URL + "?action=get_row_count", timeout=10)
+        if count_res.status_code == 200 and count_res.text.isdigit():
+            next_index = int(count_res.text) + 1
+        else:
+            # 如果回應不是數字，使用隨機數作為備案
+            import random
+            next_index = random.randint(100, 999)
+    except Exception as e:
+        import random
+        next_index = random.randint(100, 999)
     
     # 格式：FB + 年份 + 三位序號 (如 FB2026005)
     project_id = f"FB{st.session_state.event_year}{str(next_index).zfill(3)}"
