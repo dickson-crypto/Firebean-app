@@ -375,15 +375,12 @@ def main():
                 st.rerun()
 
     st.markdown("<br>", unsafe_allow_html=True)
-    nav_cols = st.columns(3)
+    nav_cols = st.columns(2)
     if nav_cols[0].button("Project Collector", use_container_width=True, type="primary" if st.session_state.active_tab == "Project Collector" else "secondary"):
         st.session_state.active_tab = "Project Collector"
         st.rerun()
     if nav_cols[1].button("Review & Multi-Sync", use_container_width=True, type="primary" if st.session_state.active_tab == "Review & Multi-Sync" else "secondary"):
         st.session_state.active_tab = "Review & Multi-Sync"
-        st.rerun()
-    if nav_cols[2].button("📂 Load Project", use_container_width=True, type="primary" if st.session_state.active_tab == "Load Project" else "secondary"):
-        st.session_state.active_tab = "Load Project"
         st.rerun()
 
     st.markdown("<hr style='margin-top: 5px; margin-bottom: 20px;'>", unsafe_allow_html=True)
@@ -518,26 +515,6 @@ def main():
                     st.session_state.sync_success = True
                 else: st.error("❌ Sync Failed!")
             st.markdown('</div>', unsafe_allow_html=True)
-
-    elif st.session_state.active_tab == "Load Project":
-        st.markdown('<div class="neu-card">', unsafe_allow_html=True)
-        search_query = st.text_input("Search Project ID or Client Name", key="search_input")
-        if st.button("Search"):
-            resp = requests.post(SHEET_SCRIPT_URL, json={"action": "get_raw_input_list"}).json()
-            if resp.get("success"):
-                matches = [p for p in resp["projects"] if search_query.upper() in p['project_id'].upper() or search_query.lower() in p['client'].lower()]
-                for m in matches:
-                    if st.button(f"Load {m['project_id']} - {m['client']}", key=f"load_{m['project_id']}"):
-                        details = requests.post(SHEET_SCRIPT_URL, json={"action": "get_raw_input_details", "project_id": m['project_id']}).json()
-                        if details.get("success"):
-                            d = details["project"]
-                            st.session_state.client_name = d.get("client", "")
-                            st.session_state.project_name = d.get("project_name", "")
-                            st.session_state.venue = d.get("venue", "")
-                            st.session_state.draft_project_id = d.get("project_id", "")
-                            st.success("Loaded!")
-                            st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
 
     with st.expander("🛠️ Debug Terminal", expanded=False):
         st.markdown(f'<div class="debug-terminal">{"\n".join(st.session_state.get("debug_logs", []))}</div>', unsafe_allow_html=True)
