@@ -10,6 +10,7 @@ from PIL import Image, ImageDraw, ImageOps
 from datetime import datetime
 
 # --- 1. Core Config ---
+# Ensure this URL matches your latest deployed Apps Script web app URL
 SHEET_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwsg-e1zyG6BW4Mp2AM-RHSfxI4Ooq9y-RR4XBkM6iZjNtL-hqBWlK1sGiIlppbTKin/exec"
 STABLE_MODEL_ID = "gemini-2.5-flash"
 
@@ -50,6 +51,7 @@ def generate_system_metadata():
         next_index = int(count_res.text) + 1 if (count_res.status_code == 200 and count_res.text.isdigit()) else 999
     except:
         next_index = 999
+    # Format: FB + Year + Sequence (e.g., FB2016037)
     project_id = f"FB{st.session_state.event_year}{str(next_index).zfill(3)}"
     return project_id, sort_date
 
@@ -79,7 +81,7 @@ def trigger_full_sync():
         payload = {
             "action": "sync_project",
             "client_name": st.session_state.client_name,
-            "project_name": st.session_state.project_name, # This fills the 'Project' column
+            "project_name": st.session_state.project_name, # Fills 'Project' column
             "project_id": project_id,
             "date": display_date,
             "sort_date": sort_date,
@@ -97,18 +99,25 @@ def trigger_full_sync():
             "ai_content": ai,
             "logo_black": st.session_state.logo_black,
             "logo_white": st.session_state.logo_white,
+            # If user hasn't uploaded photos, send dummies for testing linking
             "images": [DUMMY_IMAGE_BASE64] * 3 if not st.session_state.project_photos else st.session_state.project_photos
         }
         
+        log_debug(f"Syncing {project_id}...")
         r = requests.post(SHEET_SCRIPT_URL, json=payload, timeout=120)
-        return r.status_code == 200
+        if r.status_code == 200:
+            log_debug("Sync Success!")
+            return True
+        else:
+            log_debug(f"Sync Error: {r.status_code}")
+            return False
     except Exception as e:
         log_debug(f"Sync error: {str(e)}")
         return False
 
 def fill_dummy_data():
-    st.session_state.client_name = "TEST CLIENT"
-    st.session_state.project_name = "TEST PROJECT FOLDER NAME"
+    st.session_state.client_name = "VERIFY CLIENT"
+    st.session_state.project_name = "VERIFY PROJECT NAME"
     st.session_state.venue = "101 Studio"
     st.session_state.event_year = "2026"
     st.session_state.event_month = "MAR"
@@ -116,7 +125,7 @@ def fill_dummy_data():
     st.session_state.category = "LIFESTYLE & CONSUMER"
     st.session_state.what_we_do = ["SOCIAL & CONTENT", "PR & MEDIA"]
     st.session_state.scope = ["Event Planning", "Concept Development"]
-    st.session_state.open_question_ans = "Dummy open question answer."
+    st.session_state.open_question_ans = "This is a dummy verification test."
     st.session_state.logo_black = DUMMY_IMAGE_BASE64
     st.session_state.logo_white = DUMMY_IMAGE_BASE64
     st.session_state.ai_content = {
@@ -140,6 +149,12 @@ def main():
     if st.button("Sync to Master DB"):
         if trigger_full_sync(): st.success("Sync Success!")
         else: st.error("Sync Failed!")
+    
+    # Display debug logs
+    if st.session_state.debug_logs:
+        with st.expander("Debug Logs"):
+            for log in st.session_state.debug_logs:
+                st.text(log)
 
 if __name__ == "__main__":
     main()
