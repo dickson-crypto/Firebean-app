@@ -46,7 +46,7 @@ from PIL import Image, ImageDraw, ImageOps # 確保匯入 ImageOps
 from datetime import datetime
 
 # --- 1. 核心配置 ---
-SHEET_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzhcI7mHa1gDczg94SskPJDs6hECG8ohHllYz4kN4ouBs4gtxYpVJ--rP2YJm-fruy3/exec"
+SHEET_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwsg-e1zyG6BW4Mp2AM-RHSfxI4Ooq9y-RR4XBkM6iZjNtL-hqBWlK1sGiIlppbTKin/exec"
 SLIDE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyZvtm8M8a5sLYF3vz9kLyAdimzzwpSlnTkzIeQ3DJxkklNYNlwSoJc5j5CkorM6w5V/exec"
 STABLE_MODEL_ID = "gemini-2.5-flash"
 
