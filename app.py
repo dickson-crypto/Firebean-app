@@ -45,7 +45,7 @@ def format_faq_to_python_string(faq_list):
     return f"[" + ", ".join(formatted_pairs) + "]"
 
 # --- 1. 核心配置 ---
-SHEET_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzhcI7mHa1gDczg94SskPJDs6hECG8ohHllYz4kN4ouBs4gtxYpVJ--rP2YJm-fruy3/exec"
+SHEET_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz2k7ZZ0shtl5wnhqB5J2wBcxnP7D08cRupRbz3hyi53G25mKYuz6qn5YqkTbPiYjIY/exec"
 SLIDE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyZvtm8M8a5sLYF3vz9kLyAdimzzwpSlnTkzIeQ3DJxkklNYNlwSoJc5j5CkorM6w5V/exec"
 STABLE_MODEL_ID = "gemini-2.5-flash"
 
