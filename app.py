@@ -1188,33 +1188,28 @@ def trigger_full_sync():
             "project_name": st.session_state.project_name,
             "project_id": project_id,
             "sort_date": sort_date,
-            "date": display_date,  # Added missing date field
+            "date": display_date,
             "venue": st.session_state.venue,
             "event_year": st.session_state.event_year,
             "event_month": st.session_state.event_month,
             "youtube": st.session_state.youtube,
             "category": st.session_state.category,
-            "category_what": ", ".join(st.session_state.what_we_do),
-            "scope": ", ".join(st.session_state.scope),
+            "what_we_do": st.session_state.what_we_do,  # Fixed: changed category_what to what_we_do to match Apps Script
+            "scope": st.session_state.scope,            # Fixed: pass array directly, Apps Script handles join
             "open_question": st.session_state.open_question_ans,
             
-            # 頂層挑戰與解決方案
             "challenge": ai.get("challenge_summary", ""),
             "solution": ai.get("solution_summary", ""),
             
-            # FAQ 也可以放頂層 (Apps Script 支援從頂層或 ai_content 讀取)
-            # Use json.dumps to preserve list/dict structure as valid JSON string
             "faq_en": format_faq_to_python_string(faq.get("en", [])),
             "faq_tc": format_faq_to_python_string(faq.get("tc", [])),
             "faq_jp": format_faq_to_python_string(faq.get("jp", [])),
             
-            # AI 生成內容 (完整傳遞給 Apps Script 的 ai_content 物件)
             "ai_content": ai,
             
-            # 圖片
             "logo_black": st.session_state.logo_black,
             "logo_white": st.session_state.logo_white,
-            "hero_index": st.session_state.hero_photo_index,
+            "hero_photo_index": st.session_state.hero_photo_index, # Fixed: changed hero_index to hero_photo_index
             "images": processed_imgs
         }
         
