@@ -1,8 +1,15 @@
 /**
  * ============================================================
- * FIREBEAN CMS → GITHUB SYNC PIPELINE  v7.0 (ULTIMATE FIX)
+ * FIREBEAN CMS → GITHUB SYNC PIPELINE  v7.1 (FULL PIPELINE FIX)
  * ============================================================
  * 
+ * v7.1: Fixed syncProjectFromStreamlit to match app.py payload exactly
+ *       - ai_content (app.py) now correctly read (was ai_generated)
+ *       - faq_en/faq_tc/faq_jp flat fields now read (was nested faq_texts)
+ *       - logo_black/logo_white base64 now saved to Drive correctly
+ *       - images[] base64 array now saved to Drive as Photo_1.jpg etc.
+ *       - Added id: pid (lowercase) to project JSON for profile page matching
+ *       - Added getOrCreateProjectFolder_ and saveBase64ToDrive_ helpers
  * v7.0: Restored v4.4 image download + MD5 hash + GitHub Tree batch push logic
  *       - Targets cs627/Firebean-Website (the live website repo)
  *       - Supports Streamlit app (doPost, syncProjectFromStreamlit)
@@ -146,24 +153,39 @@ function cleanSheetValue_(val) {
   if (!val) return '';
   return String(val).replace(/[\r\n]+/g, ' ').replace(/\s{2,}/g, ' ').trim();
 }
+function formatSortDate_(val) {
+  // Convert any date value to YYYY-MM-DD for consistent sorting
+  if (!val) return '';
+  try {
+    var d = (val instanceof Date) ? val : new Date(String(val));
+    if (isNaN(d.getTime())) return String(val).substring(0, 10);
+    var y = d.getFullYear();
+    var m = String(d.getMonth() + 1).padStart(2, '0');
+    var day = String(d.getDate()).padStart(2, '0');
+    return y + '-' + m + '-' + day;
+  } catch (e) {
+    return String(val).substring(0, 10);
+  }
+}
 
 function syncProjectFromStreamlit(data) {
   var sheet = SpreadsheetApp.getActive().getSheetByName(CONFIG.SHEET_NAME);
   var sheetData = sheet.getDataRange().getValues();
-  
+
+  // ── Find or create row ────────────────────────────────────
   var targetRow = -1;
   for (var i = 1; i < sheetData.length; i++) {
-    if (String(sheetData[i][CONFIG.COL.PROJECT_ID - 1]) === String(data.project_id)) {
+    if (String(sheetData[i][CONFIG.COL.PROJECT_ID - 1]).toUpperCase() === String(data.project_id || '').toUpperCase()) {
       targetRow = i + 1;
       break;
     }
   }
-  
   if (targetRow === -1) {
     targetRow = sheet.getLastRow() + 1;
-    sheet.getRange(targetRow, CONFIG.COL.PROJECT_ID).setValue(data.project_id);
+    sheet.getRange(targetRow, CONFIG.COL.PROJECT_ID).setValue((data.project_id || '').toUpperCase());
   }
 
+  // ── Basic fields ──────────────────────────────────────────
   sheet.getRange(targetRow, CONFIG.COL.CLIENT).setValue(cleanSheetValue_(data.client_name || ''));
   sheet.getRange(targetRow, CONFIG.COL.PROJECT).setValue(cleanSheetValue_(data.project_name || ''));
   sheet.getRange(targetRow, CONFIG.COL.DATE).setValue(data.date || '');
@@ -174,66 +196,142 @@ function syncProjectFromStreamlit(data) {
   sheet.getRange(targetRow, CONFIG.COL.YOUTUBE).setValue(data.youtube || '');
   sheet.getRange(targetRow, CONFIG.COL.OPEN_QUESTION).setValue(data.open_question || '');
   sheet.getRange(targetRow, CONFIG.COL.SORT_DATE).setValue(data.sort_date || '');
-
   sheet.getRange(targetRow, CONFIG.COL.CHALLENGE).setValue(data.challenge || '');
   sheet.getRange(targetRow, CONFIG.COL.SOLUTION).setValue(data.solution || '');
 
-  var ai = data.ai_generated || {};
+  // ── AI content — app.py sends as 'ai_content' ────────────
+  // Support both 'ai_content' (app.py v7+) and 'ai_generated' (legacy)
+  var ai = data.ai_content || data.ai_generated || {};
   sheet.getRange(targetRow, CONFIG.COL.GOOGLE_SLIDE).setValue(ai['1_google_slide'] || '');
   sheet.getRange(targetRow, CONFIG.COL.LINKEDIN).setValue(ai['5_linkedin_post'] || '');
   sheet.getRange(targetRow, CONFIG.COL.FACEBOOK).setValue(ai['2_facebook_post'] || '');
   sheet.getRange(targetRow, CONFIG.COL.THREADS).setValue(ai['3_threads_post'] || '');
   sheet.getRange(targetRow, CONFIG.COL.INSTAGRAM).setValue(ai['4_instagram_post'] || '');
 
-  var website = data.website_texts || {};
-  if (typeof website === 'object') {
+  // ── Website articles — from ai['6_website'] ──────────────
+  // Support both 'website_texts' (legacy) and ai_content['6_website'] (app.py)
+  var website = data.website_texts || (ai['6_website'] ? ai['6_website'] : {});
+  if (typeof website === 'object' && website !== null) {
     sheet.getRange(targetRow, CONFIG.COL.WEB_EN).setValue(website['en'] || '');
     sheet.getRange(targetRow, CONFIG.COL.WEB_TC).setValue(website['tc'] || '');
     sheet.getRange(targetRow, CONFIG.COL.WEB_JP).setValue(website['jp'] || '');
-  } else {
+  } else if (typeof website === 'string') {
     sheet.getRange(targetRow, CONFIG.COL.WEB_EN).setValue(website);
   }
 
-  var faqEn = data.faq_texts && data.faq_texts.en ? data.faq_texts.en : '';
-  var faqTc = data.faq_texts && data.faq_texts.tc ? data.faq_texts.tc : '';
-  var faqJp = data.faq_texts && data.faq_texts.jp ? data.faq_texts.jp : '';
+  // ── FAQ — app.py sends as faq_en/faq_tc/faq_jp directly ──
+  // Support both flat fields (app.py) and nested faq_texts (legacy)
+  var faqEn = data.faq_en || (data.faq_texts && data.faq_texts.en ? data.faq_texts.en : '');
+  var faqTc = data.faq_tc || (data.faq_texts && data.faq_texts.tc ? data.faq_texts.tc : '');
+  var faqJp = data.faq_jp || (data.faq_texts && data.faq_texts.jp ? data.faq_texts.jp : '');
   sheet.getRange(targetRow, CONFIG.COL.FAQ_EN).setValue(faqEn);
   sheet.getRange(targetRow, CONFIG.COL.FAQ_TC).setValue(faqTc);
   sheet.getRange(targetRow, CONFIG.COL.FAQ_JP).setValue(faqJp);
 
+  // ── Images — save base64 to Drive then store Drive URLs ───
+  // app.py sends: logo_black (base64), logo_white (base64), images[] (base64 array), hero_index
   var needsImageSync = false;
-  if (data.drive_folder_id) {
+  var pid = (data.project_id || '').toUpperCase();
+  var driveFolder = getOrCreateProjectFolder_(pid);
+
+  if (driveFolder) {
+    var folderUrl = 'https://drive.google.com/drive/folders/' + driveFolder.getId();
     var currentFolder = String(sheet.getRange(targetRow, CONFIG.COL.DRIVE_FOLDER).getValue() || '');
-    var newFolder = 'https://drive.google.com/drive/folders/' + data.drive_folder_id;
-    if (currentFolder !== newFolder) {
-      sheet.getRange(targetRow, CONFIG.COL.DRIVE_FOLDER).setValue(newFolder);
+    if (currentFolder !== folderUrl) {
+      sheet.getRange(targetRow, CONFIG.COL.DRIVE_FOLDER).setValue(folderUrl);
+      needsImageSync = true;
+    }
+
+    // Save logo_black base64 to Drive
+    if (data.logo_black) {
+      var lbFile = saveBase64ToDrive_(driveFolder, 'Logo_Black.png', data.logo_black, 'image/png');
+      if (lbFile) {
+        sheet.getRange(targetRow, CONFIG.COL.LOGO_BLACK).setValue('https://drive.google.com/file/d/' + lbFile.getId());
+        needsImageSync = true;
+      }
+    } else if (data.logo_black_id) {
+      sheet.getRange(targetRow, CONFIG.COL.LOGO_BLACK).setValue('https://drive.google.com/file/d/' + data.logo_black_id);
+    }
+
+    // Save logo_white base64 to Drive
+    if (data.logo_white) {
+      var lwFile = saveBase64ToDrive_(driveFolder, 'Logo_White.png', data.logo_white, 'image/png');
+      if (lwFile) {
+        sheet.getRange(targetRow, CONFIG.COL.LOGO_WHITE).setValue('https://drive.google.com/file/d/' + lwFile.getId());
+        needsImageSync = true;
+      }
+    } else if (data.logo_white_id) {
+      sheet.getRange(targetRow, CONFIG.COL.LOGO_WHITE).setValue('https://drive.google.com/file/d/' + data.logo_white_id);
+    }
+
+    // Save photo images (base64 array) to Drive as Photo_1.jpg, Photo_2.jpg...
+    if (data.images && data.images.length > 0) {
+      var heroIndex = parseInt(data.hero_index || 0, 10);
+      for (var pi = 0; pi < data.images.length; pi++) {
+        var photoFile = saveBase64ToDrive_(driveFolder, 'Photo_' + (pi + 1) + '.jpg', data.images[pi], 'image/jpeg');
+        if (photoFile && pi === heroIndex) {
+          sheet.getRange(targetRow, CONFIG.COL.HERO_PHOTO).setValue('https://drive.google.com/file/d/' + photoFile.getId());
+        }
+      }
+      needsImageSync = true;
+    } else if (data.hero_photo_id) {
+      sheet.getRange(targetRow, CONFIG.COL.HERO_PHOTO).setValue('https://drive.google.com/file/d/' + data.hero_photo_id);
+    }
+  } else {
+    // Fallback: no Drive folder, use IDs directly if provided
+    if (data.logo_black_id) sheet.getRange(targetRow, CONFIG.COL.LOGO_BLACK).setValue('https://drive.google.com/file/d/' + data.logo_black_id);
+    if (data.logo_white_id) sheet.getRange(targetRow, CONFIG.COL.LOGO_WHITE).setValue('https://drive.google.com/file/d/' + data.logo_white_id);
+    if (data.hero_photo_id) sheet.getRange(targetRow, CONFIG.COL.HERO_PHOTO).setValue('https://drive.google.com/file/d/' + data.hero_photo_id);
+    if (data.drive_folder_id) {
+      sheet.getRange(targetRow, CONFIG.COL.DRIVE_FOLDER).setValue('https://drive.google.com/drive/folders/' + data.drive_folder_id);
       needsImageSync = true;
     }
   }
 
+  // ── Sync status ───────────────────────────────────────────
   var currentStatus = String(sheet.getRange(targetRow, CONFIG.COL.SYNC_STATUS).getValue() || '').trim();
   if (currentStatus !== 'Pending (images)') {
     sheet.getRange(targetRow, CONFIG.COL.SYNC_STATUS).setValue(needsImageSync ? 'Pending (images)' : 'Pending');
   }
 
-  if (data.logo_black_id) {
-    sheet.getRange(targetRow, CONFIG.COL.LOGO_BLACK).setValue('https://drive.google.com/file/d/' + data.logo_black_id);
-  }
-  if (data.logo_white_id) {
-    sheet.getRange(targetRow, CONFIG.COL.LOGO_WHITE).setValue('https://drive.google.com/file/d/' + data.logo_white_id);
-  }
-  if (data.hero_photo_id) {
-    sheet.getRange(targetRow, CONFIG.COL.HERO_PHOTO).setValue('https://drive.google.com/file/d/' + data.hero_photo_id);
-  }
-
   return ContentService.createTextOutput(JSON.stringify({
-    status: 'success', 
+    status: 'success',
     row: targetRow,
-    message: 'Data saved. Waiting for Apps Script Sync.'
+    project_id: pid,
+    message: 'Data + images saved to Drive. Run CMS Sync to push to GitHub.'
   })).setMimeType(ContentService.MimeType.JSON);
 }
 
-// ─── EDIT TRIGGER ──────────────────────────────────────────
+// ─── HELPER: Get or create project folder in Drive ─────────
+function getOrCreateProjectFolder_(projectId) {
+  try {
+    var rootFolderName = 'Firebean CMS Projects';
+    var rootFolders = DriveApp.getFoldersByName(rootFolderName);
+    var root = rootFolders.hasNext() ? rootFolders.next() : DriveApp.createFolder(rootFolderName);
+    var subFolders = root.getFoldersByName(projectId);
+    return subFolders.hasNext() ? subFolders.next() : root.createFolder(projectId);
+  } catch (e) {
+    Logger.log('getOrCreateProjectFolder_ error: ' + e.message);
+    return null;
+  }
+}
+
+// ─── HELPER: Save base64 string to Drive file ──────────────
+function saveBase64ToDrive_(folder, filename, base64Data, mimeType) {
+  try {
+    // Remove data URL prefix if present (e.g. data:image/png;base64,...)
+    var cleanBase64 = base64Data.replace(/^data:[^;]+;base64,/, '');
+    var bytes = Utilities.base64Decode(cleanBase64);
+    var blob = Utilities.newBlob(bytes, mimeType, filename);
+    // Delete existing file with same name first to avoid duplicates
+    var existing = folder.getFilesByName(filename);
+    while (existing.hasNext()) { existing.next().setTrashed(true); }
+    return folder.createFile(blob);
+  } catch (e) {
+    Logger.log('saveBase64ToDrive_ error for ' + filename + ': ' + e.message);
+    return null;
+  }
+}
 
 function onEditTrigger(e) {
   if (!e || !e.range) return;
@@ -555,7 +653,7 @@ function doSync(changedOnly, targetRowOnly) {
       logoWhite: logoWhitePath,
       galleryPhotos: galleryPhotos,
       projectId: projectId,
-      sortDate: String(row[CONFIG.COL.SORT_DATE - 1] || ''),
+      sortDate: formatSortDate_(row[CONFIG.COL.SORT_DATE - 1]),
       driveFolderId: driveFolderId || '',
       categories: categories,
       filterSlugs: filterSlugs
