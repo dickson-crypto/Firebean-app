@@ -1,0 +1,821 @@
+/**
+ * ============================================================
+ * FIREBEAN CMS → GITHUB SYNC PIPELINE  v7.0 (ULTIMATE FIX)
+ * ============================================================
+ * 
+ * v7.0: Restored v4.4 image download + MD5 hash + GitHub Tree batch push logic
+ *       - Targets dickson-crypto/Firebean-app repository
+ *       - Supports Streamlit app (doPost, syncProjectFromStreamlit)
+ *       - Supports "Sync Selected Project" (syncSelectedProjectToGitHub)
+ *       - Fixes long running time by pushing everything in ONE commit via Git Tree API
+ *       - Images are saved with .webp extension directly
+ *
+ * SETUP:
+ *   1. Open Google Sheet → Extensions > Apps Script
+ *   2. Paste this script
+ *   3. Project Settings > Script Properties → add GITHUB_TOKEN
+ *   4. Run setupTriggers() once
+ *
+ * ============================================================
+ */
+
+// ─── CONFIG ────────────────────────────────────────────────
+var CONFIG = {
+  SHEET_NAME: 'Basic Info',
+  GITHUB_OWNER: 'dickson-crypto',
+  GITHUB_REPO: 'Firebean-app',
+  GITHUB_BRANCH: 'main',
+  IMAGES_PATH: 'data/images',
+  JSON_PATH: 'data/projects.json',
+  HASH_PATH: 'data/image-hashes.json',
+
+  HERO_WIDTH: 1200,
+  HERO_SM_WIDTH: 400,
+  LOGO_WIDTH: 200,
+  GALLERY_WIDTH: 1200,
+
+  COL: {
+    TIMESTAMP: 1,
+    CLIENT: 2,
+    PROJECT: 3,
+    DATE: 4,
+    VENUE: 5,
+    CATEGORY: 6,
+    WHAT_WE_DO: 7,
+    SCOPE: 8,
+    YOUTUBE: 9,
+    OPEN_QUESTION: 10,
+    CHALLENGE: 11,
+    SOLUTION: 12,
+    GOOGLE_SLIDE: 13,
+    LINKEDIN: 14,
+    FACEBOOK: 15,
+    THREADS: 16,
+    INSTAGRAM: 17,
+    WEB_EN: 18,
+    WEB_TC: 19,
+    WEB_JP: 20,
+    SYNC_STATUS: 21,
+    DRIVE_FOLDER: 22,
+    HERO_PHOTO: 23,
+    LOGO_BLACK: 24,
+    LOGO_WHITE: 25,
+    PROJECT_ID: 26,
+    SORT_DATE: 27,
+    FAQ_EN: 28,
+    FAQ_TC: 29,
+    FAQ_JP: 30
+  }
+};
+
+var IMAGE_COLUMNS_ = [
+  CONFIG.COL.DRIVE_FOLDER,
+  CONFIG.COL.HERO_PHOTO,
+  CONFIG.COL.LOGO_BLACK,
+  CONFIG.COL.LOGO_WHITE
+];
+
+// ─── MENU ──────────────────────────────────────────────────
+
+function onOpen() {
+  SpreadsheetApp.getUi().createMenu('🔥 Firebean CMS')
+    .addItem('Sync Changed Only', 'syncChangedToGitHub')
+    .addItem('⚡ Sync Selected Project', 'syncSelectedProjectToGitHub')
+    .addItem('🖼️ Re-sync Images for Selected Row', 'markSelectedRowForImageSync')
+    .addSeparator()
+    .addItem('Sync ALL to Website', 'syncAllToGitHub')
+    .addSeparator()
+    .addItem('Setup Auto-Sync Trigger', 'setupTriggers')
+    .addToUi();
+}
+
+function setupTriggers() {
+  var triggers = ScriptApp.getProjectTriggers();
+  triggers.forEach(function(t) { ScriptApp.deleteTrigger(t); });
+
+  ScriptApp.newTrigger('onEditTrigger')
+    .forSpreadsheet(SpreadsheetApp.getActive())
+    .onEdit()
+    .create();
+
+  ScriptApp.newTrigger('onOpen')
+    .forSpreadsheet(SpreadsheetApp.getActive())
+    .onOpen()
+    .create();
+
+  SpreadsheetApp.getUi().alert('✅ Auto-sync triggers installed successfully.');
+}
+
+// ─── STREAMLIT AUTO-SAVE ENDPOINT ──────────────────────────
+
+function doPost(e) {
+  try {
+    var data = JSON.parse(e.postData.contents);
+    if (data.action === 'sync_project') return syncProjectFromStreamlit(data);
+    if (data.action === 'save_raw_input') return saveRawInput(data);
+    
+    return ContentService.createTextOutput(JSON.stringify({status: 'error', message: 'Unknown action'}))
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return ContentService.createTextOutput(JSON.stringify({status: 'error', message: err.toString()}))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+function saveRawInput(data) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName('Raw_Input_DB') || ss.insertSheet('Raw_Input_DB');
+  
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow(['Timestamp', 'Client', 'Project', 'Venue', 'ID']);
+  }
+  
+  sheet.appendRow([
+    new Date(),
+    cleanSheetValue_(data.client_name),
+    cleanSheetValue_(data.project_name),
+    data.venue,
+    data.project_id
+  ]);
+  
+  return ContentService.createTextOutput(JSON.stringify({status: 'success'}))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function cleanSheetValue_(val) {
+  if (!val) return '';
+  return String(val).replace(/[\r\n]+/g, ' ').replace(/\s{2,}/g, ' ').trim();
+}
+
+function syncProjectFromStreamlit(data) {
+  var sheet = SpreadsheetApp.getActive().getSheetByName(CONFIG.SHEET_NAME);
+  var sheetData = sheet.getDataRange().getValues();
+  
+  var targetRow = -1;
+  for (var i = 1; i < sheetData.length; i++) {
+    if (String(sheetData[i][CONFIG.COL.PROJECT_ID - 1]) === String(data.project_id)) {
+      targetRow = i + 1;
+      break;
+    }
+  }
+  
+  if (targetRow === -1) {
+    targetRow = sheet.getLastRow() + 1;
+    sheet.getRange(targetRow, CONFIG.COL.PROJECT_ID).setValue(data.project_id);
+  }
+
+  sheet.getRange(targetRow, CONFIG.COL.CLIENT).setValue(cleanSheetValue_(data.client_name || ''));
+  sheet.getRange(targetRow, CONFIG.COL.PROJECT).setValue(cleanSheetValue_(data.project_name || ''));
+  sheet.getRange(targetRow, CONFIG.COL.DATE).setValue(data.date || '');
+  sheet.getRange(targetRow, CONFIG.COL.VENUE).setValue(cleanSheetValue_(data.venue || ''));
+  sheet.getRange(targetRow, CONFIG.COL.CATEGORY).setValue(data.category || '');
+  sheet.getRange(targetRow, CONFIG.COL.WHAT_WE_DO).setValue(data.category_what || '');
+  sheet.getRange(targetRow, CONFIG.COL.SCOPE).setValue(data.scope || '');
+  sheet.getRange(targetRow, CONFIG.COL.YOUTUBE).setValue(data.youtube || '');
+  sheet.getRange(targetRow, CONFIG.COL.OPEN_QUESTION).setValue(data.open_question || '');
+  sheet.getRange(targetRow, CONFIG.COL.SORT_DATE).setValue(data.sort_date || '');
+
+  sheet.getRange(targetRow, CONFIG.COL.CHALLENGE).setValue(data.challenge || '');
+  sheet.getRange(targetRow, CONFIG.COL.SOLUTION).setValue(data.solution || '');
+
+  var ai = data.ai_generated || {};
+  sheet.getRange(targetRow, CONFIG.COL.GOOGLE_SLIDE).setValue(ai['1_google_slide'] || '');
+  sheet.getRange(targetRow, CONFIG.COL.LINKEDIN).setValue(ai['5_linkedin_post'] || '');
+  sheet.getRange(targetRow, CONFIG.COL.FACEBOOK).setValue(ai['2_facebook_post'] || '');
+  sheet.getRange(targetRow, CONFIG.COL.THREADS).setValue(ai['3_threads_post'] || '');
+  sheet.getRange(targetRow, CONFIG.COL.INSTAGRAM).setValue(ai['4_instagram_post'] || '');
+
+  var website = data.website_texts || {};
+  if (typeof website === 'object') {
+    sheet.getRange(targetRow, CONFIG.COL.WEB_EN).setValue(website['en'] || '');
+    sheet.getRange(targetRow, CONFIG.COL.WEB_TC).setValue(website['tc'] || '');
+    sheet.getRange(targetRow, CONFIG.COL.WEB_JP).setValue(website['jp'] || '');
+  } else {
+    sheet.getRange(targetRow, CONFIG.COL.WEB_EN).setValue(website);
+  }
+
+  var faqEn = data.faq_texts && data.faq_texts.en ? data.faq_texts.en : '';
+  var faqTc = data.faq_texts && data.faq_texts.tc ? data.faq_texts.tc : '';
+  var faqJp = data.faq_texts && data.faq_texts.jp ? data.faq_texts.jp : '';
+  sheet.getRange(targetRow, CONFIG.COL.FAQ_EN).setValue(faqEn);
+  sheet.getRange(targetRow, CONFIG.COL.FAQ_TC).setValue(faqTc);
+  sheet.getRange(targetRow, CONFIG.COL.FAQ_JP).setValue(faqJp);
+
+  var needsImageSync = false;
+  if (data.drive_folder_id) {
+    var currentFolder = String(sheet.getRange(targetRow, CONFIG.COL.DRIVE_FOLDER).getValue() || '');
+    var newFolder = 'https://drive.google.com/drive/folders/' + data.drive_folder_id;
+    if (currentFolder !== newFolder) {
+      sheet.getRange(targetRow, CONFIG.COL.DRIVE_FOLDER).setValue(newFolder);
+      needsImageSync = true;
+    }
+  }
+
+  var currentStatus = String(sheet.getRange(targetRow, CONFIG.COL.SYNC_STATUS).getValue() || '').trim();
+  if (currentStatus !== 'Pending (images)') {
+    sheet.getRange(targetRow, CONFIG.COL.SYNC_STATUS).setValue(needsImageSync ? 'Pending (images)' : 'Pending');
+  }
+
+  if (data.logo_black_id) {
+    sheet.getRange(targetRow, CONFIG.COL.LOGO_BLACK).setValue('https://drive.google.com/file/d/' + data.logo_black_id);
+  }
+  if (data.logo_white_id) {
+    sheet.getRange(targetRow, CONFIG.COL.LOGO_WHITE).setValue('https://drive.google.com/file/d/' + data.logo_white_id);
+  }
+  if (data.hero_photo_id) {
+    sheet.getRange(targetRow, CONFIG.COL.HERO_PHOTO).setValue('https://drive.google.com/file/d/' + data.hero_photo_id);
+  }
+
+  return ContentService.createTextOutput(JSON.stringify({
+    status: 'success', 
+    row: targetRow,
+    message: 'Data saved. Waiting for Apps Script Sync.'
+  })).setMimeType(ContentService.MimeType.JSON);
+}
+
+// ─── EDIT TRIGGER ──────────────────────────────────────────
+
+function onEditTrigger(e) {
+  if (!e || !e.range) return;
+  var sheet = e.range.getSheet();
+  if (sheet.getName() !== CONFIG.SHEET_NAME) return;
+
+  var row = e.range.getRow();
+  if (row <= 1) return;
+
+  var col = e.range.getColumn();
+  var val = e.value;
+
+  if (col === CONFIG.COL.HERO_PHOTO && val && !val.match(/^http/i)) {
+    try {
+      var folderUrl = String(sheet.getRange(row, CONFIG.COL.DRIVE_FOLDER).getValue() || '').trim();
+      var folderId = extractDriveFolderId_(folderUrl);
+      if (folderId) {
+        var folder = DriveApp.getFolderById(folderId);
+        var files = folder.getFiles();
+        var allFiles = [];
+        while(files.hasNext()) allFiles.push(files.next());
+        
+        allFiles.sort(function(a,b){ return a.getName().localeCompare(b.getName()); });
+        var galleryFiles = allFiles.filter(function(f) { return !f.getName().match(/^(Hero|Logo)_/i); });
+        
+        var targetFile = null;
+        if (val.match(/^\d+$/)) {
+          var idx = parseInt(val, 10) - 1;
+          if (idx >= 0 && idx < galleryFiles.length) targetFile = galleryFiles[idx];
+        } else {
+          for (var i = 0; i < allFiles.length; i++) {
+            if (allFiles[i].getName().toLowerCase() === val.toLowerCase() || 
+                allFiles[i].getName().toLowerCase().replace(/\.[a-z]+$/, '') === val.toLowerCase()) {
+              targetFile = allFiles[i];
+              break;
+            }
+          }
+        }
+        
+        if (targetFile) {
+          var fileUrl = 'https://drive.google.com/file/d/' + targetFile.getId() + '/view';
+          sheet.getRange(row, col).clearDataValidations().setValue(fileUrl);
+        }
+      }
+    } catch(err) {
+      Logger.log('Hero link auto-resolve failed: ' + err.message);
+    }
+  }
+
+  var currentStatus = String(sheet.getRange(row, CONFIG.COL.SYNC_STATUS).getValue() || '').trim();
+  var isImageCol = IMAGE_COLUMNS_.indexOf(col) !== -1;
+
+  if (isImageCol) {
+    sheet.getRange(row, CONFIG.COL.SYNC_STATUS).setValue('Pending (images)');
+  } else if (currentStatus !== 'Pending (images)') {
+    sheet.getRange(row, CONFIG.COL.SYNC_STATUS).setValue('Pending');
+  }
+}
+
+function markSelectedRowForImageSync() {
+  var sheet = SpreadsheetApp.getActive().getSheetByName(CONFIG.SHEET_NAME);
+  if (!sheet) return;
+
+  var selection = SpreadsheetApp.getActive().getSelection();
+  var ranges = selection.getActiveRangeList().getRanges();
+  var markedRows = [];
+
+  for (var r = 0; r < ranges.length; r++) {
+    var startRow = ranges[r].getRow();
+    var numRows = ranges[r].getNumRows();
+    for (var row = startRow; row < startRow + numRows; row++) {
+      if (row <= 1) continue;
+      var projectName = String(sheet.getRange(row, CONFIG.COL.PROJECT).getValue() || '').trim();
+      if (!projectName) continue;
+      sheet.getRange(row, CONFIG.COL.SYNC_STATUS).setValue('Pending (images)');
+      markedRows.push(projectName);
+    }
+  }
+
+  if (markedRows.length === 0) {
+    SpreadsheetApp.getUi().alert('No valid project rows selected.\nPlease select one or more project rows first.');
+    return;
+  }
+
+  SpreadsheetApp.getUi().alert(markedRows.length + ' project(s) marked for image re-sync:\n\n' + 
+    markedRows.map(function(n) { return '• ' + n; }).join('\n') + 
+    '\n\nNow click "Sync Changed Only" to push updates.');
+}
+
+// ─── MAIN SYNC FUNCTIONS ──────────────────────────────────
+
+function syncAllToGitHub() {
+  var ui = SpreadsheetApp.getUi();
+  var result = ui.alert('Sync ALL projects to GitHub?',
+    'This will rebuild projects.json and re-check all images. Continue?',
+    ui.ButtonSet.YES_NO);
+  if (result !== ui.Button.YES) return;
+  doSync(false);
+}
+
+function syncChangedToGitHub() {
+  doSync(true);
+}
+
+function syncSelectedProjectToGitHub() {
+  var sheet = SpreadsheetApp.getActive().getSheetByName(CONFIG.SHEET_NAME);
+  var activeRange = sheet.getActiveRange();
+  var selectedRow = activeRange.getRow();
+  
+  if (selectedRow <= 1) {
+    SpreadsheetApp.getUi().alert('Please select a valid project row (row 2 or below).');
+    return;
+  }
+  
+  var projectName = String(sheet.getRange(selectedRow, CONFIG.COL.PROJECT).getValue() || '').trim();
+  if (!projectName) {
+    SpreadsheetApp.getUi().alert('Selected row does not contain a valid project name.');
+    return;
+  }
+  
+  var ui = SpreadsheetApp.getUi();
+  var result = ui.alert('⚡ Sync Selected Project',
+    'Sync only project: "' + projectName + '" to GitHub?\n\nThis is much faster than syncing all changes.',
+    ui.ButtonSet.YES_NO);
+    
+  if (result !== ui.Button.YES) return;
+  
+  sheet.getRange(selectedRow, CONFIG.COL.SYNC_STATUS).setValue('Pending (images)');
+  doSync(true, selectedRow);
+}
+
+function showProgress_(message, title) {
+  try {
+    SpreadsheetApp.getActive().toast(message, title || '🔥 Syncing...', 30);
+  } catch(e) {}
+}
+
+function doSync(changedOnly, targetRowOnly) {
+  var syncStart = new Date();
+  showProgress_('Starting sync...', '🔥 CMS Sync');
+
+  var token = getGitHubToken_();
+  if (!token) {
+    try { SpreadsheetApp.getUi().alert('GitHub token not found.\nGo to Project Settings > Script Properties and add GITHUB_TOKEN.'); } catch(e) {}
+    return;
+  }
+
+  var sheet = SpreadsheetApp.getActive().getSheetByName(CONFIG.SHEET_NAME);
+  var data = sheet.getDataRange().getValues();
+  var projects = [];
+  var imagesToPush = [];
+
+  showProgress_('Loading image hashes from GitHub...', '🔥 CMS Sync');
+  var existingHashes = loadImageHashes_(token);
+  var newHashes = {};
+
+  var processedCount = 0;
+
+  for (var i = 1; i < data.length; i++) {
+    var rowNum = i + 1;
+    var row = data[i];
+    var syncStatus = String(row[CONFIG.COL.SYNC_STATUS - 1] || '').trim();
+    var projectName = String(row[CONFIG.COL.PROJECT - 1] || '').trim();
+
+    if (!projectName) continue;
+
+    var projectId = String(row[CONFIG.COL.PROJECT_ID - 1] || '').trim();
+    if (!projectId) projectId = 'proj-' + i;
+    var pid = projectId.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+    var category = String(row[CONFIG.COL.CATEGORY - 1] || '').toUpperCase().trim();
+    var whatWeDo = String(row[CONFIG.COL.WHAT_WE_DO - 1] || '').toUpperCase().trim();
+    var categories = [];
+    var filterSlugs = [];
+    if (category) {
+      categories.push(category);
+      filterSlugs = filterSlugs.concat(categoryToSlugs_(category));
+    }
+    if (whatWeDo) {
+      whatWeDo.split(',').forEach(function(w) {
+        var wt = w.trim();
+        if (wt) {
+          categories.push(wt);
+          filterSlugs = filterSlugs.concat(categoryToSlugs_(wt));
+        }
+      });
+    }
+
+    var logoBlackFileId = extractDriveFileId_(row[CONFIG.COL.LOGO_BLACK - 1]);
+    var logoWhiteFileId = extractDriveFileId_(row[CONFIG.COL.LOGO_WHITE - 1]);
+    var driveFolderId = extractDriveFolderId_(row[CONFIG.COL.DRIVE_FOLDER - 1]);
+    var heroColValue = String(row[CONFIG.COL.HERO_PHOTO - 1] || '').trim();
+
+    var logoBlackPath = logoBlackFileId ? CONFIG.IMAGES_PATH + '/' + pid + '-logo-black.webp' : '';
+    var logoWhitePath = logoWhiteFileId ? CONFIG.IMAGES_PATH + '/' + pid + '-logo-white.webp' : '';
+
+    var needsImageSync = false;
+    var needsTextSync = false;
+
+    if (targetRowOnly && rowNum !== targetRowOnly) {
+      needsImageSync = false;
+      needsTextSync = false;
+    } else if (!changedOnly) {
+      needsImageSync = true;
+      needsTextSync = true;
+    } else if (syncStatus === 'Pending (images)' || syncStatus === '') {
+      needsImageSync = true;
+      needsTextSync = true;
+    } else if (syncStatus === 'Pending') {
+      needsTextSync = true;
+      needsImageSync = false;
+    }
+
+    var allFolderFiles = [];
+    var galleryFiles = [];
+    var heroFileId = '';
+
+    if (driveFolderId && needsImageSync) {
+      try {
+        var folder = DriveApp.getFolderById(driveFolderId);
+        var files = folder.getFiles();
+        while (files.hasNext()) {
+          var file = files.next();
+          var fileName = file.getName();
+          var mime = file.getMimeType();
+          if (mime.indexOf('image/') !== 0) continue;
+          var entry = {
+            name: fileName,
+            id: file.getId(),
+            updated: file.getLastUpdated().getTime(),
+            isHero: !!fileName.match(/^Hero_/i),
+            isLogo: !!fileName.match(/^Logo_/i)
+          };
+          allFolderFiles.push(entry);
+          if (!entry.isHero && !entry.isLogo) {
+            galleryFiles.push(entry);
+          }
+        }
+        galleryFiles.sort(function(a, b) { return a.name.localeCompare(b.name); });
+      } catch (e) {
+        Logger.log('Error listing Drive folder for ' + projectName + ': ' + e.message);
+      }
+    }
+
+    if (needsImageSync) {
+      heroFileId = resolveHeroFileId_(heroColValue, allFolderFiles, galleryFiles, projectName);
+    } else {
+      heroFileId = extractDriveFileId_(heroColValue);
+    }
+
+    var heroPath = heroFileId ? CONFIG.IMAGES_PATH + '/' + pid + '-hero.webp' : '';
+    var heroSmPath = heroFileId ? CONFIG.IMAGES_PATH + '/' + pid + '-hero-sm.webp' : '';
+
+    if (needsImageSync) {
+      processedCount++;
+      showProgress_('Processing images: ' + projectName, '🔥 CMS Sync');
+
+      if (heroFileId) {
+        pushIfChanged_(imagesToPush, existingHashes, newHashes, heroPath, heroFileId, CONFIG.HERO_WIDTH);
+        pushIfChanged_(imagesToPush, existingHashes, newHashes, heroSmPath, heroFileId, CONFIG.HERO_SM_WIDTH);
+      }
+      if (logoBlackFileId) pushIfChanged_(imagesToPush, existingHashes, newHashes, logoBlackPath, logoBlackFileId, CONFIG.LOGO_WIDTH);
+      if (logoWhiteFileId) pushIfChanged_(imagesToPush, existingHashes, newHashes, logoWhitePath, logoWhiteFileId, CONFIG.LOGO_WIDTH);
+    } else {
+      [heroPath, heroSmPath, logoBlackPath, logoWhitePath].forEach(function(p) {
+        if (p && existingHashes[p]) newHashes[p] = existingHashes[p];
+      });
+    }
+
+    var galleryPhotos = [];
+    if (driveFolderId) {
+      if (needsImageSync) {
+        for (var g = 0; g < galleryFiles.length; g++) {
+          var galleryPath = CONFIG.IMAGES_PATH + '/' + pid + '-gallery-' + g + '.webp';
+          galleryPhotos.push(galleryPath);
+          pushIfChanged_(imagesToPush, existingHashes, newHashes, galleryPath, galleryFiles[g].id, CONFIG.GALLERY_WIDTH);
+        }
+      } else {
+        var gIdx = 0;
+        while (true) {
+          var gPath = CONFIG.IMAGES_PATH + '/' + pid + '-gallery-' + gIdx + '.webp';
+          if (existingHashes[gPath]) {
+            galleryPhotos.push(gPath);
+            newHashes[gPath] = existingHashes[gPath];
+            gIdx++;
+          } else {
+            break;
+          }
+        }
+      }
+    }
+
+    var project = {
+      index: i - 1,
+      client: String(row[CONFIG.COL.CLIENT - 1] || ''),
+      project: projectName,
+      date: String(row[CONFIG.COL.DATE - 1] || ''),
+      venue: String(row[CONFIG.COL.VENUE - 1] || ''),
+      category: category,
+      whatWeDo: whatWeDo,
+      scope: String(row[CONFIG.COL.SCOPE - 1] || ''),
+      youtube: String(row[CONFIG.COL.YOUTUBE - 1] || ''),
+      challenge: String(row[CONFIG.COL.CHALLENGE - 1] || ''),
+      solution: String(row[CONFIG.COL.SOLUTION - 1] || ''),
+      linkedin: String(row[CONFIG.COL.LINKEDIN - 1] || ''),
+      facebook: String(row[CONFIG.COL.FACEBOOK - 1] || ''),
+      threads: String(row[CONFIG.COL.THREADS - 1] || ''),
+      instagram: String(row[CONFIG.COL.INSTAGRAM - 1] || ''),
+      webEN: String(row[CONFIG.COL.WEB_EN - 1] || ''),
+      webTC: String(row[CONFIG.COL.WEB_TC - 1] || ''),
+      webJP: String(row[CONFIG.COL.WEB_JP - 1] || ''),
+      faqEN: String(row[CONFIG.COL.FAQ_EN - 1] || ''),
+      faqTC: String(row[CONFIG.COL.FAQ_TC - 1] || ''),
+      faqJP: String(row[CONFIG.COL.FAQ_JP - 1] || ''),
+      heroPhoto: heroPath,
+      heroPhotoSmall: heroSmPath,
+      logoBlack: logoBlackPath,
+      logoWhite: logoWhitePath,
+      galleryPhotos: galleryPhotos,
+      projectId: projectId,
+      sortDate: String(row[CONFIG.COL.SORT_DATE - 1] || ''),
+      driveFolderId: driveFolderId || '',
+      categories: categories,
+      filterSlugs: filterSlugs
+    };
+
+    projects.push(project);
+  }
+
+  projects.sort(function(a, b) { return (b.sortDate || '').localeCompare(a.sortDate || ''); });
+  projects.forEach(function(p, idx) { p.index = idx; });
+
+  var projectsJson = JSON.stringify({ lastSync: new Date().toISOString(), projects: projects }, null, 2);
+  var hashesJson = JSON.stringify(newHashes, null, 2);
+
+  showProgress_('Pushing to GitHub: ' + imagesToPush.length + ' image(s) + projects.json', '🔥 Uploading');
+
+  try {
+    var filesPushed = pushToGitHubBatch_(token, imagesToPush, projectsJson, hashesJson);
+    Logger.log('Pushed ' + filesPushed + ' files in single commit');
+  } catch (e) {
+    Logger.log('Push failed: ' + e.message);
+    try { SpreadsheetApp.getUi().alert('Sync failed: ' + e.message); } catch(e2) {}
+    return;
+  }
+
+  showProgress_('Updating sync status...', '🔥 Almost done');
+  for (var k = 1; k < data.length; k++) {
+    var rowNum = k + 1;
+    if (targetRowOnly && rowNum !== targetRowOnly) continue;
+    
+    var rowPN = String(data[k][CONFIG.COL.PROJECT - 1] || '').trim();
+    if (!rowPN) continue;
+    var rowSS = String(data[k][CONFIG.COL.SYNC_STATUS - 1] || '').trim();
+    if (!changedOnly || rowSS === 'Pending' || rowSS === 'Pending (images)' || rowSS === '') {
+      sheet.getRange(k + 1, CONFIG.COL.SYNC_STATUS).setValue('Synced ' + new Date().toLocaleString());
+    }
+  }
+
+  var elapsed = Math.round((new Date() - syncStart) / 1000);
+  var msg = 'Sync complete! (' + elapsed + ' seconds)\n\n' +
+    '• Projects: ' + projects.length + '\n' +
+    '• New/updated images pushed: ' + imagesToPush.length + '\n\n' +
+    'Website updates in ~1 min:\nhttps://dickson-crypto.github.io/Firebean-app/';
+
+  try { SpreadsheetApp.getUi().alert(msg); } catch(e) {}
+}
+
+// ─── GIT TREE API BATCH PUSH ──────────────────────────────
+
+function pushToGitHubBatch_(token, images, projectsJson, hashesJson) {
+  var baseUrl = 'https://api.github.com/repos/' + CONFIG.GITHUB_OWNER + '/' + CONFIG.GITHUB_REPO;
+  var headers = { 'Authorization': 'token ' + token, 'Accept': 'application/vnd.github.v3+json' };
+
+  var refResp = ghGet_(baseUrl + '/git/ref/heads/' + CONFIG.GITHUB_BRANCH, headers);
+  var headSha = refResp.object.sha;
+  var commitResp = ghGet_(baseUrl + '/git/commits/' + headSha, headers);
+  var baseTreeSha = commitResp.tree.sha;
+
+  var treeItems = [];
+
+  for (var i = 0; i < images.length; i++) {
+    var img = images[i];
+    var blobSha = createBlob_(baseUrl, headers, img.base64, 'base64');
+    if (blobSha) {
+      treeItems.push({ path: img.path, mode: '100644', type: 'blob', sha: blobSha });
+    }
+    if (i > 0 && i % 10 === 0) Utilities.sleep(200);
+  }
+
+  var jsonBlobSha = createBlob_(baseUrl, headers, projectsJson, 'utf-8');
+  if (jsonBlobSha) treeItems.push({ path: CONFIG.JSON_PATH, mode: '100644', type: 'blob', sha: jsonBlobSha });
+
+  var hashesBlobSha = createBlob_(baseUrl, headers, hashesJson, 'utf-8');
+  if (hashesBlobSha) treeItems.push({ path: CONFIG.HASH_PATH, mode: '100644', type: 'blob', sha: hashesBlobSha });
+
+  if (treeItems.length === 0) return 0;
+
+  var treeResp = ghPost_(baseUrl + '/git/trees', headers, { base_tree: baseTreeSha, tree: treeItems });
+  var newTreeSha = treeResp.sha;
+
+  var commitMsg = 'CMS sync: ' + images.length + ' images, ' + new Date().toISOString().replace('T', ' ').substring(0, 19);
+  var newCommitResp = ghPost_(baseUrl + '/git/commits', headers, { message: commitMsg, tree: newTreeSha, parents: [headSha] });
+  var newCommitSha = newCommitResp.sha;
+
+  ghPatch_(baseUrl + '/git/refs/heads/' + CONFIG.GITHUB_BRANCH, headers, { sha: newCommitSha });
+
+  return treeItems.length;
+}
+
+// ─── CHANGE DETECTION ──────────────────────────────────────
+
+function pushIfChanged_(imagesToPush, existingHashes, newHashes, path, fileId, width) {
+  if (!path || !fileId) return;
+  try {
+    var blob = downloadDriveImage_(fileId, width);
+    if (!blob) return;
+
+    var bytes = blob.getBytes();
+    var hash = computeHash_(bytes);
+    newHashes[path] = hash;
+
+    if (existingHashes[path] === hash) return;
+
+    imagesToPush.push({ path: path, base64: Utilities.base64Encode(bytes) });
+  } catch (e) {
+    Logger.log('  [ERROR] ' + path + ': ' + e.message);
+  }
+}
+
+function loadImageHashes_(token) {
+  var url = 'https://api.github.com/repos/' + CONFIG.GITHUB_OWNER + '/' + CONFIG.GITHUB_REPO + '/contents/' + CONFIG.HASH_PATH + '?ref=' + CONFIG.GITHUB_BRANCH;
+  try {
+    var resp = UrlFetchApp.fetch(url, {
+      headers: { 'Authorization': 'token ' + token, 'Accept': 'application/vnd.github.v3+json' },
+      muteHttpExceptions: true
+    });
+    if (resp.getResponseCode() === 200) {
+      var data = JSON.parse(resp.getContentText());
+      var content = Utilities.newBlob(Utilities.base64Decode(data.content)).getDataAsString();
+      return JSON.parse(content);
+    }
+  } catch (e) {}
+  return {};
+}
+
+function computeHash_(bytes) {
+  var digest = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, bytes);
+  return digest.map(function(b) {
+    var hex = (b < 0 ? b + 256 : b).toString(16);
+    return hex.length === 1 ? '0' + hex : hex;
+  }).join('');
+}
+
+// ─── IMAGE DOWNLOAD ────────────────────────────────────────
+
+function downloadDriveImage_(fileId, width) {
+  try {
+    var url = 'https://lh3.googleusercontent.com/d/' + fileId + '=w' + width;
+    var oauthToken = ScriptApp.getOAuthToken();
+    var resp = UrlFetchApp.fetch(url, { headers: { 'Authorization': 'Bearer ' + oauthToken }, muteHttpExceptions: true, followRedirects: true });
+
+    if (resp.getResponseCode() === 200 && resp.getBlob().getBytes().length > 1000) return resp.getBlob();
+
+    url = 'https://drive.google.com/thumbnail?id=' + fileId + '&sz=w' + width;
+    resp = UrlFetchApp.fetch(url, { headers: { 'Authorization': 'Bearer ' + oauthToken }, muteHttpExceptions: true, followRedirects: true });
+
+    if (resp.getResponseCode() === 200 && resp.getBlob().getBytes().length > 1000) return resp.getBlob();
+
+    return DriveApp.getFileById(fileId).getBlob();
+  } catch (e) {
+    try { return DriveApp.getFileById(fileId).getBlob(); } catch (e2) { return null; }
+  }
+}
+
+// ─── GITHUB API HELPERS ────────────────────────────────────
+
+function ghGet_(url, headers) {
+  var resp = UrlFetchApp.fetch(url, { headers: headers, muteHttpExceptions: true });
+  if (resp.getResponseCode() !== 200) throw new Error('GET ' + url + ' → ' + resp.getResponseCode());
+  return JSON.parse(resp.getContentText());
+}
+
+function ghPost_(url, headers, payload) {
+  var resp = UrlFetchApp.fetch(url, { method: 'post', headers: headers, contentType: 'application/json', payload: JSON.stringify(payload), muteHttpExceptions: true });
+  var code = resp.getResponseCode();
+  if (code !== 200 && code !== 201) throw new Error('POST ' + url + ' → ' + code + ': ' + resp.getContentText().substring(0, 300));
+  return JSON.parse(resp.getContentText());
+}
+
+function ghPatch_(url, headers, payload) {
+  var resp = UrlFetchApp.fetch(url, { method: 'patch', headers: headers, contentType: 'application/json', payload: JSON.stringify(payload), muteHttpExceptions: true });
+  if (resp.getResponseCode() !== 200) throw new Error('PATCH ' + url + ' → ' + resp.getResponseCode());
+  return JSON.parse(resp.getContentText());
+}
+
+function createBlob_(baseUrl, headers, content, encoding) {
+  var resp = ghPost_(baseUrl + '/git/blobs', headers, { content: content, encoding: encoding });
+  return resp.sha;
+}
+
+// ─── UTILITY FUNCTIONS ─────────────────────────────────────
+
+function getGitHubToken_() {
+  return PropertiesService.getScriptProperties().getProperty('GITHUB_TOKEN');
+}
+
+function resolveHeroFileId_(heroColValue, allFolderFiles, galleryFiles, projectName) {
+  var val = String(heroColValue || '').trim();
+
+  if (!val) {
+    for (var i = 0; i < allFolderFiles.length; i++) {
+      if (allFolderFiles[i].isHero) return allFolderFiles[i].id;
+    }
+    if (galleryFiles.length > 0) return galleryFiles[0].id;
+    return '';
+  }
+
+  if (val.match(/^\d+$/)) {
+    var idx = parseInt(val, 10) - 1;
+    if (idx >= 0 && idx < galleryFiles.length) return galleryFiles[idx].id;
+    return resolveHeroFileId_('', allFolderFiles, galleryFiles, projectName);
+  }
+
+  if (val.match(/\.[a-zA-Z]{2,4}$/)) {
+    var lowerVal = val.toLowerCase();
+    for (var j = 0; j < allFolderFiles.length; j++) {
+      if (allFolderFiles[j].name.toLowerCase() === lowerVal) return allFolderFiles[j].id;
+    }
+    var baseVal = lowerVal.replace(/\.[a-zA-Z]{2,4}$/, '');
+    for (var k = 0; k < allFolderFiles.length; k++) {
+      if (allFolderFiles[k].name.toLowerCase().replace(/\.[a-zA-Z]{2,4}$/, '') === baseVal) return allFolderFiles[k].id;
+    }
+    return resolveHeroFileId_('', allFolderFiles, galleryFiles, projectName);
+  }
+
+  var fileId = extractDriveFileId_(val);
+  if (fileId) return fileId;
+
+  var lowerVal2 = val.toLowerCase();
+  for (var m = 0; m < allFolderFiles.length; m++) {
+    if (allFolderFiles[m].name.toLowerCase().replace(/\.[a-zA-Z]{2,4}$/, '') === lowerVal2) return allFolderFiles[m].id;
+  }
+
+  return resolveHeroFileId_('', allFolderFiles, galleryFiles, projectName);
+}
+
+function extractDriveFileId_(url) {
+  if (!url) return '';
+  url = String(url).trim();
+  var match = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+  if (match) return match[1];
+  match = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (match) return match[1];
+  if (url.match(/^[a-zA-Z0-9_-]{10,}$/)) return url;
+  return '';
+}
+
+function extractDriveFolderId_(url) {
+  if (!url) return '';
+  url = String(url).trim();
+  var match = url.match(/\/folders\/([a-zA-Z0-9_-]+)/);
+  if (match) return match[1];
+  if (url.match(/^[a-zA-Z0-9_-]{10,}$/)) return url;
+  return '';
+}
+
+function categoryToSlugs_(cat) {
+  var map = {
+    'GOVERNMENT & PUBLIC SECTOR': ['government'],
+    'LIFESTYLE & CONSUMER': ['lifestyle'],
+    'F&B & HOSPITALITY': ['hospitality'],
+    'MALLS & VENUES': ['venues'],
+    'ROVING EXHIBITIONS': ['exhibitions'],
+    'SOCIAL & CONTENT': ['social'],
+    'INTERACTIVE & TECH': ['tech'],
+    'PR & MEDIA': ['pr'],
+    'EVENTS & CEREMONIES': ['events']
+  };
+  var slugs = [];
+  for (var key in map) {
+    if (cat.indexOf(key) !== -1) slugs = slugs.concat(map[key]);
+  }
+  return slugs;
+}
