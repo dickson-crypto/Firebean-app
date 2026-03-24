@@ -921,6 +921,9 @@ def main():
                             else:
                                 st.error(f"❌ AI 返回數據格式嚴重錯誤，無法修復：{str(e)}")
                                 log_debug(f"Critical JSON Error: {res}", "error")
+                    except Exception as outer_err:
+                        st.error(f"❌ AI 處理發生非預期錯誤：{str(outer_err)}")
+                        log_debug(f"AI Outer Error: {str(outer_err)}", "error")
 
         if st.session_state.ai_content:
             st.markdown("### 📋 Review Content")
