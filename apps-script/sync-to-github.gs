@@ -3,6 +3,9 @@
  * FIREBEAN CMS → GITHUB SYNC PIPELINE  v7.3 (CLEAN MENU — manual sync only)
  * ============================================================
  * 
+ * v7.4: Fixed Drive folder creation — uses Project Name, parent = Firebean Projects folder
+ *       Fixed hero photo missing when images[] not sent (now uses hero_photo_url fallback)
+ *       Fixed Google Slide: always written from ai_content['1_google_slide']
  * v7.3: Removed setupTriggers and onEditTrigger (not needed for manual-only workflow)
  * v7.1: Fixed syncProjectFromStreamlit to match app.py payload exactly
  *       - ai_content (app.py) now correctly read (was ai_generated)
@@ -211,7 +214,8 @@ function syncProjectFromStreamlit(data) {
   // app.py sends: logo_black (base64), logo_white (base64), images[] (base64 array), hero_index
   var needsImageSync = false;
   var pid = (data.project_id || '').toUpperCase();
-  var driveFolder = getOrCreateProjectFolder_(pid);
+  var projectName = cleanSheetValue_(data.project_name || pid);
+  var driveFolder = getOrCreateProjectFolder_(pid, projectName);
 
   if (driveFolder) {
     var folderUrl = 'https://drive.google.com/drive/folders/' + driveFolder.getId();
@@ -249,12 +253,15 @@ function syncProjectFromStreamlit(data) {
       for (var pi = 0; pi < data.images.length; pi++) {
         var photoFile = saveBase64ToDrive_(driveFolder, 'Photo_' + (pi + 1) + '.jpg', data.images[pi], 'image/jpeg');
         if (photoFile && pi === heroIndex) {
-          sheet.getRange(targetRow, CONFIG.COL.HERO_PHOTO).setValue('https://drive.google.com/file/d/' + photoFile.getId());
+          sheet.getRange(targetRow, CONFIG.COL.HERO_PHOTO).setValue('https://drive.google.com/file/d/' + photoFile.getId() + '/view?usp=drivesdk');
+          needsImageSync = true;
         }
       }
       needsImageSync = true;
     } else if (data.hero_photo_id) {
-      sheet.getRange(targetRow, CONFIG.COL.HERO_PHOTO).setValue('https://drive.google.com/file/d/' + data.hero_photo_id);
+      sheet.getRange(targetRow, CONFIG.COL.HERO_PHOTO).setValue('https://drive.google.com/file/d/' + data.hero_photo_id + '/view?usp=drivesdk');
+    } else if (data.hero_photo_url) {
+      sheet.getRange(targetRow, CONFIG.COL.HERO_PHOTO).setValue(data.hero_photo_url);
     }
   } else {
     // Fallback: no Drive folder, use IDs directly if provided
@@ -282,13 +289,34 @@ function syncProjectFromStreamlit(data) {
 }
 
 // ─── HELPER: Get or create project folder in Drive ─────────
-function getOrCreateProjectFolder_(projectId) {
+// Folder is named by Project Name, placed under Firebean Projects parent folder
+// Parent folder ID: 1XT6c6zq-ipGN0sFRwpGl2GSVnaGsmSNg (Firebean Projects)
+var FIREBEAN_PROJECTS_FOLDER_ID_ = '1XT6c6zq-ipGN0sFRwpGl2GSVnaGsmSNg';
+
+function getOrCreateProjectFolder_(projectId, projectName) {
   try {
-    var rootFolderName = 'Firebean CMS Projects';
-    var rootFolders = DriveApp.getFoldersByName(rootFolderName);
-    var root = rootFolders.hasNext() ? rootFolders.next() : DriveApp.createFolder(rootFolderName);
-    var subFolders = root.getFoldersByName(projectId);
-    return subFolders.hasNext() ? subFolders.next() : root.createFolder(projectId);
+    var folderName = projectName || projectId; // Use project name, fallback to ID
+    var parent;
+    try {
+      parent = DriveApp.getFolderById(FIREBEAN_PROJECTS_FOLDER_ID_);
+    } catch (e2) {
+      // Fallback: create/find root folder if parent ID is inaccessible
+      var rootFolders = DriveApp.getFoldersByName('Firebean Projects');
+      parent = rootFolders.hasNext() ? rootFolders.next() : DriveApp.createFolder('Firebean Projects');
+    }
+    // Search by project name first, then by project ID (for legacy folders)
+    var subFolders = parent.getFoldersByName(folderName);
+    if (subFolders.hasNext()) return subFolders.next();
+    // Check if a folder named by project ID already exists (legacy)
+    if (projectId && projectId !== folderName) {
+      var legacyFolders = parent.getFoldersByName(projectId);
+      if (legacyFolders.hasNext()) {
+        var legacy = legacyFolders.next();
+        legacy.setName(folderName); // Rename legacy ID-named folder to project name
+        return legacy;
+      }
+    }
+    return parent.createFolder(folderName);
   } catch (e) {
     Logger.log('getOrCreateProjectFolder_ error: ' + e.message);
     return null;
