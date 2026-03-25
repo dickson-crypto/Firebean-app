@@ -561,7 +561,43 @@ def trigger_full_sync():
             "images": processed_imgs
         }
         r = requests.post(SHEET_SCRIPT_URL, json=payload, timeout=120)
-        return r.status_code == 200
+        if r.status_code != 200:
+            log_debug(f"Sheet sync failed: HTTP {r.status_code}")
+            return False
+
+        # ── Trigger Google Slide creation after sheet sync succeeds ──
+        try:
+            slide_payload = {
+                "action": "create_slide",
+                "project_id": project_id,
+                "client_name": st.session_state.client_name,
+                "project_name": st.session_state.project_name,
+                "category": st.session_state.category,
+                "date": f"{st.session_state.event_month} {st.session_state.event_year}",
+                "venue": st.session_state.venue,
+                "scope": ", ".join(st.session_state.scope),
+                "challenge": ai.get("challenge_summary", ""),
+                "solution": ai.get("solution_summary", ""),
+                "logo_white_base64": st.session_state.logo_white or ""
+            }
+            sr = requests.post(SLIDE_SCRIPT_URL, json=slide_payload, timeout=120)
+            if sr.status_code == 200:
+                try:
+                    slide_result = sr.json()
+                    if slide_result.get("status") == "success" and slide_result.get("slide_url"):
+                        if st.session_state.ai_content is None:
+                            st.session_state.ai_content = {}
+                        st.session_state.ai_content["1_google_slide"] = slide_result["slide_url"]
+                        log_debug(f"Slide created: {slide_result['slide_url']}")
+                except Exception as parse_err:
+                    log_debug(f"Slide response parse error: {str(parse_err)}")
+            else:
+                log_debug(f"Slide creation HTTP error: {sr.status_code}")
+        except Exception as slide_err:
+            log_debug(f"Slide creation error: {str(slide_err)}")
+            # Non-fatal: sheet sync already succeeded
+
+        return True
     except Exception as e:
         log_debug(f"Sync error: {str(e)}")
         return False
