@@ -94,18 +94,18 @@ def format_faq_to_python_string(faq_list):
         q_key = keys[0]
         a_key = keys[1]
         
-        question = str(qa_pair[q_key]).replace("\\", "\\\\").replace("'", "\\'")
-        answer = str(qa_pair[a_key]).replace("\\", "\\\\").replace("'", "\\'")
+        question = str(qa_pair[q_key]).replace("\\", "\\\\").replace("\'", "\\\' ")
+        answer = str(qa_pair[a_key]).replace("\\", "\\\\").replace("\'", "\\\' ")
         
-        formatted_pairs.append(f"{{'\\'{q_key}\\\' : \\'{question}\\\' , \\'{a_key}\\\' : \\'{answer}\\\'}}")
+        formatted_pairs.append(f"{{\'\\\'{q_key}\\\\' : \\\'{question}\\\\' , \\\'{a_key}\\\\' : \\\'{answer}\\\\'}}")
     
     return f"[" + ", ".join(formatted_pairs) + "]"
 
 # --- 1. 核心配置 ---
 SHEET_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz2k7ZZ0shtl5wnhqB5J2wBcxnP7D08cRupRbz3hyi53G25mKYuz6qn5YqkTbPiYjIY/exec"
-SLIDE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyUsYLxjxDn1PjQHDzFXyYQ4yyt2XJW-131GCCxZ-kJ7VBOb1RVgSEfa5kzS7wKb_cam/exec"
+SLIDE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyUsYLxjxDn1PjQHDzFXyQ4yyt2XJW-131GCCxZ-kJ7VBOb1RVgSEfa5kzS7wKb_cam/exec"
 STABLE_MODEL_ID = "gemini-2.5-flash"
-APP_VERSION = "v4.2" # Updated version
+APP_VERSION = "v4.3" # Updated version
 MC_QUESTION_COUNT = 10 # Reduced MC question count
 
 WHO_WE_HELP_OPTIONS = ["GOVERNMENT & PUBLIC SECTOR", "LIFESTYLE & CONSUMER", "F&B & HOSPITALITY", "MALLS & VENUES"]
@@ -342,7 +342,7 @@ def main():
         progress_items = [
             ("Logo Black", st.session_state.logo_black != ""),
             ("Logo White", st.session_state.logo_white != ""),
-            ("Category", len(st.session_state.category) > 0), # Changed for multiselect
+            ("Category", len(st.session_state.category) > 0), 
             ("What We Do", len(st.session_state.what_we_do) > 0),
             ("Scope of Work", len(st.session_state.scope) > 0),
             ("Client Name", st.session_state.client_name != ""),
@@ -366,15 +366,6 @@ def main():
             </div>
             """, unsafe_allow_html=True)
 
-        # Display Missing Items Checklist (moved here)
-        if progress_pct < 100:
-            st.markdown("### 📌 溫馨提示 Checklist")
-            missing_items = [name for name, done in progress_items if not done]
-            for item in missing_items:
-                st.markdown(f"❌ **{item}**")
-        else:
-            st.markdown("### ✅ All Requirements Met!")
-
     st.markdown("</div>", unsafe_allow_html=True)
 
     # FIXED NAVIGATION
@@ -386,32 +377,43 @@ def main():
         st.rerun()
 
     if st.session_state.active_tab == "Project Collector":
+        # Display Missing Items Checklist (moved here)
+        if progress_pct < 100:
+            st.markdown("### 📌 溫馨提示 Checklist")
+            missing_items = [name for name, done in progress_items if not done]
+            for item in missing_items:
+                st.markdown(f"❌ **{item}**")
+        else:
+            st.markdown("### ✅ All Requirements Met!")
         
         st.markdown("<div class='neu-card'>", unsafe_allow_html=True)
         st.markdown("### Project Basics")
         
-        c1, c2 = st.columns([1, 1])
-        with c1:
-            st.markdown("#### Logo Upload ✱ (Required)")
+        # Logo Uploads in one row
+        st.markdown("#### Logo Upload ✱ (Required)")
+        logo_col1, logo_col2 = st.columns(2)
+        with logo_col1:
             st.session_state.logo_black = st.file_uploader("Upload Black Logo", type=['png', 'jpg', 'jpeg'], key="logo_b")
+        with logo_col2:
             st.session_state.logo_white = st.file_uploader("Upload White Logo", type=['png', 'jpg', 'jpeg'], key="logo_w")
         
-        with c2:
-            st.markdown("#### Project Info")
+        st.markdown("#### Project Info")
+        info_col1, info_col2, info_col3 = st.columns(3)
+        with info_col1:
             st.markdown("**Category**")
             selected_categories = []
             for option in WHO_WE_HELP_OPTIONS:
                 if st.checkbox(option, value=(option in st.session_state.category), key=f"cat_{option}"):
                     selected_categories.append(option)
             st.session_state.category = selected_categories
-
+        with info_col2:
             st.markdown("**What We Do**")
             selected_what_we_do = []
             for option in WHAT_WE_DO_OPTIONS:
                 if st.checkbox(option, value=(option in st.session_state.what_we_do), key=f"what_{option}"):
                     selected_what_we_do.append(option)
             st.session_state.what_we_do = selected_what_we_do
-
+        with info_col3:
             st.markdown("**Scope of Work**")
             selected_scope = []
             for option in SOW_OPTIONS:
@@ -436,26 +438,32 @@ def main():
         
         st.markdown("</div>", unsafe_allow_html=True)
         
+        # Project Photos and Open Question in one row
         st.markdown("<div class='neu-card'>", unsafe_allow_html=True)
-        st.markdown("#### Project Photos") # Photo section moved up
-        up = st.file_uploader("Upload Project Photos (Up to 8)", type=['jpg', 'jpeg', 'png'], accept_multiple_files=True, key="p_u")
-        if up:
-            st.session_state.project_photos = up[:8]
-        
-        if st.session_state.project_photos:
-            st.markdown(f"**已上傳 {len(st.session_state.project_photos)} 張相片**")
-            st.markdown("##### Select Hero Photo")
-            cols = st.columns(4)
-            for idx, photo in enumerate(st.session_state.project_photos):
-                with cols[idx % 4]:
-                    st.image(photo, use_container_width=True)
-                    if st.button(f"Hero", key=f"hero_{idx}", type="primary" if st.session_state.hero_photo_index == idx else "secondary"):
-                        st.session_state.hero_photo_index = idx
-                        st.rerun()
+        photo_col, text_col = st.columns([1, 1])
+        with photo_col:
+            st.markdown("#### Project Photos") 
+            up = st.file_uploader("Upload Project Photos (Up to 8)", type=['jpg', 'jpeg', 'png'], accept_multiple_files=True, key="p_u")
+            if up:
+                st.session_state.project_photos = up[:8]
+            
+            if st.session_state.project_photos:
+                st.markdown(f"**已上傳 {len(st.session_state.project_photos)} 張相片**")
+                st.markdown("##### Select Hero Photo")
+                cols = st.columns(4)
+                for idx, photo in enumerate(st.session_state.project_photos):
+                    with cols[idx % 4]:
+                        st.image(photo, use_container_width=True)
+                        if st.button(f"Hero", key=f"hero_{idx}", type="primary" if st.session_state.hero_photo_index == idx else "secondary"):
+                            st.session_state.hero_photo_index = idx
+                            st.rerun()
+        with text_col:
+            st.markdown("#### Additional Notes")
+            st.session_state.open_question_ans = st.text_area("Anything else to add?", value=st.session_state.open_question_ans, height=300, key="open_q_input") # Adjusted height
         st.markdown("</div>", unsafe_allow_html=True)
 
         st.markdown("<div class='neu-card'>", unsafe_allow_html=True)
-        st.markdown(f"#### {MC_QUESTION_COUNT} Diagnostic Questions (MC)") # Updated MC count
+        st.markdown(f"#### {MC_QUESTION_COUNT} Diagnostic Questions (MC)") 
         
         if st.button(f"生成 {MC_QUESTION_COUNT} 題繁中診斷題目", use_container_width=True):
             with st.status("生成中...", expanded=True) as status:
@@ -499,7 +507,6 @@ def main():
         cr = st.columns([1])[0]
         with cr:
             st.markdown("<div class='neu-card'>", unsafe_allow_html=True)
-            st.session_state.open_question_ans = st.text_area("Anything else to add?", value=st.session_state.open_question_ans, height=150, key="open_q_input")
             
             # Lock button if progress < 100%
             is_complete = progress_pct >= 100
@@ -610,7 +617,7 @@ def trigger_full_sync():
         payload = {
             "client_name": st.session_state.client_name,
             "project_name": st.session_state.project_name,
-            "category": ', '.join(st.session_state.category), # Changed for multiselect
+            "category": ', '.join(st.session_state.category), 
             "what_we_do": ', '.join(st.session_state.what_we_do),
             "scope": ', '.join(st.session_state.scope),
             "venue": st.session_state.venue,
