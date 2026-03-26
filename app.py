@@ -9,6 +9,58 @@ import re
 from PIL import Image, ImageDraw, ImageOps
 from datetime import datetime
 
+# --- HELPER: ROBUST JSON EXTRACTION ---
+def extract_json(text):
+    """
+    Robustly extracts JSON from a string that might contain markdown, preamble, or other text.
+    Ensures that if the AI returns text around the JSON, we still get the data.
+    """
+    if not text:
+        return None
+    
+    # 1. Try direct parsing (ideal case)
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+
+    # 2. Try extracting from markdown code blocks (```json ... ``` or ``` ... ```)
+    json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', text, re.DOTALL)
+    if json_match:
+        try:
+            return json.loads(json_match.group(1))
+        except json.JSONDecodeError:
+            pass
+
+    # 3. Try finding the first '{' and last '}' (fallback for raw text)
+    start = text.find('{')
+    end = text.rfind('}')
+    if start != -1 and end != -1:
+        try:
+            return json.loads(text[start:end+1])
+        except json.JSONDecodeError:
+            pass
+            
+    return None
+
+def validate_mc_questions(questions):
+    """
+    Ensures that generated questions are valid and contain the required options.
+    If options are missing, it filters them out to prevent UI errors.
+    """
+    if not isinstance(questions, list):
+        return []
+    
+    valid_q = []
+    for q in questions:
+        # Check if it's a dict and has 'question' and 'options'
+        if isinstance(q, dict) and 'question' in q:
+            # If options are missing or not a list, provide a default or skip
+            opts = q.get('options', [])
+            if isinstance(opts, list) and len(opts) > 0:
+                valid_q.append(q)
+    return valid_q
+
 def format_faq_to_python_string(faq_list):
     """
     Safely converts a list of Q&A dicts into a standardized Python-style string for the Master DB.
@@ -298,105 +350,73 @@ def apply_styles(is_dark):
             border: 1px solid #333;
         }}
         #logo-anchor {{
-            font-family: 'Montserrat', sans-serif;
-            font-weight: 800;
-            font-size: 24px;
-            letter-spacing: 2px;
-            color: {accent};
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-bottom: 20px;
         }}
         </style>
     """, unsafe_allow_html=True)
 
-def init_session_state():
-    """初始化所有 Session State 變量"""
-    defaults = {
-        "active_tab": "Project Collector",
-        "client_name": "", "project_name": "", "venue": "",
-        "event_year": str(CURRENT_YEAR), "event_month": "JAN",
-        "youtube": "", "category": WHO_WE_HELP_OPTIONS[0],
-        "what_we_do": [], "scope": [], "project_photos": [],
-        "mc_questions": None, "open_question_ans": "",
-        "ai_content": None, "debug_logs": [], "draft_project_id": None,
-        "user_dark_mode": None, "last_autosave_time": 0,
-        "logo_black": None, "logo_white": None, "hero_photo_index": 0,
-        "sync_success": False
-    }
-    for k, v in defaults.items():
-        if k not in st.session_state: st.session_state[k] = v
-
-def reset_for_new_case():
-    """完全重置所有輸入，準備處理下一個案例"""
-    st.session_state.client_name = ""
-    st.session_state.project_name = ""
-    st.session_state.venue = ""
-    st.session_state.youtube = ""
-    st.session_state.what_we_do = []
-    st.session_state.scope = []
-    st.session_state.project_photos = []
-    st.session_state.mc_questions = None
-    st.session_state.open_question_ans = ""
-    st.session_state.ai_content = None
-    st.session_state.draft_project_id = None
-    st.session_state.sync_success = False
-    st.session_state.active_tab = "Project Collector"
-    for k in list(st.session_state.keys()):
-        if k.startswith("ans_") or k.startswith("chk_"):
-            del st.session_state[k]
-
 def main():
-    st.set_page_config(page_title="Firebean Brain Collector", layout="wide")
-    init_session_state()
+    st.set_page_config(page_title="FIREBEAN BRAIN", layout="wide")
+    
+    # Initialize session state
+    if "active_tab" not in st.session_state: st.session_state.active_tab = "Project Collector"
+    if "client_name" not in st.session_state: st.session_state.client_name = ""
+    if "project_name" not in st.session_state: st.session_state.project_name = ""
+    if "venue" not in st.session_state: st.session_state.venue = ""
+    if "event_year" not in st.session_state: st.session_state.event_year = str(datetime.now().year)
+    if "event_month" not in st.session_state: st.session_state.event_month = MONTH_OPTIONS[datetime.now().month - 1]
+    if "youtube" not in st.session_state: st.session_state.youtube = ""
+    if "category" not in st.session_state: st.session_state.category = WHO_WE_HELP_OPTIONS[0]
+    if "what_we_do" not in st.session_state: st.session_state.what_we_do = []
+    if "scope" not in st.session_state: st.session_state.scope = []
+    if "project_photos" not in st.session_state: st.session_state.project_photos = []
+    if "hero_photo_index" not in st.session_state: st.session_state.hero_photo_index = 0
+    if "open_question_ans" not in st.session_state: st.session_state.open_question_ans = ""
+    if "mc_questions" not in st.session_state: st.session_state.mc_questions = []
+    if "ai_content" not in st.session_state: st.session_state.ai_content = None
+    if "logo_black" not in st.session_state: st.session_state.logo_black = ""
+    if "logo_white" not in st.session_state: st.session_state.logo_white = ""
+    if "user_dark_mode" not in st.session_state: st.session_state.user_dark_mode = None
+    if "sync_success" not in st.session_state: st.session_state.sync_success = False
 
     is_dark = get_is_dark_mode()
     apply_styles(is_dark)
 
-    c1, c2, c3 = st.columns([1, 1, 0.5])
-    with c1: 
-        st.markdown('<span id="logo-anchor">FIREBEAN BRAIN</span>', unsafe_allow_html=True)
-        if st.button("🏠 HOME", key="logo_btn"):
-            if st.session_state.get("sync_success", False):
-                reset_for_new_case()
-            else:
-                st.session_state.active_tab = "Project Collector"
+    with st.sidebar:
+        st.markdown("### 🛠️ Settings")
+        st.session_state.user_dark_mode = st.toggle("Dark Mode", value=is_dark)
+        if st.button("Clear All Data", type="secondary"):
+            for key in list(st.session_state.keys()): del st.session_state[key]
             st.rerun()
-    with c2: 
-        progress_placeholder = st.empty()
-    with c3:
-        current_mode = st.session_state.user_dark_mode
-        is_dark = get_is_dark_mode()
-        col_dm1, col_dm2 = st.columns(2)
-        with col_dm1:
-            if st.button("☀️" if is_dark else "🌙", key="toggle_dark"):
-                st.session_state.user_dark_mode = not is_dark if st.session_state.user_dark_mode is None else not st.session_state.user_dark_mode
-                st.rerun()
-        with col_dm2:
-            if st.button("🔄", key="reset_dark"):
-                st.session_state.user_dark_mode = None
-                st.rerun()
+        
+        st.markdown("---")
+        st.markdown("### 🔑 API Keys")
+        gemini_key = st.text_input("GEMINI_API_KEY", type="password", value=st.session_state.get("GEMINI_API_KEY", ""))
+        if gemini_key: st.session_state.GEMINI_API_KEY = gemini_key
 
-    st.markdown("<br>", unsafe_allow_html=True)
-    nav_cols = st.columns(2)
-    if nav_cols[0].button("Project Collector", use_container_width=True, type="primary" if st.session_state.active_tab == "Project Collector" else "secondary"):
-        st.session_state.active_tab = "Project Collector"
-        st.rerun()
-    if nav_cols[1].button("Review & Multi-Sync", use_container_width=True, type="primary" if st.session_state.active_tab == "Review & Multi-Sync" else "secondary"):
-        st.session_state.active_tab = "Review & Multi-Sync"
-        st.rerun()
+    st.markdown('<div id="logo-anchor">', unsafe_allow_html=True)
+    st.image("https://firebean.agency/wp-content/uploads/2022/10/Firebean_Logo_Black.png" if not is_dark else "https://firebean.agency/wp-content/uploads/2022/10/Firebean_Logo_White.png", width=250)
+    st.markdown('</div>', unsafe_allow_html=True)
 
-    st.markdown("<hr style='margin-top: 5px; margin-bottom: 20px;'>", unsafe_allow_html=True)
+    tabs_nav = st.radio("Navigation", ["Project Collector", "Review & Multi-Sync"], horizontal=True, label_visibility="collapsed")
+    st.session_state.active_tab = tabs_nav
 
     if st.session_state.active_tab == "Project Collector":
         st.markdown('<div class="neu-card">', unsafe_allow_html=True)
-        col1, col2 = st.columns(2)
-        with col1:
-            ub = st.file_uploader("Black Logo ✱ (Required)", type=['png'], key="l_b")
-            if ub is not None: st.session_state.logo_black = base64.b64encode(ub.read()).decode('utf-8')
+        st.markdown("### Project Basics")
+        
+        c1, c2 = st.columns([1, 1])
+        with c1:
+            l_black = st.file_uploader("Upload Black Logo", type=['png', 'jpg'], key="logo_b")
+            if l_black: st.session_state.logo_black = base64.b64encode(l_black.read()).decode()
             if st.session_state.logo_black:
-                preview_bg = "#1E2128" if is_dark else "#f9f9f9"
-                st.markdown(f'<div style="background-color: {preview_bg}; padding: 10px; border-radius: 8px;"><img src="data:image/png;base64,{st.session_state.logo_black}" style="max-height: 60px;"></div>', unsafe_allow_html=True)
-        with col2:
-            uw = st.file_uploader("White Logo ✱ (Required)", type=['png'], key="l_w")
-            if uw is not None: st.session_state.logo_white = base64.b64encode(uw.read()).decode('utf-8')
+                st.markdown(f'<div style="background-color: #f4f7f6; padding: 10px; border-radius: 8px;"><img src="data:image/png;base64,{st.session_state.logo_black}" style="max-height: 60px;"></div>', unsafe_allow_html=True)
+        with c2:
+            l_white = st.file_uploader("Upload White Logo", type=['png', 'jpg'], key="logo_w")
+            if l_white: st.session_state.logo_white = base64.b64encode(l_white.read()).decode()
             if st.session_state.logo_white:
                 st.markdown(f'<div style="background-color: #2D3436; padding: 10px; border-radius: 8px;"><img src="data:image/png;base64,{st.session_state.logo_white}" style="max-height: 60px;"></div>', unsafe_allow_html=True)
 
@@ -435,9 +455,13 @@ def main():
                         facts = call_gemini_sdk("請詳細掃描並提取這些活動相片中的實體事實 (Facts)...", image_files=st.session_state.project_photos)
                         res = call_gemini_sdk(f"基於背景資料生成 15 題 PR 診斷選擇題... {facts}", is_json=True)
                         if res: 
-                            st.session_state.mc_questions = json.loads(res)
-                            status.update(label="✅ 分析與題目生成完畢！", state="complete", expanded=False)
-                            st.rerun()
+                            parsed = extract_json(res)
+                            if parsed:
+                                st.session_state.mc_questions = validate_mc_questions(parsed)
+                                status.update(label="✅ 分析與題目生成完畢！", state="complete", expanded=False)
+                                st.rerun()
+                            else:
+                                st.error("AI returned an invalid format. Please try again.")
 
             if st.session_state.mc_questions:
                 for i, q in enumerate(st.session_state.mc_questions):
@@ -475,9 +499,13 @@ def main():
                     context = f"Client: {st.session_state.client_name}, Project: {st.session_state.project_name}, Category: {st.session_state.category}, SOW: {', '.join(st.session_state.scope)}, Notes: {st.session_state.open_question_ans}"
                     res = call_gemini_sdk(f"{FIREBEAN_SYSTEM_PROMPT}\n\nContext: {context}", is_json=True)
                     if res:
-                        st.session_state.ai_content = json.loads(res)
-                        st.session_state.active_tab = "Review & Multi-Sync"
-                        st.rerun()
+                        parsed = extract_json(res)
+                        if parsed:
+                            st.session_state.ai_content = parsed
+                            st.session_state.active_tab = "Review & Multi-Sync"
+                            st.rerun()
+                        else:
+                            st.error("AI returned an invalid format. Please try again.")
             st.markdown('</div>', unsafe_allow_html=True)
 
     elif st.session_state.active_tab == "Review & Multi-Sync":
@@ -525,6 +553,7 @@ def trigger_full_sync():
         project_id, sort_date = generate_system_metadata()
         processed_imgs = []
         for f in st.session_state.project_photos:
+            if hasattr(f, "seek"): f.seek(0)
             img = Image.open(f).convert('RGB')
             img = ImageOps.exif_transpose(img)
             img.thumbnail((1200, 1200))
@@ -578,13 +607,15 @@ def trigger_full_sync():
                 "scope": ", ".join(st.session_state.scope),
                 "challenge": ai.get("challenge_summary", ""),
                 "solution": ai.get("solution_summary", ""),
-                "logo_white_base64": st.session_state.logo_white or ""
+                "logo_white_base64": st.session_state.logo_white or "",
+                "images": processed_imgs
             }
             sr = requests.post(SLIDE_SCRIPT_URL, json=slide_payload, timeout=120)
             if sr.status_code == 200:
                 try:
-                    slide_result = sr.json()
-                    if slide_result.get("status") == "success" and slide_result.get("slide_url"):
+                    # Robust parsing for slide result too
+                    slide_result = extract_json(sr.text)
+                    if slide_result and slide_result.get("status") == "success" and slide_result.get("slide_url"):
                         if st.session_state.ai_content is None:
                             st.session_state.ai_content = {}
                         st.session_state.ai_content["1_google_slide"] = slide_result["slide_url"]
