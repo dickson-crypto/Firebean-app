@@ -98,7 +98,7 @@ def format_faq_to_python_string(faq_list):
         question = str(qa_pair[q_key]).replace("\\", "\\").replace("'", "\'")
         answer = str(qa_pair[a_key]).replace("\\", "\\").replace("'", "\'")
         
-        formatted_pairs.append(f"{{\'\\'{q_key}\\' : \\'{question}\\' , \\'{a_key}\\' : \\'{answer}\\'}}")
+        formatted_pairs.append(f"{{\'\\\'{q_key}\\\' : \\\'{question}\\\' , \\\'{a_key}\\\' : \\\'{answer}\\\'}}")
     
     return f"[" + ", ".join(formatted_pairs) + "]"
 
@@ -106,7 +106,7 @@ def format_faq_to_python_string(faq_list):
 SHEET_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz2k7ZZ0shtl5wnhqB5J2wBcxnP7D08cRupRbz3hyi53G25mKYuz6qn5YqkTbPiYjIY/exec"
 SLIDE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyUsYLxjxDn1PjQHDzFXyYQ4yyt2XJW-131GCCxZ-kJ7VBOb1RVgSEfa5kzS7wKb_cam/exec"
 STABLE_MODEL_ID = "gemini-2.5-flash"
-APP_VERSION = "v4.6" # Updated version
+APP_VERSION = "v4.7" # Updated version
 MC_QUESTION_COUNT = 10 # Reduced MC question count
 
 WHO_WE_HELP_OPTIONS = ["GOVERNMENT & PUBLIC SECTOR", "LIFESTYLE & CONSUMER", "F&B & HOSPITALITY", "MALLS & VENUES"]
@@ -367,11 +367,11 @@ def main():
             st.session_state.scope = random.sample(SOW_OPTIONS, k=2)
             st.session_state.open_question_ans = "This is dummy additional notes for testing purposes."
             
-            # Dummy photos (base64 encoded small transparent PNG)
-            dummy_photo_b64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
-            st.session_state.logo_black = dummy_photo_b64
-            st.session_state.logo_white = dummy_photo_b64
-            st.session_state.project_photos = [dummy_photo_b64] * 2 # Two dummy photos
+            # Use placeholder image URLs for dummy photos
+            dummy_image_url = "https://via.placeholder.com/150/FF0000/FFFFFF?text=Dummy"
+            st.session_state.logo_black = dummy_image_url
+            st.session_state.logo_white = dummy_image_url
+            st.session_state.project_photos = [dummy_image_url] * 2 # Two dummy photos
             st.session_state.hero_photo_index = 0
 
             # Generate dummy MC questions and answers
@@ -510,7 +510,11 @@ def main():
                 cols = st.columns(4)
                 for idx, photo in enumerate(st.session_state.project_photos):
                     with cols[idx % 4]:
-                        st.image(photo, use_container_width=True)
+                        # Check if photo is a string (URL) or a file object
+                        if isinstance(photo, str):
+                            st.image(photo, use_container_width=True)
+                        else:
+                            st.image(photo, use_container_width=True)
                         if st.button(f"Hero", key=f"hero_{idx}", type="primary" if st.session_state.hero_photo_index == idx else "secondary"):
                             st.session_state.hero_photo_index = idx
                             st.rerun()
@@ -648,7 +652,13 @@ def trigger_full_sync():
         # Prepare images
         processed_imgs = []
         for photo in st.session_state.project_photos:
-            img = Image.open(photo)
+            # If photo is a URL (from Boss Mode), fetch it
+            if isinstance(photo, str) and photo.startswith("http"):
+                response = requests.get(photo)
+                img = Image.open(io.BytesIO(response.content))
+            else:
+                img = Image.open(photo)
+            
             img_byte_arr = io.BytesIO()
             img.save(img_byte_arr, format='PNG')
             b64 = base64.b64encode(img_byte_arr.getvalue()).decode()
