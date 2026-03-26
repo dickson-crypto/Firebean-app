@@ -98,7 +98,7 @@ def format_faq_to_python_string(faq_list):
 
 # --- 1. 核心配置 ---
 SHEET_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz2k7ZZ0shtl5wnhqB5J2wBcxnP7D08cRupRbz3hyi53G25mKYuz6qn5YqkTbPiYjIY/exec"
-SLIDE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzBbiGfP_cqPcH9zJ-cLFuskOA4ddvBoip4xaxcBtrmMvvYvrtee-oe-pPV_sUTOB7J/exec"
+SLIDE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbBbiGfP_cqPcH9zJ-cLFuskOA4ddvBoip4xaxcBtrmMvvYvrtee-oe-pPV_sUTOB7J/exec"
 STABLE_MODEL_ID = "gemini-2.5-flash"
 
 WHO_WE_HELP_OPTIONS = ["GOVERNMENT & PUBLIC SECTOR", "LIFESTYLE & CONSUMER", "F&B & HOSPITALITY", "MALLS & VENUES"]
@@ -234,7 +234,7 @@ All social media posts are POST-EVENT highlights for the agency's own channels. 
    - Tone: 幽默口語化、隨性但具洞察力。具備引發討論的潛力。
    - Content: 以「做完這個項目後的一個小領悟」為題。可以是一個關於創意、團隊合作或現場突發狀況的小趣事，並帶出專業洞見。
    - Format: 像在跟 Threads 上的行內人對話。
-   - Language: 香港繁體中文。
+   - Language: 香港繁體中文.
 
 4. '5_linkedin_post' (專業成就 & 策略洞察):
    - Word Count: 200 - 400 words.
