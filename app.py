@@ -8,6 +8,7 @@ import requests
 import re
 from PIL import Image, ImageDraw, ImageOps
 from datetime import datetime
+import random
 
 # --- HELPER: ROBUST JSON EXTRACTION ---
 def extract_json(text):
@@ -97,7 +98,7 @@ def format_faq_to_python_string(faq_list):
         question = str(qa_pair[q_key]).replace("\\", "\\").replace("'", "\'")
         answer = str(qa_pair[a_key]).replace("\\", "\\").replace("'", "\'")
         
-        formatted_pairs.append(f"{{'\\'{q_key}\\' : \\'{question}\\' , \\'{a_key}\\' : \\'{answer}\\'}}")
+        formatted_pairs.append(f"{{\'\\'{q_key}\\' : \\'{question}\\' , \\'{a_key}\\' : \\'{answer}\\'}}")
     
     return f"[" + ", ".join(formatted_pairs) + "]"
 
@@ -105,7 +106,7 @@ def format_faq_to_python_string(faq_list):
 SHEET_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz2k7ZZ0shtl5wnhqB5J2wBcxnP7D08cRupRbz3hyi53G25mKYuz6qn5YqkTbPiYjIY/exec"
 SLIDE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyUsYLxjxDn1PjQHDzFXyYQ4yyt2XJW-131GCCxZ-kJ7VBOb1RVgSEfa5kzS7wKb_cam/exec"
 STABLE_MODEL_ID = "gemini-2.5-flash"
-APP_VERSION = "v4.5" # Updated version
+APP_VERSION = "v4.6" # Updated version
 MC_QUESTION_COUNT = 10 # Reduced MC question count
 
 WHO_WE_HELP_OPTIONS = ["GOVERNMENT & PUBLIC SECTOR", "LIFESTYLE & CONSUMER", "F&B & HOSPITALITY", "MALLS & VENUES"]
@@ -351,6 +352,39 @@ def main():
         gemini_key = st.text_input("GEMINI_API_KEY", type="password", value=st.session_state.get("GEMINI_API_KEY", ""))
         if gemini_key: 
             st.session_state.GEMINI_API_KEY = gemini_key
+
+        st.markdown("---")
+        st.markdown("### 🧪 Testing Tools")
+        if st.button("🚀 BOSS MODE (Auto-Fill Dummy Data)", type="primary"):
+            st.session_state.client_name = "Dummy Client Inc."
+            st.session_state.project_name = "Project Alpha Launch"
+            st.session_state.venue = "Virtual Event Hall"
+            st.session_state.event_year = str(CURRENT_YEAR)
+            st.session_state.event_month = "JAN"
+            st.session_state.youtube = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+            st.session_state.category = random.sample(WHO_WE_HELP_OPTIONS, k=1)
+            st.session_state.what_we_do = random.sample(WHAT_WE_DO_OPTIONS, k=1)
+            st.session_state.scope = random.sample(SOW_OPTIONS, k=2)
+            st.session_state.open_question_ans = "This is dummy additional notes for testing purposes."
+            
+            # Dummy photos (base64 encoded small transparent PNG)
+            dummy_photo_b64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
+            st.session_state.logo_black = dummy_photo_b64
+            st.session_state.logo_white = dummy_photo_b64
+            st.session_state.project_photos = [dummy_photo_b64] * 2 # Two dummy photos
+            st.session_state.hero_photo_index = 0
+
+            # Generate dummy MC questions and answers
+            dummy_mc_questions = []
+            for i in range(MC_QUESTION_COUNT):
+                dummy_mc_questions.append({
+                    "id": i + 1,
+                    "question": f"Dummy MC Question {i+1} in Traditional Chinese?",
+                    "options": ["Option A", "Option B", "Option C", "Option D"]
+                })
+                st.session_state[f"ans_{i+1}"] = [random.choice(dummy_mc_questions[i]["options"])]
+            st.session_state.mc_questions = dummy_mc_questions
+            st.rerun()
 
     # Display Logo with Version Number and Progress Circle
     st.markdown("<div id='logo-container'>", unsafe_allow_html=True)
