@@ -246,16 +246,10 @@ All social media posts are POST-EVENT highlights for the agency's own channels. 
 **CRITICAL INSTRUCTION FOR '7_faq' (Fast Recap FAQ)**:
 The '7_faq' key MUST be a nested JSON object containing exactly three keys: "en", "tc", and "jp".
 Each language key must contain a list of exactly 3 to 4 Q&A objects.
-These are "Fast Facts" about the project to help busy website visitors quickly understand the scope and impact.
+These are "Fast Facts" about the project to help website visitors quickly understand the scope and impact.
 - English: Keys must be "Q1", "A1", "Q2", "A2", etc.
 - 繁中: Keys must be "Q1", "A1", "Q2", "A2", etc.
 - 日本語: Keys must be "Q1", "A1", "Q2", "A2", etc.
-
-Example FAQ Content:
-- Q: What was the primary creative concept?
-- A: We transformed a traditional warehouse into a futuristic cyber-garden...
-- Q: How many guests attended the event?
-- A: Over 500 VIP guests attended throughout the two-day activation...
 """
 
 def call_gemini_sdk(prompt, image_files=None, is_json=False):
@@ -293,7 +287,6 @@ def log_debug(msg, level="info"):
     if "debug_logs" not in st.session_state:
         st.session_state.debug_logs = []
     st.session_state.debug_logs.append(formatted_msg)
-    # 限制日誌數量
     if len(st.session_state.debug_logs) > 50:
         st.session_state.debug_logs.pop(0)
 
@@ -306,7 +299,6 @@ def get_is_dark_mode():
     """判斷當前是否為深色模式"""
     if st.session_state.user_dark_mode is not None:
         return st.session_state.user_dark_mode
-    # 自動模式：18:00 - 06:00 為深色
     hr = datetime.now().hour
     return hr >= 18 or hr < 6
 
@@ -332,11 +324,6 @@ def apply_styles(is_dark):
             font-size: 1.1em;
             margin-top: 15px;
             color: {accent};
-        }}
-        .checkbox-group {{
-            margin-left: 20px;
-            padding: 10px;
-            border-left: 2px solid #eee;
         }}
         .debug-terminal {{
             background-color: #000;
@@ -401,8 +388,13 @@ def main():
     st.image("https://firebean.agency/wp-content/uploads/2022/10/Firebean_Logo_Black.png" if not is_dark else "https://firebean.agency/wp-content/uploads/2022/10/Firebean_Logo_White.png", width=250)
     st.markdown('</div>', unsafe_allow_html=True)
 
-    tabs_nav = st.radio("Navigation", ["Project Collector", "Review & Multi-Sync"], horizontal=True, label_visibility="collapsed")
-    st.session_state.active_tab = tabs_nav
+    # FIXED NAVIGATION: Using index to persist state across reruns
+    tab_options = ["Project Collector", "Review & Multi-Sync"]
+    active_idx = tab_options.index(st.session_state.active_tab)
+    tabs_nav = st.radio("Navigation", tab_options, index=active_idx, horizontal=True, label_visibility="collapsed")
+    if tabs_nav != st.session_state.active_tab:
+        st.session_state.active_tab = tabs_nav
+        st.rerun()
 
     if st.session_state.active_tab == "Project Collector":
         st.markdown('<div class="neu-card">', unsafe_allow_html=True)
@@ -478,8 +470,10 @@ def main():
 
         with cr:
             st.markdown('<div class="neu-card">', unsafe_allow_html=True)
+            # FIXED: File uploader state persistence
             up = st.file_uploader("Upload Project Photos (Up to 8)", type=['jpg', 'jpeg', 'png'], accept_multiple_files=True, key="p_u")
-            if up: st.session_state.project_photos = up[:8]
+            if up:
+                st.session_state.project_photos = up[:8]
             
             if st.session_state.project_photos:
                 st.markdown("##### Select Hero Photo")
@@ -539,10 +533,13 @@ def main():
                 ai["1_google_slide"] = st.text_input("Google Slide Link", value=ai.get("1_google_slide", ""), key="rev_slide")
             
             if st.button("💾 Sync to Master DB", use_container_width=True, type="primary"):
-                if trigger_full_sync():
-                    st.success("✅ Sync Success!")
-                    st.session_state.sync_success = True
-                else: st.error("❌ Sync Failed!")
+                with st.spinner("正在同步數據至 Master DB 與 Google Slides..."):
+                    if trigger_full_sync():
+                        st.balloons()
+                        st.success("✅ Sync Success! All data pushed to Master DB and Google Slides.")
+                        st.session_state.sync_success = True
+                    else: 
+                        st.error("❌ Sync Failed! Please check the Debug Terminal for details.")
             st.markdown('</div>', unsafe_allow_html=True)
 
     with st.expander("🛠️ Debug Terminal", expanded=False):
@@ -562,6 +559,38 @@ def trigger_full_sync():
             processed_imgs.append(base64.b64encode(buf.getvalue()).decode())
 
         ai = st.session_state.ai_content or {}
+        
+        # ── Trigger Google Slide creation FIRST to get the URL ──
+        slide_url = ai.get("1_google_slide", "")
+        try:
+            slide_payload = {
+                "action": "create_slide",
+                "project_id": project_id,
+                "client_name": st.session_state.client_name,
+                "project_name": st.session_state.project_name,
+                "category": st.session_state.category,
+                "date": f"{st.session_state.event_month} {st.session_state.event_year}",
+                "venue": st.session_state.venue,
+                "scope": ", ".join(st.session_state.scope),
+                "challenge": ai.get("challenge_summary", ""),
+                "solution": ai.get("solution_summary", ""),
+                "logo_white_base64": st.session_state.logo_white or "",
+                "images": processed_imgs
+            }
+            sr = requests.post(SLIDE_SCRIPT_URL, json=slide_payload, timeout=120)
+            if sr.status_code == 200:
+                slide_result = extract_json(sr.text)
+                if slide_result and slide_result.get("status") == "success" and slide_result.get("slide_url"):
+                    slide_url = slide_result["slide_url"]
+                    ai["1_google_slide"] = slide_url
+                    st.session_state.ai_content = ai
+                    log_debug(f"Slide created: {slide_url}")
+            else:
+                log_debug(f"Slide creation HTTP error: {sr.status_code}")
+        except Exception as slide_err:
+            log_debug(f"Slide creation error: {str(slide_err)}")
+
+        # ── Now sync to Master DB with the Slide URL included ──
         faq = ai.get("7_faq", {})
         payload = {
             "action": "sync_project",
@@ -589,44 +618,11 @@ def trigger_full_sync():
             "hero_index": st.session_state.hero_photo_index,
             "images": processed_imgs
         }
+        
         r = requests.post(SHEET_SCRIPT_URL, json=payload, timeout=120)
         if r.status_code != 200:
             log_debug(f"Sheet sync failed: HTTP {r.status_code}")
             return False
-
-        # ── Trigger Google Slide creation after sheet sync succeeds ──
-        try:
-            slide_payload = {
-                "action": "create_slide",
-                "project_id": project_id,
-                "client_name": st.session_state.client_name,
-                "project_name": st.session_state.project_name,
-                "category": st.session_state.category,
-                "date": f"{st.session_state.event_month} {st.session_state.event_year}",
-                "venue": st.session_state.venue,
-                "scope": ", ".join(st.session_state.scope),
-                "challenge": ai.get("challenge_summary", ""),
-                "solution": ai.get("solution_summary", ""),
-                "logo_white_base64": st.session_state.logo_white or "",
-                "images": processed_imgs
-            }
-            sr = requests.post(SLIDE_SCRIPT_URL, json=slide_payload, timeout=120)
-            if sr.status_code == 200:
-                try:
-                    # Robust parsing for slide result too
-                    slide_result = extract_json(sr.text)
-                    if slide_result and slide_result.get("status") == "success" and slide_result.get("slide_url"):
-                        if st.session_state.ai_content is None:
-                            st.session_state.ai_content = {}
-                        st.session_state.ai_content["1_google_slide"] = slide_result["slide_url"]
-                        log_debug(f"Slide created: {slide_result['slide_url']}")
-                except Exception as parse_err:
-                    log_debug(f"Slide response parse error: {str(parse_err)}")
-            else:
-                log_debug(f"Slide creation HTTP error: {sr.status_code}")
-        except Exception as slide_err:
-            log_debug(f"Slide creation error: {str(slide_err)}")
-            # Non-fatal: sheet sync already succeeded
 
         return True
     except Exception as e:
