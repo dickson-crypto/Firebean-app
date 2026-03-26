@@ -89,8 +89,7 @@ Format & Structure Requirements for '6_website':
     - Structure: Use exactly three sections, each starting with an <h3> heading.
     - Paragraph Count: Ensure each of the three sections contains at least one substantive paragraph (<p>). This is crucial for photo interleaving.
     - The Core Narrative: Seamlessly weave the [Basic Information], [Project Outcome], [Challenge], and [Solution] into the chosen narrative angle. All written in past tense.
-    - The Punch Line: The final paragraph before the FAQ must be a single, bolded, highly memorable concluding sentence about the project's impact.
-    - The Fast Recap FAQ: End with exactly three Q&A pairs. Use the heading #### Fast Recap FAQ.
+    - The Punch Line: The final paragraph must be a single, bolded, highly memorable concluding sentence about the project's impact.
     
     **CRITICAL HTML STRUCTURE REQUIREMENT FOR '6_website'**:
     You MUST output valid HTML that matches the CMS parsing format exactly. The structure MUST follow this pattern for photo interleaving:
@@ -101,36 +100,13 @@ Format & Structure Requirements for '6_website':
     <p>Paragraph 2...</p>
     <h3>Third Section Heading</h3>
     <p>Paragraph 3...</p>
-    <p>The bolded punch line sentence.</p>
-    ### Fast Recap FAQ:
-    Q1: Question 1?
-    A1: Answer 1...
-    Q2: Question 2?
-    A2: Answer 2...
-    Q3: Question 3?
-    A3: Answer 3...
+    <p><b>The bolded punch line sentence.</b></p>
     
     STRICT RULES FOR HTML:
     1. Use ONLY <h1>, <h3>, and <p> tags for main content.
     2. DO NOT use <h2>, <h4>, or any other heading tags.
-    3. DO NOT use <span>, <div>, <b>, <strong>, or any style attributes (no inline colors).
-    4. After the last paragraph, add a blank line, then switch to Markdown format.
-    
-    STRICT RULES FOR Q&A SECTION (CRITICAL - MUST BE IN MARKDOWN FORMAT):
-    5. The Q&A section MUST use Markdown format, NOT HTML.
-    6. The FAQ heading MUST be exactly: ### Fast Recap FAQ:
-    7. Each question MUST start with Q1:, Q2:, Q3: (with colon, not question mark).
-    8. Each answer MUST start with A1:, A2:, A3: (with colon).
-    9. Q&A pairs MUST be on separate lines, one per line.
-    10. DO NOT use <h4>, <h3>, or any HTML tags for Q&A - use pure Markdown.
-    11. Example format:
-        ### Fast Recap FAQ:
-        Q1: What was the main challenge?
-        A1: The challenge was...
-        Q2: How did you solve it?
-        A2: We solved it by...
-        Q3: What was the outcome?
-        A3: The outcome was...
+    3. DO NOT use <span>, <div>, <strong>, or any style attributes (no inline colors).
+    4. NEVER include a FAQ section inside '6_website'. Do not output '### Fast Recap FAQ'.
 
 Language Output Requirement for '6_website':
 - "angle_chosen": State the name of the angle you selected (e.g., "Style 2: The Contrarian").
@@ -171,25 +147,23 @@ All social media posts are POST-EVENT highlights for the agency's own channels. 
 The '7_faq' key MUST be a nested JSON object containing exactly three keys: "en", "tc", and "jp".
 This FAQ is SEPARATE from the article body in '6_website'. It will be stored in its own dedicated database column and displayed in the website sidebar.
 
-Each language version must contain exactly 5 Q&A pairs covering:
+Each language version must contain 3 to 5 Q&A pairs covering:
 1. What was the core challenge or brief?
 2. What was the creative/strategic approach?
 3. What made this project unique or different?
-4. What was the most memorable moment or result?
-5. What can other brands or clients learn from this project?
 
 FORMAT RULES FOR '7_faq' (STRICT):
-- Each language value is a plain string (NOT a nested object).
-- Use this exact format for each language:
-  Q1: [Question in the target language]\nA1: [Answer in the target language]\nQ2: [Question]\nA2: [Answer]\nQ3: [Question]\nA3: [Answer]\nQ4: [Question]\nA4: [Answer]\nQ5: [Question]\nA5: [Answer]
-- Use \\n as the literal newline separator between Q&A pairs.
-- Answers should be 2-3 sentences, concise and professional.
+- Each language value MUST be a JSON array of objects.
+- Format for each object MUST follow this structure: {"Q1": "[Question]", "A1": "[Answer]"}, {"Q2": "[Question]", "A2": "[Answer]"}, etc.
+- Example for "en":
+  [
+    {"Q1": "What is the event about?", "A1": "The event showcases..."},
+    {"Q2": "Which services did Firebean provide?", "A2": "Firebean managed..."}
+  ]
 - Language requirements:
   - "en": English (professional editorial tone)
   - "tc": Traditional Chinese (Hong Kong localization, natural editorial style)
   - "jp": Japanese (polite Desu/Masu business tone)
-- DO NOT include the ### Fast Recap FAQ heading in this field.
-- DO NOT duplicate the Q&A from '6_website' — write fresh, standalone questions.
 
 DO NOT output any conversational text outside the JSON object.
 """
@@ -368,9 +342,6 @@ def get_circle_progress_html(percent, is_dark):
 def apply_styles(is_dark):
     if is_dark:
         # ── Dark Mode Neumorphism ──
-        # 底色：深灰藍 #1E2128
-        # 凸起陰影：更深 #14161C (暗面) + 稍亮 #282C38 (亮面)
-        # 凹陷陰影：反向
         bg_color       = "#1E2128"
         card_bg        = "#1E2128"
         shadow_dark    = "#14161C"
@@ -385,7 +356,6 @@ def apply_styles(is_dark):
         toggle_border  = "#3A3F4D"
     else:
         # ── Light Mode Neumorphism ──
-        # 底色：淺灰白 #E0E5EC
         bg_color       = "#E0E5EC"
         card_bg        = "#E0E5EC"
         shadow_dark    = "#bec3c9"
@@ -1033,88 +1003,27 @@ def main():
                         data = json.loads(res)
                         if isinstance(data, list) and len(data) > 0:
                             data = data[0]
+                        
                         if isinstance(data, dict):
-                            # 🔧 Q&A FORMAT VALIDATION & CORRECTION
-                            def fix_qa_format(content):
-                                """Automatically fix Q&A format to ensure it's in Markdown with ### heading."""
-                                if not content:
-                                    return content
-
-                                # Standardize the FAQ header first
-                                content = re.sub(r'(<(h[1-6]|b|strong)[^>]*>\s*)?(?:Fast Recap\s*)?(?:FAQ|Q&A|Q & A|常見問題|よくある質問|快速回顧)(?:\s*</(h[1-6]|b|strong)>)?[:：]?', '### Fast Recap FAQ:', content, flags=re.IGNORECASE)
-
-                                # Find the standardized FAQ section
-                                qa_pattern = re.compile(r'(### Fast Recap FAQ:)(.*?)(?=(?:<h[1-6][^>]*>|###\s*[^#]|$))', re.DOTALL | re.IGNORECASE)
-                                match = qa_pattern.search(content)
-
-                                if match:
-                                    qa_header = match.group(1)
-                                    qa_raw_content = match.group(2).strip()
-                                    content_before_qa = content[:match.start()]
-                                    content_after_qa = content[match.end():]
-
-                                    # Convert HTML lists to plain text lines
-                                    qa_raw_content = re.sub(r'<ul[^>]*>|<ol[^>]*>|<\/ul>|<\/ol>', '', qa_raw_content, flags=re.IGNORECASE)
-                                    qa_raw_content = re.sub(r'<li[^>]*>(.*?)<\/li>', r'\1\n', qa_raw_content, flags=re.IGNORECASE)
-                                    qa_raw_content = re.sub(r'<p[^>]*>(.*?)<\/p>', r'\1\n', qa_raw_content, flags=re.IGNORECASE)
-                                    qa_raw_content = re.sub(r'<br[^>]*>', '\n', qa_raw_content, flags=re.IGNORECASE)
-
-                                    # Remove any remaining HTML tags
-                                    qa_raw_content = re.sub(r'<[^>]*>', '', qa_raw_content)
-
-                                    # Process lines into Qx: and Ax: format
-                                    qa_lines = qa_raw_content.strip().split('\n')
-                                    formatted_qa = []
-                                    q_count = 1
-                                    temp_q = ''
-
-                                    for line in qa_lines:
-                                        line = line.strip()
-                                        if not line: continue
-
-                                        is_q = line.upper().startswith('Q')
-                                        is_a = line.upper().startswith('A')
-
-                                        if is_q:
-                                            if temp_q: # If there was a pending Q, finalize it
-                                                formatted_qa.append(f"Q{q_count}: {temp_q}")
-                                                q_count += 1
-                                            temp_q = re.sub(r'^Q\d*[:.]?\s*', '', line, flags=re.IGNORECASE).strip()
-                                        elif is_a:
-                                            if temp_q:
-                                                formatted_qa.append(f"Q{q_count}: {temp_q}")
-                                                a_text = re.sub(r'^A\d*[:.]?\s*', '', line, flags=re.IGNORECASE).strip()
-                                                formatted_qa.append(f"A{q_count}: {a_text}")
-                                                q_count += 1
-                                                temp_q = ''
-                                        elif temp_q: # This line is a continuation of the previous Q
-                                            temp_q += ' ' + line
-                                    
-                                    if temp_q: # Add any last pending question
-                                        formatted_qa.append(f"Q{q_count}: {temp_q}")
-
-                                    qa_content_formatted = '\n'.join(formatted_qa)
-
-                                    return content_before_qa.strip() + '\n\n' + qa_header + '\n' + qa_content_formatted + '\n\n' + content_after_qa.strip()
-
-                                return content
-                            
-                            # Apply Q&A format fixes to all language versions
-                            if "6_website" in data and isinstance(data["6_website"], dict):
-                                for lang in ["en", "tc", "jp"]:
-                                    if lang in data["6_website"]:
-                                        data["6_website"][lang] = fix_qa_format(data["6_website"][lang])
-                                        log_debug(f"✅ Q&A 格式已自動修正 ({lang})", "success")
-                            
+                            # ✅ 直接寫入數據，完全移除不再需要的 Q&A Regex 校正代碼
                             st.session_state.ai_content = data
                             st.session_state.challenge = data.get("challenge_summary", "尚未生成")
                             st.session_state.solution = data.get("solution_summary", "尚未生成")
-                            # Extract dedicated FAQ fields (column AB/AC/AD)
+                            
+                            # ✅ 提取專屬 FAQ 欄位並自動格式化為漂亮的 JSON 字串，以符合使用者的 Array of Dict 格式
                             faq_data = data.get("7_faq", {})
                             if isinstance(faq_data, dict):
-                                st.session_state.faq_en = faq_data.get("en", "")
-                                st.session_state.faq_tc = faq_data.get("tc", "")
-                                st.session_state.faq_jp = faq_data.get("jp", "")
+                                def format_faq(val):
+                                    if isinstance(val, list):
+                                        return json.dumps(val, ensure_ascii=False, indent=2)
+                                    elif isinstance(val, dict):
+                                        return json.dumps([val], ensure_ascii=False, indent=2)
+                                    return str(val)
+
+                                st.session_state.faq_en = format_faq(faq_data.get("en", "[]"))
+                                st.session_state.faq_tc = format_faq(faq_data.get("tc", "[]"))
+                                st.session_state.faq_jp = format_faq(faq_data.get("jp", "[]"))
+                                
                             log_debug(f"✅ 文案生成成功，痛點數: {len(pain_points)}，強項數: {len(strengths)}", "success")
                             st.toast("✅ 策略與文案已成功生成！")
                             time.sleep(1)
@@ -1135,17 +1044,17 @@ def main():
                 with faq_tabs[0]:
                     st.session_state.faq_en = st.text_area(
                         "FAQ EN", value=st.session_state.faq_en, height=250, key="faq_en_edit",
-                        help="5 Q&A pairs in English. Format: Q1: ...\nA1: ..."
+                        help='Format: [{"Q1": "...", "A1": "..."}, ...]'
                     )
                 with faq_tabs[1]:
                     st.session_state.faq_tc = st.text_area(
                         "FAQ TC", value=st.session_state.faq_tc, height=250, key="faq_tc_edit",
-                        help="5 對問答（繁體中文）。格式：Q1: ...\nA1: ..."
+                        help='Format: [{"Q1": "...", "A1": "..."}, ...]'
                     )
                 with faq_tabs[2]:
                     st.session_state.faq_jp = st.text_area(
                         "FAQ JP", value=st.session_state.faq_jp, height=250, key="faq_jp_edit",
-                        help="5組のQ&A（日本語）。形式：Q1: ...\nA1: ..."
+                        help='Format: [{"Q1": "...", "A1": "..."}, ...]'
                     )
 
             if st.button("Confirm & Sync (Sheet + Slide + Drive)", type="primary", use_container_width=True):
