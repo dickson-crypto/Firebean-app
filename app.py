@@ -385,12 +385,9 @@ def main():
         if gemini_key: st.session_state.GEMINI_API_KEY = gemini_key
 
     st.markdown('<div id="logo-anchor">', unsafe_allow_html=True)
-    # Using reliable logo URLs for both light and dark modes
-    logo_url = "https://firebean.agency/wp-content/uploads/2022/10/Firebean_Logo_Black.png" if not is_dark else "https://firebean.agency/wp-content/uploads/2022/10/Firebean_Logo_White.png"
-    try:
-        st.image(logo_url, width=250, use_container_width=False)
-    except:
-        st.markdown(f'<img src="{logo_url}" style="max-width: 250px; height: auto;" />', unsafe_allow_html=True)
+    # Using direct GitHub raw image URL for the Firebean logo
+    logo_url = "https://raw.githubusercontent.com/dickson-crypto/Firebean-app/main/Firebeanlogo2026.png"
+    st.image(logo_url, width=300, use_container_width=False)
     st.markdown('</div>', unsafe_allow_html=True)
 
     # FIXED NAVIGATION: Using index to persist state across reruns
