@@ -13,18 +13,15 @@ from datetime import datetime
 def extract_json(text):
     """
     Robustly extracts JSON from a string that might contain markdown, preamble, or other text.
-    Ensures that if the AI returns text around the JSON, we still get the data.
     """
     if not text:
         return None
     
-    # 1. Try direct parsing (ideal case)
     try:
         return json.loads(text)
     except json.JSONDecodeError:
         pass
 
-    # 2. Try extracting from markdown code blocks (```json ... ``` or ``` ... ```)
     json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', text, re.DOTALL)
     if json_match:
         try:
@@ -32,7 +29,6 @@ def extract_json(text):
         except json.JSONDecodeError:
             pass
 
-    # 3. Try finding the first '{' and last '}' (fallback for raw text)
     start = text.find('{')
     end = text.rfind('}')
     if start != -1 and end != -1:
@@ -43,33 +39,42 @@ def extract_json(text):
             
     return None
 
-def validate_mc_questions(questions):
+def validate_mc_questions(data):
     """
-    Ensures that generated questions are valid and contain the required options.
-    If options are missing, it filters them out to prevent UI errors.
+    Validates and extracts MC questions from various response structures.
+    Handles: direct list, nested 'questions' key, or other variations.
     """
+    if not data:
+        return []
+    
+    # If it's a list directly, use it
+    if isinstance(data, list):
+        questions = data
+    # If it's a dict with 'questions' key, extract it
+    elif isinstance(data, dict) and 'questions' in data:
+        questions = data['questions']
+    else:
+        return []
+    
     if not isinstance(questions, list):
         return []
     
     valid_q = []
     for q in questions:
-        # Check if it's a dict and has 'question' and 'options'
         if isinstance(q, dict) and 'question' in q:
-            # If options are missing or not a list, provide a default or skip
             opts = q.get('options', [])
             if isinstance(opts, list) and len(opts) > 0:
                 valid_q.append(q)
+    
     return valid_q
 
 def format_faq_to_python_string(faq_list):
     """
     Safely converts a list of Q&A dicts into a standardized Python-style string for the Master DB.
-    Handles both lists (from AI generation) and existing strings (from project loading).
     """
     if not faq_list:
         return "[]"
     
-    # If it's already a string (e.g. from a previous load or already formatted), just return it
     if isinstance(faq_list, str):
         if faq_list.strip().startswith('['):
             return faq_list
@@ -80,15 +85,15 @@ def format_faq_to_python_string(faq_list):
 
     formatted_pairs = []
     for qa_pair in faq_list:
-        if not isinstance(qa_pair, dict): continue
+        if not isinstance(qa_pair, dict): 
+            continue
         
-        # Extract keys dynamically (usually 'Q1', 'A1' etc.)
         keys = list(qa_pair.keys())
-        if len(keys) < 2: continue
+        if len(keys) < 2: 
+            continue
         q_key = keys[0]
         a_key = keys[1]
         
-        # Escape single quotes and backslashes to prevent breaking the string literal
         question = str(qa_pair[q_key]).replace("\\", "\\\\").replace("'", "\\'")
         answer = str(qa_pair[a_key]).replace("\\", "\\\\").replace("'", "\\'")
         
@@ -109,15 +114,12 @@ CURRENT_YEAR = datetime.now().year
 YEAR_OPTIONS = [str(y) for y in range(CURRENT_YEAR, 2011, -1)]
 MONTH_OPTIONS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
 
-# --- NEW: 系統自動生成邏輯 (ID 與 日期) ---
 def generate_system_metadata():
     """自動生成大寫無符號 Project_id 與標準化 Sort_date"""
-    # 1. 映射月份為數字 (Sort_date 用)
     month_map = {m: str(i+1).zfill(2) for i, m in enumerate(MONTH_OPTIONS)}
     m_num = month_map.get(st.session_state.event_month, "01")
     sort_date = f"{st.session_state.event_year}-{m_num}-01"
 
-    # 2. 獲取當前行數生成 ID (向 Sheet 索取當前總行數)
     if st.session_state.get("draft_project_id"):
         return st.session_state.draft_project_id, sort_date
 
@@ -132,9 +134,7 @@ def generate_system_metadata():
         import random
         next_index = random.randint(100, 999)
     
-    # FIXED: FB + Year + Sequence (e.g. FB2026037)
     project_id = f"FB{st.session_state.event_year}{str(next_index).zfill(3)}"
-    
     return project_id, sort_date
 
 FIREBEAN_SYSTEM_PROMPT = """
@@ -143,113 +143,36 @@ Task: Transform diagnostic data into a professional PR strategy JSON.
 Always return a valid JSON object with keys: challenge_summary, solution_summary, 1_google_slide, 2_facebook_post, 3_threads_post, 4_instagram_post, 5_linkedin_post, 6_website, 7_faq.
 
 **ABSOLUTE RULE 1 — POST-EVENT RETROSPECTIVE MODE**:
-This tool is EXCLUSIVELY used AFTER an event has already taken place. All content you generate MUST be written as a retrospective case showcase — as if you are a journalist or PR strategist documenting and celebrating what already happened.
+This tool is EXCLUSIVELY used AFTER an event has already taken place. All content you generate MUST be written as a retrospective case showcase.
 
 **ABSOLUTE RULE 2 — INTERNAL TERMINOLOGY PROHIBITION**:
-NEVER use the phrase "Firebean Brain", "Firebean Brain Team", or any similar internal terminology in ANY output. These are internal tools only, NOT for public communication.
-Instead, use professional alternatives:
-- "Our strategic approach", "Our creative concept", "Our team's expertise", "The project team", "Our strategic thinking"
-Example: Instead of "Firebean Brain identified the challenge", write "Our strategic analysis revealed the challenge".
+NEVER use "Firebean Brain", "Firebean Brain Team", or similar internal terminology. Use professional alternatives like "Our strategic approach", "Our creative concept", "Our team's expertise".
 
-STRICTLY FORBIDDEN in ALL outputs (applies to every key in the JSON):
-- ANY invitation language (e.g. "join us", "register now", "don't miss", "come and experience", "歡迎報名", "立即登記", "名額有限" etc.)
-- ANY future-tense event promotion (e.g. "the event will be held", "活動將於...舉行", "即將舉行" etc.)
-- ANY specific date, time, ticket price, or venue address used in a promotional context
-- ANY CTA links or registration details
+STRICTLY FORBIDDEN in ALL outputs:
+- ANY invitation language (join us, register now, don't miss, etc.)
+- ANY future-tense event promotion
+- ANY specific date, time, ticket price, or venue address used in promotional context
+- CTA links or registration details
 - Phrases like "save the date", "mark your calendar", "coming soon"
-- Internal terminology: "Firebean Brain", "Firebean Brain Team", or similar
-
-INSTEAD, always use retrospective language:
-- English: "The event took place...", "Guests experienced...", "The project delivered...", "What unfolded was..."
-- 繁中: 「活動已圓滿結束」、「當日現場」、「是次項目成功」、「回顧今次」
-- Time references: Use vague retrospective references only (e.g. "recently", "at the event", "on the day"). DO NOT state specific year, month, date, or time in the body text — these details belong in metadata only, not in the narrative.
 
 **CRITICAL INSTRUCTION FOR 'challenge_summary' AND 'solution_summary'**:
-BOTH 'challenge_summary' AND 'solution_summary' MUST be written in ENGLISH ONLY. Do NOT use Chinese, Japanese, or any other language for these two fields.
-You MUST keep the client's pain points and challenges extremely concise. Use only 1 to 2 short, punchy sentences (maximum 50 words) to define the core challenge. Do not elaborate excessively on the negative impacts.
-Similarly, 'solution_summary' must be 1 to 2 concise English sentences (maximum 50 words) summarising how the challenge was resolved.
+BOTH MUST be in ENGLISH ONLY. Keep them concise: 1-2 short sentences (max 50 words each).
 
 **CRITICAL INSTRUCTION FOR '6_website' (Magazine Feature Article)**:
-The '6_website' key MUST be a nested JSON object containing exactly four keys: "angle_chosen", "en", "tc", and "jp".
-Write a highly engaging, 500-word POST-EVENT feature article. This is a case study showcase for the agency's portfolio website, intended to impress prospective clients — NOT to promote a future event.
+The '6_website' key MUST be a nested JSON object with: "angle_chosen", "en", "tc", and "jp".
+Write a 500-word POST-EVENT feature article in valid HTML using ONLY <h1>, <h3>, and <p> tags.
 
-**IMPORTANT: EXCLUDE FAQ FROM WEBSITE ARTICLE**
-The '6_website' article content MUST NOT contain any FAQ, Q&A, or "Fast Recap" section. The FAQ content is handled separately in the '7_faq' field. DO NOT repeat it in the '6_website' body text.
+**CRITICAL INSTRUCTIONS FOR SOCIAL MEDIA POSTS**:
+All posts are POST-EVENT highlights for the agency's own channels.
 
-To ensure a diverse content library, RANDOMLY SELECT ONLY ONE of the 5 writing styles/angles below. Do not mix styles:
-1. The Thought Leadership Angle: Reflect on the industry challenge. Frame the Pain Point as a systemic flaw that this project addressed, and the outcome as a visionary blueprint for the industry.
-2. The Contrarian / Disruptor Angle: Start with a bold, counter-intuitive hook about what most events get wrong. Show how this project disrupted the norm and delivered something unexpected.
-3. The Human-Centric / Emotional Storytelling Angle: Focus on the human experience at the event — the energy, the moments, the emotional impact. Write as if you were there witnessing it.
-4. The Analytical Problem-Solver: Break down the brief, the challenge, and the strategic solution. Show how the agency's approach logically solved the client's problem.
-5. The Insider / Behind-the-Scenes Angle: Write from an exclusive perspective, revealing the creative process, the challenges overcome during production, and the final triumphant result.
+1. '2_facebook_post': 100-250 words, Traditional Chinese, warm and storytelling tone
+2. '4_instagram_post': <150 words, Traditional Chinese, behind-the-scenes retrospective
+3. '3_threads_post': <50 words, Traditional Chinese, witty and insightful
+4. '5_linkedin_post': 200-400 words, English, professional case study tone
 
-Format & Structure Requirements for '6_website':
-- Word Count: Approximately 500 words per language.
-    - Structure: Use exactly three sections, each starting with an <h3> heading.
-    - Paragraph Count: Ensure each of the three sections contains at least one substantive paragraph (<p>). This is crucial for photo interleaving.
-    - The Core Narrative: Seamlessly weave the [Basic Information], [Project Outcome], [Challenge], and [Solution] into the chosen narrative angle. All written in past tense.
-    - The Punch Line: The final paragraph must be a single, bolded, highly memorable concluding sentence about the project's impact.
-    
-    **CRITICAL HTML STRUCTURE REQUIREMENT FOR '6_website'**:
-    You MUST output valid HTML that matches the CMS parsing format exactly. The structure MUST follow this pattern for photo interleaving:
-    <h1>Main Title</h1>
-    <h3>First Section Heading</h3>
-    <p>Paragraph 1...</p>
-    <h3>Second Section Heading</h3>
-    <p>Paragraph 2...</p>
-    <h3>Third Section Heading</h3>
-    <p>Paragraph 3...</p>
-    <p>The bolded punch line sentence.</p>
-    
-    STRICT RULES FOR HTML:
-    1. Use ONLY <h1>, <h3>, and <p> tags for main content.
-    2. DO NOT use <h2>, <h4>, or any other heading tags.
-    3. DO NOT use <span>, <div>, <b>, <strong>, or any style attributes (no inline colors).
-    
-Language Output Requirement for '6_website':
-- "angle_chosen": State the name of the angle you selected (e.g., "Style 2: The Contrarian").
-- "en": English (Premium editorial, past-tense retrospective tone, valid HTML structure)
-- "tc": Traditional Chinese (Hong Kong localization, fluent and natural editorial style, past tense, valid HTML structure)
-- "jp": Japanese (Polite, professional business-magazine tone - Desu/Masu form, past tense, valid HTML structure)
-
-**CRITICAL INSTRUCTIONS FOR SOCIAL MEDIA POSTS (2_facebook, 3_threads, 4_instagram, 5_linkedin)**:
-All social media posts are POST-EVENT highlights for the agency's own channels. The purpose is to showcase completed work to attract future clients and build brand authority — NOT to promote attendance.
-
-1. '2_facebook_post' (活動精彩回顧):
-   - Word Count: 100 - 250 words.
-   - Tone: 親切有溫度、故事化。語氣像在跟朋友分享一個精彩的工作回顧。
-   - Content: 以「回顧」角度出發，分享活動當日的精彩片段、現場氣氛、團隊如何克服挑戰並交出成果。重點突出項目的亮點與成就。
-   - Format: 純回顧內容。絕對不可加入報名連結、活動日期時間、票務資訊或任何邀請參與的字眼。
-   - Language: 香港繁體中文 (可適度夾雜廣東話口語)。
-
-2. '4_instagram_post' (幕後花絮 & 成果展示):
-   - Word Count: STRICTLY < 150 words. 頭兩行必須在「展開」前抓住眼球。
-   - Tone: 極簡視覺化、真實「貼地」，展示團隊的專業與創意成果。
-   - Content: 幕後花絮視角 (Behind-the-scenes retrospective)。聚焦團隊籌備過程的真實片段、當日現場的精彩瞬間、最終成果的視覺衝擊。以「已完成」的自豪感作為語氣基調。
-   - Format: 配合 Emoji 分段，必帶專業 Hashtags。絕對不可出現活動日期、時間或任何邀請字眼。
-   - Language: 香港繁體中文。
-
-3. '3_threads_post' (觀點分享 & 行業洞察):
-   - Word Count: 短小精悍，< 50 words (Max 200 characters).
-   - Tone: 幽默口語化、隨性但具洞察力。具備引發討論的潛力。
-   - Content: 以「做完這個項目後的一個小領悟」為題。可以是一個關於創意、團隊合作或現場突發狀況的小趣事，並帶出專業洞見。
-   - Format: 像在跟 Threads 上的行內人對話。
-   - Language: 香港繁體中文.
-
-4. '5_linkedin_post' (專業成就 & 策略洞察):
-   - Word Count: 200 - 400 words.
-   - Tone: 專業權威、具備商業思維。強調 ROI、品牌價值與策略執行。
-   - Content: 以「Case Study」的專業口吻撰寫。分析該項目的策略目標、團隊如何運用專業知識達成 KPI、以及該項目對客戶品牌的長遠意義。
-   - Format: 分點列出成就 (Key Takeaways)。展示 Agency 的實力。
-   - Language: English (Premium Professional).
-
-**CRITICAL INSTRUCTION FOR '7_faq' (Fast Recap FAQ)**:
-The '7_faq' key MUST be a nested JSON object containing exactly three keys: "en", "tc", and "jp".
-Each language key must contain a list of exactly 3 to 4 Q&A objects.
-These are "Fast Facts" about the project to help website visitors quickly understand the scope and impact.
-- English: Keys must be "Q1", "A1", "Q2", "A2", etc.
-- 繁中: Keys must be "Q1", "A1", "Q2", "A2", etc.
-- 日本語: Keys must be "Q1", "A1", "Q2", "A2", etc.
+**CRITICAL INSTRUCTION FOR '7_faq'**:
+The '7_faq' key MUST be a nested JSON object with: "en", "tc", and "jp".
+Each language key must contain a list of 3-4 Q&A objects with keys "Q1", "A1", "Q2", "A2", etc.
 """
 
 def call_gemini_sdk(prompt, image_files=None, is_json=False):
@@ -265,7 +188,8 @@ def call_gemini_sdk(prompt, image_files=None, is_json=False):
         
         if image_files:
             for f in image_files:
-                if hasattr(f, "seek"): f.seek(0)
+                if hasattr(f, "seek"): 
+                    f.seek(0)
                 img = Image.open(f)
                 contents.append(img)
         
@@ -281,7 +205,7 @@ def call_gemini_sdk(prompt, image_files=None, is_json=False):
         return None
 
 def log_debug(msg, level="info"):
-    """記錄調試日誌並顯示在終端"""
+    """記錄調試日誌"""
     timestamp = datetime.now().strftime("%H:%M:%S")
     formatted_msg = f"[{timestamp}] [{level.upper()}] {msg}"
     if "debug_logs" not in st.session_state:
@@ -291,8 +215,9 @@ def log_debug(msg, level="info"):
         st.session_state.debug_logs.pop(0)
 
 def clean_field(val):
-    """清理輸入欄位，移除不可見字符"""
-    if not val: return ""
+    """清理輸入欄位"""
+    if not val: 
+        return ""
     return str(val).replace("\n", " ").replace("\r", "").strip()
 
 def get_is_dark_mode():
@@ -349,25 +274,44 @@ def main():
     st.set_page_config(page_title="FIREBEAN BRAIN", layout="wide")
     
     # Initialize session state
-    if "active_tab" not in st.session_state: st.session_state.active_tab = "Project Collector"
-    if "client_name" not in st.session_state: st.session_state.client_name = ""
-    if "project_name" not in st.session_state: st.session_state.project_name = ""
-    if "venue" not in st.session_state: st.session_state.venue = ""
-    if "event_year" not in st.session_state: st.session_state.event_year = str(datetime.now().year)
-    if "event_month" not in st.session_state: st.session_state.event_month = MONTH_OPTIONS[datetime.now().month - 1]
-    if "youtube" not in st.session_state: st.session_state.youtube = ""
-    if "category" not in st.session_state: st.session_state.category = WHO_WE_HELP_OPTIONS[0]
-    if "what_we_do" not in st.session_state: st.session_state.what_we_do = []
-    if "scope" not in st.session_state: st.session_state.scope = []
-    if "project_photos" not in st.session_state: st.session_state.project_photos = []
-    if "hero_photo_index" not in st.session_state: st.session_state.hero_photo_index = 0
-    if "open_question_ans" not in st.session_state: st.session_state.open_question_ans = ""
-    if "mc_questions" not in st.session_state: st.session_state.mc_questions = []
-    if "ai_content" not in st.session_state: st.session_state.ai_content = None
-    if "logo_black" not in st.session_state: st.session_state.logo_black = ""
-    if "logo_white" not in st.session_state: st.session_state.logo_white = ""
-    if "user_dark_mode" not in st.session_state: st.session_state.user_dark_mode = None
-    if "sync_success" not in st.session_state: st.session_state.sync_success = False
+    if "active_tab" not in st.session_state: 
+        st.session_state.active_tab = "Project Collector"
+    if "client_name" not in st.session_state: 
+        st.session_state.client_name = ""
+    if "project_name" not in st.session_state: 
+        st.session_state.project_name = ""
+    if "venue" not in st.session_state: 
+        st.session_state.venue = ""
+    if "event_year" not in st.session_state: 
+        st.session_state.event_year = str(datetime.now().year)
+    if "event_month" not in st.session_state: 
+        st.session_state.event_month = MONTH_OPTIONS[datetime.now().month - 1]
+    if "youtube" not in st.session_state: 
+        st.session_state.youtube = ""
+    if "category" not in st.session_state: 
+        st.session_state.category = WHO_WE_HELP_OPTIONS[0]
+    if "what_we_do" not in st.session_state: 
+        st.session_state.what_we_do = []
+    if "scope" not in st.session_state: 
+        st.session_state.scope = []
+    if "project_photos" not in st.session_state: 
+        st.session_state.project_photos = []
+    if "hero_photo_index" not in st.session_state: 
+        st.session_state.hero_photo_index = 0
+    if "open_question_ans" not in st.session_state: 
+        st.session_state.open_question_ans = ""
+    if "mc_questions" not in st.session_state: 
+        st.session_state.mc_questions = []
+    if "ai_content" not in st.session_state: 
+        st.session_state.ai_content = None
+    if "logo_black" not in st.session_state: 
+        st.session_state.logo_black = ""
+    if "logo_white" not in st.session_state: 
+        st.session_state.logo_white = ""
+    if "user_dark_mode" not in st.session_state: 
+        st.session_state.user_dark_mode = None
+    if "sync_success" not in st.session_state: 
+        st.session_state.sync_success = False
 
     is_dark = get_is_dark_mode()
     apply_styles(is_dark)
@@ -376,21 +320,22 @@ def main():
         st.markdown("### 🛠️ Settings")
         st.session_state.user_dark_mode = st.toggle("Dark Mode", value=is_dark)
         if st.button("Clear All Data", type="secondary"):
-            for key in list(st.session_state.keys()): del st.session_state[key]
+            for key in list(st.session_state.keys()): 
+                del st.session_state[key]
             st.rerun()
         
         st.markdown("---")
         st.markdown("### 🔑 API Keys")
         gemini_key = st.text_input("GEMINI_API_KEY", type="password", value=st.session_state.get("GEMINI_API_KEY", ""))
-        if gemini_key: st.session_state.GEMINI_API_KEY = gemini_key
+        if gemini_key: 
+            st.session_state.GEMINI_API_KEY = gemini_key
 
     st.markdown('<div id="logo-anchor">', unsafe_allow_html=True)
-    # Using direct GitHub raw image URL for the Firebean logo
     logo_url = "https://raw.githubusercontent.com/dickson-crypto/Firebean-app/main/Firebeanlogo2026.png"
     st.image(logo_url, width=300, use_container_width=False)
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # FIXED NAVIGATION: Using index to persist state across reruns
+    # FIXED NAVIGATION
     tab_options = ["Project Collector", "Review & Multi-Sync"]
     active_idx = tab_options.index(st.session_state.active_tab)
     tabs_nav = st.radio("Navigation", tab_options, index=active_idx, horizontal=True, label_visibility="collapsed")
@@ -405,12 +350,14 @@ def main():
         c1, c2 = st.columns([1, 1])
         with c1:
             l_black = st.file_uploader("Upload Black Logo", type=['png', 'jpg'], key="logo_b")
-            if l_black: st.session_state.logo_black = base64.b64encode(l_black.read()).decode()
+            if l_black: 
+                st.session_state.logo_black = base64.b64encode(l_black.read()).decode()
             if st.session_state.logo_black:
                 st.markdown(f'<div style="background-color: #f4f7f6; padding: 10px; border-radius: 8px;"><img src="data:image/png;base64,{st.session_state.logo_black}" style="max-height: 60px;"></div>', unsafe_allow_html=True)
         with c2:
             l_white = st.file_uploader("Upload White Logo", type=['png', 'jpg'], key="logo_w")
-            if l_white: st.session_state.logo_white = base64.b64encode(l_white.read()).decode()
+            if l_white: 
+                st.session_state.logo_white = base64.b64encode(l_white.read()).decode()
             if st.session_state.logo_white:
                 st.markdown(f'<div style="background-color: #2D3436; padding: 10px; border-radius: 8px;"><img src="data:image/png;base64,{st.session_state.logo_white}" style="max-height: 60px;"></div>', unsafe_allow_html=True)
 
@@ -443,21 +390,61 @@ def main():
         with cl:
             st.markdown('<div class="neu-card">', unsafe_allow_html=True)
             if st.button("生成 15 題繁中診斷題目"):
-                if not st.session_state.project_photos: st.error("請先上傳相片。")
+                if not st.session_state.project_photos: 
+                    st.error("請先上傳相片。")
                 else:
                     with st.status("🧠 AI 大腦啟動中...", expanded=True) as status:
                         facts = call_gemini_sdk("請詳細掃描並提取這些活動相片中的實體事實 (Facts)...", image_files=st.session_state.project_photos)
-                        res = call_gemini_sdk(f"基於背景資料生成 15 題 PR 診斷選擇題... {facts}", is_json=True)
-                        if res: 
+                        
+                        # IMPROVED: More explicit MC generation prompt
+                        mc_prompt = f"""Based on these facts from the event photos, generate exactly 15 PR diagnostic multiple-choice questions in Traditional Chinese.
+
+Facts: {facts}
+
+Return a JSON object with this exact structure:
+{{
+  "questions": [
+    {{
+      "id": 1,
+      "question": "Question text in Traditional Chinese?",
+      "options": ["Option A", "Option B", "Option C", "Option D"]
+    }},
+    {{
+      "id": 2,
+      "question": "Next question in Traditional Chinese?",
+      "options": ["Option A", "Option B", "Option C", "Option D"]
+    }}
+  ]
+}}
+
+CRITICAL REQUIREMENTS:
+1. Generate EXACTLY 15 questions (id from 1 to 15)
+2. Each question MUST have exactly 4 options
+3. All text MUST be in Traditional Chinese
+4. Return ONLY valid JSON, no other text or explanation
+5. Each option should be a single string"""
+                        
+                        res = call_gemini_sdk(mc_prompt, is_json=True)
+                        if res:
+                            log_debug(f"MC Response received: {res[:100]}...")
                             parsed = extract_json(res)
                             if parsed:
-                                st.session_state.mc_questions = validate_mc_questions(parsed)
-                                status.update(label="✅ 分析與題目生成完畢！", state="complete", expanded=False)
-                                st.rerun()
+                                questions = validate_mc_questions(parsed)
+                                if questions and len(questions) > 0:
+                                    st.session_state.mc_questions = questions
+                                    status.update(label=f"✅ 成功生成 {len(questions)} 題！", state="complete", expanded=False)
+                                    st.rerun()
+                                else:
+                                    log_debug(f"Validation failed. Parsed: {parsed}")
+                                    st.error(f"生成的題目格式不正確。請重試。(Got {len(questions) if questions else 0} questions)")
                             else:
-                                st.error("AI returned an invalid format. Please try again.")
+                                log_debug(f"JSON extraction failed from: {res[:200]}")
+                                st.error("AI 返回的不是有效的 JSON。請重試。")
+                        else:
+                            st.error("生成失敗。請確保已上傳相片並重試。")
 
             if st.session_state.mc_questions:
+                st.markdown(f"**已生成 {len(st.session_state.mc_questions)} 題**")
                 for i, q in enumerate(st.session_state.mc_questions):
                     q_id = q.get('id', q.get('number', q.get('q_id', i + 1)))
                     st.markdown(f"<div class='mc-question'>Q{q_id}. {q.get('question', '')}</div>", unsafe_allow_html=True)
@@ -472,12 +459,13 @@ def main():
 
         with cr:
             st.markdown('<div class="neu-card">', unsafe_allow_html=True)
-            # FIXED: File uploader state persistence
+            # FIXED: Photo uploader with better state management
             up = st.file_uploader("Upload Project Photos (Up to 8)", type=['jpg', 'jpeg', 'png'], accept_multiple_files=True, key="p_u")
             if up:
                 st.session_state.project_photos = up[:8]
             
             if st.session_state.project_photos:
+                st.markdown(f"**已上傳 {len(st.session_state.project_photos)} 張相片**")
                 st.markdown("##### Select Hero Photo")
                 cols = st.columns(4)
                 for idx, photo in enumerate(st.session_state.project_photos):
@@ -552,7 +540,8 @@ def trigger_full_sync():
         project_id, sort_date = generate_system_metadata()
         processed_imgs = []
         for f in st.session_state.project_photos:
-            if hasattr(f, "seek"): f.seek(0)
+            if hasattr(f, "seek"): 
+                f.seek(0)
             img = Image.open(f).convert('RGB')
             img = ImageOps.exif_transpose(img)
             img.thumbnail((1200, 1200))
@@ -562,7 +551,7 @@ def trigger_full_sync():
 
         ai = st.session_state.ai_content or {}
         
-        # ── Trigger Google Slide creation FIRST to get the URL ──
+        # Trigger Google Slide creation FIRST
         slide_url = ai.get("1_google_slide", "")
         try:
             slide_payload = {
@@ -592,7 +581,7 @@ def trigger_full_sync():
         except Exception as slide_err:
             log_debug(f"Slide creation error: {str(slide_err)}")
 
-        # ── Now sync to Master DB with the Slide URL included ──
+        # Now sync to Master DB
         faq = ai.get("7_faq", {})
         payload = {
             "action": "sync_project",
