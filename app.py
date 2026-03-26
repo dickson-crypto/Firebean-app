@@ -157,12 +157,12 @@ body {{ background-color: {bg_color}; color: {text_color}; }}
 .progress-circle-container {{
     position: relative; width: 150px; height: 150px; border-radius: 50%%;
     display: flex; justify-content: center; align-items: center;
-    background: conic-gradient(#FF0000 0% 0%, transparent 0% 0%);
+    bbackground: conic-gradient(#FF0000 0%% 0%%, transparent 0%% 0%%);%);
     box-shadow: 0 0 20px #FF0000, inset 0 0 15px #FF0000;
     transition: background 0.5s ease-in-out;
 }}
 .progress-circle-inner {{
-    position: absolute; width: 80%%; height: 80%%; border-radius: 50%%;;
+    position: absolute; width: 80%%; height: 80%%;%;border-radius: 50%%;%;
     background: {bg_color}; display: flex; flex-direction: column;
     justify-content: center; align-items: center; font-size: 2.5em;
     font-weight: bold; color: #FF0000; text-shadow: 0 0 8px #FF0000;
@@ -248,7 +248,7 @@ def main():
         progress_pct = (completed / total) * 100 if total > 0 else 0
         st.markdown(f'''
             <div style="text-align: right; padding-top: 10px;">
-                <div class="progress-circle-container" style="background: conic-gradient(#FF0000 {progress_pct}%, transparent {progress_pct}% 100%);">
+                <div class="progress-circle-container" style="background: conic-gradient(#FF0000 {progress_pct}%%, transparent {progress_pct}%% 100%%);%);">
                     <div class="progress-circle-inner">
                         {int(progress_pct)}%
                         <div class="progress-version">{APP_VERSION}</div>
