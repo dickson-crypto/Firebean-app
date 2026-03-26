@@ -1,7 +1,9 @@
 /**
  * FIREBEAN GOOGLE SLIDES GENERATOR
- * Receives webhook from Streamlit, duplicates the template presentation,
- * replaces placeholders and empty shapes, then updates the Master DB.
+ * Receives webhook from Streamlit, opens the Master presentation,
+ * duplicates the template slides (pages 1-2) to the end,
+ * replaces placeholders and empty shapes on the new slides, 
+ * then updates the Master DB.
  */
 
 var TEMPLATE_ID = '19rmqCzgKD8y2ZiLxkiAqhhkV6_t-8QAumZkSi0Eu9C0';
@@ -17,29 +19,23 @@ function doPost(e) {
         .setMimeType(ContentService.MimeType.JSON);
     }
     
-    // 1. Duplicate Template
-    var templateFile = DriveApp.getFileById(TEMPLATE_ID);
-    var newFileName = 'Firebean_CaseStudy_' + (data.client_name || 'Client') + '_' + (data.project_name || 'Project');
-    var newFile = templateFile.makeCopy(newFileName);
-    var newFileId = newFile.getId();
-    var slideUrl = newFile.getUrl();
+    // 1. Open Master Presentation
+    var presentation = SlidesApp.openById(TEMPLATE_ID);
+    var slideUrl = 'https://docs.google.com/presentation/d/' + TEMPLATE_ID + '/edit';
     
-    // 2. Open new Presentation
-    var presentation = SlidesApp.openById(newFileId);
+    // 2. Get template slides (Page 1 and Page 2, which are index 0 and 1)
     var slides = presentation.getSlides();
-    
-    // 3. We only want to keep the last 2 slides (template slides 65 and 66)
-    // Delete slides 0 to length-3
-    for (var i = slides.length - 3; i >= 0; i--) {
-      slides[i].remove();
+    if (slides.length < 2) {
+      throw new Error("Master presentation does not have at least 2 template slides.");
     }
+    var templateSlide1 = slides[0];
+    var templateSlide2 = slides[1];
     
-    // Get the remaining two slides (now at index 0 and 1)
-    slides = presentation.getSlides();
-    var slide1 = slides[0]; // Was slide 65
-    var slide2 = slides[1]; // Was slide 66
+    // 3. Append template slides to the end of the presentation
+    var slide1 = presentation.appendSlide(templateSlide1);
+    var slide2 = presentation.appendSlide(templateSlide2);
     
-    // 4. Replace Text Placeholders
+    // 4. Replace Text Placeholders on the newly appended slides
     slide1.replaceAllText('Test Client', data.client_name || '');
     slide2.replaceAllText('{{CLIENT_NAME}}', data.client_name || '');
     slide2.replaceAllText('{{PROJECT_NAME}}', data.project_name || '');
@@ -120,7 +116,7 @@ function doPost(e) {
       slide_url: slideUrl
     })).setMimeType(ContentService.MimeType.JSON);
     
-  } catch (err) {
+    } catch (err) {
     return ContentService.createTextOutput(JSON.stringify({
       status: 'error', 
       message: err.toString()
