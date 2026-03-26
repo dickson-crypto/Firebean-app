@@ -884,9 +884,10 @@ def main():
                             "logo_black": st.session_state.logo_black,
                             "images": processed_imgs,
                             "ai_content": st.session_state.ai_content,
-                            "faq_en": st.session_state.get("faq_en_edit", st.session_state.get("faq_en", "[]")),
-                            "faq_tc": st.session_state.get("faq_tc_edit", st.session_state.get("faq_tc", "[]")),
-                            "faq_jp": st.session_state.get("faq_jp_edit", st.session_state.get("faq_jp", "[]"))
+                            "faq_en": st.session_state.faq_en,
+                            "faq_tc": st.session_state.faq_tc,
+                            "faq_jp": st.session_state.faq_jp
+                            
                         }
                         
                         # --- 專門給 Google Slide 的資料 ---
