@@ -1,6 +1,6 @@
 
 import streamlit as st
-import google.generativeai as genai
+import google.genai as genai
 import io
 import base64
 import time
@@ -80,7 +80,7 @@ def format_faq_to_python_string(faq_list):
 SHEET_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz2k7ZZ0shtl5wnhqB5J2wBcxnP7D08cRupRbz3hyi53G25mKYuz6qn5YqkTbPiYjIY/exec"
 SLIDE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyUsYLxjxDn1PjQHDzFXyYQ4yyt2XJW-131GCCxZ-kJ7VBOb1RVgSEfa5kzS7wKb_cam/exec"
 STABLE_MODEL_ID = "gemini-1.5-flash-latest"
-APP_VERSION = "v5.2"
+APP_VERSION = "v5.3"
 MC_QUESTION_COUNT = 10
 
 WHO_WE_HELP_OPTIONS = ["GOVERNMENT & PUBLIC SECTOR", "LIFESTYLE & CONSUMER", "F&B & HOSPITALITY", "MALLS & VENUES"]
