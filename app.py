@@ -39,7 +39,7 @@ def extract_json(text):
             
     return None
 
-def validate_mc_questions(data):
+def validate_mc_questions(data, expected_count):
     """
     Validates and extracts MC questions from various response structures.
     Handles: direct list, nested 'questions' key, or other variations.
@@ -66,7 +66,7 @@ def validate_mc_questions(data):
             if isinstance(opts, list) and len(opts) > 0:
                 valid_q.append(q)
     
-    return valid_q
+    return valid_q[:expected_count] # Ensure we only return the expected count
 
 def format_faq_to_python_string(faq_list):
     """
@@ -97,7 +97,7 @@ def format_faq_to_python_string(faq_list):
         question = str(qa_pair[q_key]).replace("\\", "\\\\").replace("'", "\\'")
         answer = str(qa_pair[a_key]).replace("\\", "\\\\").replace("'", "\\'")
         
-        formatted_pairs.append(f"{{'{q_key}': '{question}', '{a_key}': '{answer}'}}")
+        formatted_pairs.append(f"{{'\\'{q_key}\\\' : \\'{question}\\\' , \\'{a_key}\\\' : \\'{answer}\\'}}")
     
     return f"[" + ", ".join(formatted_pairs) + "]"
 
@@ -105,7 +105,8 @@ def format_faq_to_python_string(faq_list):
 SHEET_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz2k7ZZ0shtl5wnhqB5J2wBcxnP7D08cRupRbz3hyi53G25mKYuz6qn5YqkTbPiYjIY/exec"
 SLIDE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyUsYLxjxDn1PjQHDzFXyQ4yyt2XJW-131GCCxZ-kJ7VBOb1RVgSEfa5kzS7wKb_cam/exec"
 STABLE_MODEL_ID = "gemini-2.5-flash"
-APP_VERSION = "v3.9"
+APP_VERSION = "v4.0" # Updated version
+MC_QUESTION_COUNT = 10 # Reduced MC question count
 
 WHO_WE_HELP_OPTIONS = ["GOVERNMENT & PUBLIC SECTOR", "LIFESTYLE & CONSUMER", "F&B & HOSPITALITY", "MALLS & VENUES"]
 WHAT_WE_DO_OPTIONS = ["ROVING EXHIBITIONS", "SOCIAL & CONTENT", "INTERACTIVE & TECH", "PR & MEDIA", "EVENTS & CEREMONIES"]
@@ -116,7 +117,9 @@ YEAR_OPTIONS = [str(y) for y in range(CURRENT_YEAR, 2011, -1)]
 MONTH_OPTIONS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
 
 def generate_system_metadata():
-    """自動生成大寫無符號 Project_id 與標準化 Sort_date"""
+    """
+    自動生成大寫無符號 Project_id 與標準化 Sort_date
+    """
     month_map = {m: str(i+1).zfill(2) for i, m in enumerate(MONTH_OPTIONS)}
     m_num = month_map.get(st.session_state.event_month, "01")
     sort_date = f"{st.session_state.event_year}-{m_num}-01"
@@ -208,7 +211,9 @@ def log_debug(msg):
     st.session_state.debug_logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}")
 
 def apply_styles(is_dark):
-    """Apply Neumorphism styles based on theme"""
+    """
+    Apply Neumorphism styles based on theme, including neon red progress circle.
+    """
     bg_color = "#1E2128" if is_dark else "#E0E5EC"
     text_color = "#E0E5EC" if is_dark else "#1E2128"
     accent = "#FF6B6B"
@@ -242,11 +247,25 @@ def apply_styles(is_dark):
             overflow-y: auto;
             border: 1px solid #333;
         }}
-        #logo-anchor {{
+        #logo-container {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }}
+        .progress-circle {{
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
             display: flex;
             justify-content: center;
             align-items: center;
-            margin-bottom: 20px;
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #FF6B6B; /* Neon Red */
+            background: radial-gradient(circle at center, rgba(255,107,107,0.1) 0%, rgba(255,107,107,0.3) 50%, rgba(255,107,107,0.5) 100%);
+            box-shadow: 0 0 15px #FF6B6B, inset 0 0 10px #FF6B6B; /* Neon glow */
+            text-shadow: 0 0 5px #FF6B6B;
         }}
         </style>
     """, unsafe_allow_html=True)
@@ -270,7 +289,7 @@ def main():
     if "youtube" not in st.session_state: 
         st.session_state.youtube = ""
     if "category" not in st.session_state: 
-        st.session_state.category = WHO_WE_HELP_OPTIONS[0]
+        st.session_state.category = [] # Changed to list for multiselect
     if "what_we_do" not in st.session_state: 
         st.session_state.what_we_do = []
     if "scope" not in st.session_state: 
@@ -311,15 +330,41 @@ def main():
         if gemini_key: 
             st.session_state.GEMINI_API_KEY = gemini_key
 
-    # Display Logo with Version Number
-    st.markdown('<div id="logo-anchor">', unsafe_allow_html=True)
-    col_logo, col_version = st.columns([3, 1])
+    # Display Logo with Version Number and Progress Circle
+    st.markdown("<div id='logo-container'>", unsafe_allow_html=True)
+    col_logo, col_version_progress = st.columns([3, 1])
     with col_logo:
         logo_url = "https://raw.githubusercontent.com/dickson-crypto/Firebean-app/main/Firebeanlogo2026.png"
         st.image(logo_url, width=300, use_container_width=False)
-    with col_version:
-        st.markdown(f"<div style='text-align: center; padding-top: 30px;'><h3 style='color: #FF6B6B; margin: 0;'>{APP_VERSION}</h3></div>", unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
+    with col_version_progress:
+        # Calculate Progress (11 items)
+        progress_items = [
+            ("Logo Black", st.session_state.logo_black != ""),
+            ("Logo White", st.session_state.logo_white != ""),
+            ("Category", len(st.session_state.category) > 0), # Changed for multiselect
+            ("What We Do", len(st.session_state.what_we_do) > 0),
+            ("Scope of Work", len(st.session_state.scope) > 0),
+            ("Client Name", st.session_state.client_name != ""),
+            ("Project Name", st.session_state.project_name != ""),
+            ("Venue", st.session_state.venue != ""),
+            ("Event Year", st.session_state.event_year != ""),
+            ("Event Month", st.session_state.event_month != ""),
+            (f"{MC_QUESTION_COUNT} MC Questions Answered", len(st.session_state.mc_questions) == MC_QUESTION_COUNT and all(st.session_state.get(f"ans_{q.get('id', i+1)}", []) for i, q in enumerate(st.session_state.mc_questions)))
+        ]
+        
+        completed = sum(1 for _, done in progress_items if done)
+        total = len(progress_items)
+        progress_pct = (completed / total) * 100 if total > 0 else 0
+
+        st.markdown(f"""
+            <div style='text-align: right; padding-top: 10px;'>
+                <div class='progress-circle'>
+                    {int(progress_pct)}%
+                </div>
+                <div style='font-size: 0.8em; color: #FF6B6B; margin-top: 5px;'>{APP_VERSION}</div>
+            </div>
+            """, unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
     # FIXED NAVIGATION
     tab_options = ["Project Collector", "Review & Multi-Sync"]
@@ -330,35 +375,6 @@ def main():
         st.rerun()
 
     if st.session_state.active_tab == "Project Collector":
-        # Calculate Progress (11 items)
-        progress_items = [
-            ("Logo Black", st.session_state.logo_black != ""),
-            ("Logo White", st.session_state.logo_white != ""),
-            ("Category", st.session_state.category != ""),
-            ("What We Do", len(st.session_state.what_we_do) > 0),
-            ("Scope of Work", len(st.session_state.scope) > 0),
-            ("Client Name", st.session_state.client_name != ""),
-            ("Project Name", st.session_state.project_name != ""),
-            ("Venue", st.session_state.venue != ""),
-            ("Event Year", st.session_state.event_year != ""),
-            ("Event Month", st.session_state.event_month != ""),
-            ("15 MC Questions Answered", len(st.session_state.mc_questions) == 15 and all(st.session_state.get(f"ans_{q.get('id', i+1)}", []) for i, q in enumerate(st.session_state.mc_questions)))
-        ]
-        
-        completed = sum(1 for _, done in progress_items if done)
-        total = len(progress_items)
-        progress_pct = (completed / total) * 100 if total > 0 else 0
-        
-        # Display Progress Circle
-        col_progress, col_spacer = st.columns([1, 3])
-        with col_progress:
-            st.markdown(f"""
-            <div style='text-align: center; padding: 20px; background: #f0f0f0; border-radius: 10px; border: 3px solid #FF6B6B;'>
-                <div style='font-size: 48px; font-weight: bold; color: #FF6B6B;'>{int(progress_pct)}%</div>
-                <div style='font-size: 12px; color: #666;'>{completed}/{total} items</div>
-            </div>
-            """, unsafe_allow_html=True)
-        
         # Display Missing Items Checklist
         if progress_pct < 100:
             st.markdown("### 📌 溫馨提示 Checklist")
@@ -368,7 +384,7 @@ def main():
         else:
             st.markdown("### ✅ All Requirements Met!")
         
-        st.markdown('<div class="neu-card">', unsafe_allow_html=True)
+        st.markdown("<div class='neu-card'>", unsafe_allow_html=True)
         st.markdown("### Project Basics")
         
         c1, c2 = st.columns([1, 1])
@@ -379,11 +395,13 @@ def main():
         
         with c2:
             st.markdown("#### Project Info")
-            st.session_state.category = st.selectbox("Category", WHO_WE_HELP_OPTIONS, key="cat_sel")
-            st.session_state.what_we_do = st.multiselect("What We Do", WHAT_WE_DO_OPTIONS, key="what_sel")
-            st.session_state.scope = st.multiselect("Scope of Work", SOW_OPTIONS, key="scope_sel")
+            st.session_state.category = st.multiselect("Category", WHO_WE_HELP_OPTIONS, default=st.session_state.category, key="cat_sel") # Changed to multiselect
+            st.session_state.what_we_do = st.multiselect("What We Do", WHAT_WE_DO_OPTIONS, default=st.session_state.what_we_do, key="what_sel")
+            st.session_state.scope = st.multiselect("Scope of Work", SOW_OPTIONS, default=st.session_state.scope, key="scope_sel")
         
-        st.markdown('<div class="neu-card">', unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
+        
+        st.markdown("<div class='neu-card'>", unsafe_allow_html=True)
         st.markdown("#### Client & Project Details")
         c1, c2 = st.columns([1, 1])
         with c1:
@@ -396,55 +414,48 @@ def main():
             st.session_state.event_month = st.selectbox("Event Month", MONTH_OPTIONS, index=MONTH_OPTIONS.index(st.session_state.event_month) if st.session_state.event_month in MONTH_OPTIONS else 0, key="month_sel")
             st.session_state.youtube = st.text_input("YouTube Link (Optional)", value=st.session_state.youtube, key="yt_input")
         
-        st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
         
-        st.markdown('<div class="neu-card">', unsafe_allow_html=True)
-        st.markdown("#### 15 Diagnostic Questions (MC)")
+        st.markdown("<div class='neu-card'>", unsafe_allow_html=True)
+        st.markdown("#### Project Photos") # Photo section moved up
+        up = st.file_uploader("Upload Project Photos (Up to 8)", type=['jpg', 'jpeg', 'png'], accept_multiple_files=True, key="p_u")
+        if up:
+            st.session_state.project_photos = up[:8]
         
-        if st.button("生成 15 題繁中診斷題目", use_container_width=True):
+        if st.session_state.project_photos:
+            st.markdown(f"**已上傳 {len(st.session_state.project_photos)} 張相片**")
+            st.markdown("##### Select Hero Photo")
+            cols = st.columns(4)
+            for idx, photo in enumerate(st.session_state.project_photos):
+                with cols[idx % 4]:
+                    st.image(photo, use_container_width=True)
+                    if st.button(f"Hero", key=f"hero_{idx}", type="primary" if st.session_state.hero_photo_index == idx else "secondary"):
+                        st.session_state.hero_photo_index = idx
+                        st.rerun()
+        st.markdown("</div>", unsafe_allow_html=True)
+
+        st.markdown("<div class='neu-card'>", unsafe_allow_html=True)
+        st.markdown(f"#### {MC_QUESTION_COUNT} Diagnostic Questions (MC)") # Updated MC count
+        
+        if st.button(f"生成 {MC_QUESTION_COUNT} 題繁中診斷題目", use_container_width=True):
             with st.status("生成中...", expanded=True) as status:
-                facts = f"Client: {st.session_state.client_name}, Project: {st.session_state.project_name}, Category: {st.session_state.category}"
+                facts = f"Client: {st.session_state.client_name}, Project: {st.session_state.project_name}, Category: {', '.join(st.session_state.category)}, SOW: {', '.join(st.session_state.scope)}, Notes: {st.session_state.open_question_ans}"
                 
-                mc_prompt = f"""Generate 15 Traditional Chinese multiple-choice diagnostic questions for a PR/Marketing case study.
-
-Facts: {facts}
-
-Return a JSON object with this exact structure:
-{{
-  "questions": [
-    {{
-      "id": 1,
-      "question": "Question text in Traditional Chinese?",
-      "options": ["Option A", "Option B", "Option C", "Option D"]
-    }},
-    {{
-      "id": 2,
-      "question": "Next question in Traditional Chinese?",
-      "options": ["Option A", "Option B", "Option C", "Option D"]
-    }}
-  ]
-}}
-
-CRITICAL REQUIREMENTS:
-1. Generate EXACTLY 15 questions (id from 1 to 15)
-2. Each question MUST have exactly 4 options
-3. All text MUST be in Traditional Chinese
-4. Return ONLY valid JSON, no other text or explanation
-5. Each option should be a single string"""
+                mc_prompt = f"""Generate {MC_QUESTION_COUNT} Traditional Chinese multiple-choice diagnostic questions for a PR/Marketing case study.\n\nFacts: {facts}\n\nReturn a JSON object with this exact structure:\n{{\n  "questions": [\n    {{\n      "id": 1,\n      "question": "Question text in Traditional Chinese?",\n      "options": ["Option A", "Option B", "Option C", "Option D"]\n    }},\n    {{\n      "id": 2,\n      "question": "Next question in Traditional Chinese?",\n      "options": ["Option A", "Option B", "Option C", "Option D"]\n    }}\n  ]\n}}\n\nCRITICAL REQUIREMENTS:\n1. Generate EXACTLY {MC_QUESTION_COUNT} questions (id from 1 to {MC_QUESTION_COUNT})\n2. Each question MUST have exactly 4 options\n3. All text MUST be in Traditional Chinese\n4. Return ONLY valid JSON, no other text or explanation\n5. Each option should be a single string"""
                         
                 res = call_gemini_sdk(mc_prompt, is_json=True)
                 if res:
                     log_debug(f"MC Response received: {res[:100]}...")
                     parsed = extract_json(res)
                     if parsed:
-                        questions = validate_mc_questions(parsed)
-                        if questions and len(questions) > 0:
+                        questions = validate_mc_questions(parsed, MC_QUESTION_COUNT)
+                        if questions and len(questions) == MC_QUESTION_COUNT:
                             st.session_state.mc_questions = questions
                             status.update(label=f"✅ 成功生成 {len(questions)} 題！", state="complete", expanded=False)
                             st.rerun()
                         else:
-                            log_debug(f"Validation failed. Parsed: {parsed}")
-                            st.error(f"生成的題目格式不正確。請重試。(Got {len(questions) if questions else 0} questions)")
+                            log_debug(f"Validation failed. Parsed: {parsed}. Expected {MC_QUESTION_COUNT} questions, got {len(questions) if questions else 0}.")
+                            st.error(f"生成的題目格式不正確或數量不符。請重試。(Expected {MC_QUESTION_COUNT} questions, got {len(questions) if questions else 0})")
                     else:
                         log_debug(f"JSON extraction failed from: {res[:200]}")
                         st.error("AI 返回的不是有效的 JSON。請重試。")
@@ -463,29 +474,11 @@ CRITICAL REQUIREMENTS:
                     if st.checkbox(opt, value=(opt in current_selections), key=f"chk_{q_id}_{opt}"):
                         new_selections.append(opt)
                 st.session_state[ans_key] = new_selections
-        st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
 
         cr = st.columns([1])[0]
         with cr:
-            st.markdown('<div class="neu-card">', unsafe_allow_html=True)
-            # FIXED: Photo uploader with better state management
-            up = st.file_uploader("Upload Project Photos (Up to 8)", type=['jpg', 'jpeg', 'png'], accept_multiple_files=True, key="p_u")
-            if up:
-                st.session_state.project_photos = up[:8]
-            
-            if st.session_state.project_photos:
-                st.markdown(f"**已上傳 {len(st.session_state.project_photos)} 張相片**")
-                st.markdown("##### Select Hero Photo")
-                cols = st.columns(4)
-                for idx, photo in enumerate(st.session_state.project_photos):
-                    with cols[idx % 4]:
-                        st.image(photo, use_container_width=True)
-                        if st.button(f"Hero", key=f"hero_{idx}", type="primary" if st.session_state.hero_photo_index == idx else "secondary"):
-                            st.session_state.hero_photo_index = idx
-                            st.rerun()
-            st.markdown('</div>', unsafe_allow_html=True)
-            
-            st.markdown('<div class="neu-card">', unsafe_allow_html=True)
+            st.markdown("<div class='neu-card'>", unsafe_allow_html=True)
             st.session_state.open_question_ans = st.text_area("Anything else to add?", value=st.session_state.open_question_ans, height=150, key="open_q_input")
             
             # Lock button if progress < 100%
@@ -495,7 +488,7 @@ CRITICAL REQUIREMENTS:
                     st.error("⚠️ 請完成所有必填項目才能繼續！")
                 else:
                     with st.spinner("正在生成全套 PR 策略與文案..."):
-                        context = f"Client: {st.session_state.client_name}, Project: {st.session_state.project_name}, Category: {st.session_state.category}, SOW: {', '.join(st.session_state.scope)}, Notes: {st.session_state.open_question_ans}"
+                        context = f"Client: {st.session_state.client_name}, Project: {st.session_state.project_name}, Category: {', '.join(st.session_state.category)}, SOW: {', '.join(st.session_state.scope)}, Notes: {st.session_state.open_question_ans}"
                         res = call_gemini_sdk(f"{FIREBEAN_SYSTEM_PROMPT}\n\nContext: {context}", is_json=True)
                         if res:
                             parsed = extract_json(res)
@@ -505,7 +498,7 @@ CRITICAL REQUIREMENTS:
                                 st.rerun()
                             else:
                                 st.error("AI returned an invalid format. Please try again.")
-            st.markdown('</div>', unsafe_allow_html=True)
+            st.markdown("</div>", unsafe_allow_html=True)
 
     elif st.session_state.active_tab == "Review & Multi-Sync":
         if not st.session_state.ai_content:
@@ -514,7 +507,7 @@ CRITICAL REQUIREMENTS:
                 st.session_state.active_tab = "Project Collector"
                 st.rerun()
         else:
-            st.markdown('<div class="neu-card">', unsafe_allow_html=True)
+            st.markdown("<div class='neu-card'>", unsafe_allow_html=True)
             st.markdown("### Review & Edit Content")
             
             ai = st.session_state.ai_content
@@ -551,9 +544,9 @@ CRITICAL REQUIREMENTS:
                         st.write(f"**Q:** {list(qa.values())[0] if qa else ''}")
                         st.write(f"**A:** {list(qa.values())[1] if len(qa) > 1 else ''}")
             
-            st.markdown('</div>', unsafe_allow_html=True)
+            st.markdown("</div>", unsafe_allow_html=True)
             
-            st.markdown('<div class="neu-card">', unsafe_allow_html=True)
+            st.markdown("<div class='neu-card'>", unsafe_allow_html=True)
             if st.button("💾 Sync to Master DB", use_container_width=True, type="primary"):
                 with st.spinner("Syncing to Master DB and Google Slides..."):
                     if trigger_full_sync():
@@ -561,7 +554,7 @@ CRITICAL REQUIREMENTS:
                         st.success("✅ 同步成功！你的案例已保存到 Master DB 和 Google Slides。")
                     else:
                         st.error("❌ 同步失敗: 無法處理圖片")
-            st.markdown('</div>', unsafe_allow_html=True)
+            st.markdown("</div>", unsafe_allow_html=True)
 
 def trigger_full_sync():
     """Trigger the full sync to Google Sheet and Slides"""
@@ -597,9 +590,9 @@ def trigger_full_sync():
         payload = {
             "client_name": st.session_state.client_name,
             "project_name": st.session_state.project_name,
-            "category": st.session_state.category,
-            "what_we_do": ", ".join(st.session_state.what_we_do),
-            "scope": ", ".join(st.session_state.scope),
+            "category": ', '.join(st.session_state.category), # Changed for multiselect
+            "what_we_do": ', '.join(st.session_state.what_we_do),
+            "scope": ', '.join(st.session_state.scope),
             "venue": st.session_state.venue,
             "event_year": st.session_state.event_year,
             "event_month": st.session_state.event_month,
