@@ -6,7 +6,7 @@ import time
 import json
 import requests
 import re
-from PIL import Image, ImageDraw, ImageOps # 確保匯入 ImageOps
+from PIL import Image, ImageDraw, ImageOps
 from datetime import datetime
 
 # --- 1. 核心配置 ---
@@ -24,23 +24,17 @@ MONTH_OPTIONS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", 
 
 # --- NEW: 系統自動生成邏輯 (ID 與 日期) ---
 def generate_system_metadata():
-    """自動生成大寫無符號 Project_id 與標準化 Sort_date"""
-    # 1. 映射月份為數字 (Sort_date 用)
     month_map = {m: str(i+1).zfill(2) for i, m in enumerate(MONTH_OPTIONS)}
     m_num = month_map.get(st.session_state.event_month, "01")
     sort_date = f"{st.session_state.event_year}-{m_num}-01"
 
-    # 2. 獲取當前行數生成 ID (向 Sheet 索取當前總行數)
     try:
-        # 這裡會觸發 Google Sheet Script 的 action=get_row_count 
         count_res = requests.get(SHEET_SCRIPT_URL + "?action=get_row_count", timeout=5)
         next_index = int(count_res.text) + 1 if count_res.status_code == 200 else 100
     except:
         next_index = 999 
     
-    # 格式：FB + 年份 + 三位序號 (如 FB2026005)
     project_id = f"FB{st.session_state.event_year}{str(next_index).zfill(3)}"
-    
     return project_id, sort_date
 
 FIREBEAN_SYSTEM_PROMPT = """
@@ -55,7 +49,6 @@ This tool is EXCLUSIVELY used AFTER an event has already taken place. All conten
 NEVER use the phrase "Firebean Brain", "Firebean Brain Team", or any similar internal terminology in ANY output. These are internal tools only, NOT for public communication.
 Instead, use professional alternatives:
 - "Our strategic approach", "Our creative concept", "Our team's expertise", "The project team", "Our strategic thinking"
-Example: Instead of "Firebean Brain identified the challenge", write "Our strategic analysis revealed the challenge".
 
 STRICTLY FORBIDDEN in ALL outputs (applies to every key in the JSON):
 - ANY invitation language (e.g. "join us", "register now", "don't miss", "come and experience", "歡迎報名", "立即登記", "名額有限" etc.)
@@ -63,36 +56,34 @@ STRICTLY FORBIDDEN in ALL outputs (applies to every key in the JSON):
 - ANY specific date, time, ticket price, or venue address used in a promotional context
 - ANY CTA links or registration details
 - Phrases like "save the date", "mark your calendar", "coming soon"
-- Internal terminology: "Firebean Brain", "Firebean Brain Team", or similar
 
 INSTEAD, always use retrospective language:
 - English: "The event took place...", "Guests experienced...", "The project delivered...", "What unfolded was..."
 - 繁中: 「活動已圓滿結束」、「當日現場」、「是次項目成功」、「回顧今次」
-- Time references: Use vague retrospective references only (e.g. "recently", "at the event", "on the day"). DO NOT state specific year, month, date, or time in the body text — these details belong in metadata only, not in the narrative.
 
 **CRITICAL INSTRUCTION FOR 'challenge_summary'**:
-You MUST keep the client's pain points and challenges extremely concise. Use only 1 to 2 short, punchy sentences (maximum 50 words) to define the core challenge. Do not elaborate excessively on the negative impacts.
+You MUST keep the client's pain points and challenges extremely concise. Use only 1 to 2 short, punchy sentences (maximum 50 words) to define the core challenge. 
 
 **CRITICAL INSTRUCTION FOR '6_website' (Magazine Feature Article)**:
 The '6_website' key MUST be a nested JSON object containing exactly four keys: "angle_chosen", "en", "tc", and "jp".
-Write a highly engaging, 500-word POST-EVENT feature article. This is a case study showcase for the agency's portfolio website, intended to impress prospective clients — NOT to promote a future event.
+Write a highly engaging, 500-word POST-EVENT feature article. This is a case study showcase for the agency's portfolio website.
 
 To ensure a diverse content library, RANDOMLY SELECT ONLY ONE of the 5 writing styles/angles below. Do not mix styles:
-1. The Thought Leadership Angle: Reflect on the industry challenge. Frame the Pain Point as a systemic flaw that this project addressed, and the outcome as a visionary blueprint for the industry.
-2. The Contrarian / Disruptor Angle: Start with a bold, counter-intuitive hook about what most events get wrong. Show how this project disrupted the norm and delivered something unexpected.
-3. The Human-Centric / Emotional Storytelling Angle: Focus on the human experience at the event — the energy, the moments, the emotional impact. Write as if you were there witnessing it.
-4. The Analytical Problem-Solver: Break down the brief, the challenge, and the strategic solution. Show how the agency's approach logically solved the client's problem.
-5. The Insider / Behind-the-Scenes Angle: Write from an exclusive perspective, revealing the creative process, the challenges overcome during production, and the final triumphant result.
+1. The Thought Leadership Angle
+2. The Contrarian / Disruptor Angle
+3. The Human-Centric / Emotional Storytelling Angle
+4. The Analytical Problem-Solver
+5. The Insider / Behind-the-Scenes Angle
 
 Format & Structure Requirements for '6_website':
 - Word Count: Approximately 500 words per language.
     - Structure: Use exactly three sections, each starting with an <h3> heading.
-    - Paragraph Count: Ensure each of the three sections contains at least one substantive paragraph (<p>). This is crucial for photo interleaving.
+    - Paragraph Count: Ensure each of the three sections contains at least one substantive paragraph (<p>). 
     - The Core Narrative: Seamlessly weave the [Basic Information], [Project Outcome], [Challenge], and [Solution] into the chosen narrative angle. All written in past tense.
     - The Punch Line: The final paragraph must be a single, bolded, highly memorable concluding sentence about the project's impact.
     
     **CRITICAL HTML STRUCTURE REQUIREMENT FOR '6_website'**:
-    You MUST output valid HTML that matches the CMS parsing format exactly. The structure MUST follow this pattern for photo interleaving:
+    You MUST output valid HTML that matches the CMS parsing format exactly:
     <h1>Main Title</h1>
     <h3>First Section Heading</h3>
     <p>Paragraph 1...</p>
@@ -105,48 +96,23 @@ Format & Structure Requirements for '6_website':
     STRICT RULES FOR HTML:
     1. Use ONLY <h1>, <h3>, and <p> tags for main content.
     2. DO NOT use <h2>, <h4>, or any other heading tags.
-    3. DO NOT use <span>, <div>, <strong>, or any style attributes (no inline colors).
+    3. DO NOT use <span>, <div>, <strong>, or any style attributes.
     4. NEVER include a FAQ section inside '6_website'. Do not output '### Fast Recap FAQ'.
 
 Language Output Requirement for '6_website':
-- "angle_chosen": State the name of the angle you selected (e.g., "Style 2: The Contrarian").
-- "en": English (Premium editorial, past-tense retrospective tone, valid HTML structure)
-- "tc": Traditional Chinese (Hong Kong localization, fluent and natural editorial style, past tense, valid HTML structure)
-- "jp": Japanese (Polite, professional business-magazine tone - Desu/Masu form, past tense, valid HTML structure)
+- "angle_chosen": State the name of the angle you selected.
+- "en": English 
+- "tc": Traditional Chinese 
+- "jp": Japanese 
 
-**CRITICAL INSTRUCTIONS FOR SOCIAL MEDIA POSTS (2_facebook, 3_threads, 4_instagram, 5_linkedin)**:
-All social media posts are POST-EVENT highlights for the agency's own channels. The purpose is to showcase completed work to attract future clients and build brand authority — NOT to promote attendance.
+**CRITICAL INSTRUCTIONS FOR SOCIAL MEDIA POSTS**:
+1. '2_facebook_post' (活動精彩回顧): 100 - 250 words. 香港繁體中文.
+2. '4_instagram_post' (幕後花絮 & 成果展示): STRICTLY < 150 words. 香港繁體中文.
+3. '3_threads_post' (觀點分享 & 行業洞察): < 50 words. 廣東話/網絡用語.
+4. '5_linkedin_post' (案例分析 & 思想領導力): 150 - 300 words. English first, followed by Traditional Chinese.
 
-1. '2_facebook_post' (活動精彩回顧):
-   - Word Count: 100 - 250 words.
-   - Tone: 親切有溫度、故事化。語氣像在跟朋友分享一個精彩的工作回顧。
-   - Content: 以「回顧」角度出發，分享活動當日的精彩片段、現場氣氛、團隊如何克服挑戰並交出成果。重點突出項目的亮點與成就。
-   - Format: 純回顧內容。絕對不可加入報名連結、活動日期時間、票務資訊或任何邀請參與的字眼。
-   - Language: 香港繁體中文 (可適度夾雜廣東話口語)。
-
-2. '4_instagram_post' (幕後花絮 & 成果展示):
-   - Word Count: STRICTLY < 150 words. 頭兩行必須在「展開」前抓住眼球。
-   - Tone: 極簡視覺化、真實「貼地」，展示團隊的專業與創意成果。
-   - Content: 幕後花絮視角 (Behind-the-scenes retrospective)。聚焦團隊籌備過程的真實片段、當日現場的精彩瞬間、最終成果的視覺衝擊。以「已完成」的自豪感作為語氣基調。
-   - Format: 配合 Emoji 分段，必帶專業 Hashtags。絕對不可出現活動日期、時間或任何邀請字眼。
-   - Language: 香港繁體中文。
-
-3. '3_threads_post' (觀點分享 & 行業洞察):
-   - Word Count: 短小精悍，< 50 words (Max 200 characters).
-   - Tone: 幽默口語化、隨性但具洞察力。具備引發討論的潛力。
-   - Content: 以「做完這個項目之後的感想」為出發點，拋出一個行業觀點或反思 (例如：「做完今次先發現，原來大多數活動都係咁死㗎...」)。絕對不可出現「即將舉行」、「歡迎參與」等字眼。
-   - Language: 最地道的廣東話/網絡用語，語氣要 casual。
-
-4. '5_linkedin_post' (案例分析 & 思想領導力):
-   - Word Count: 150 - 300 words. 段落必須分明。
-   - Tone: 權威 B2B、專業顧問風格。以完成項目的角度分享行業洞見。
-   - Content: 以「案例分享」形式，由專業角度回顧此項目：我們面對的挑戰是什麼、我們的策略思維是什麼、最終成果如何。目的是向潛在 B2B 客戶展示公司的專業能力與解決問題的思維。絕對不可出現活動日期、報名資訊或邀請字眼。
-   - Language: 雙語並行 (English first, followed by Traditional Chinese)。
-
-**CRITICAL INSTRUCTION FOR '7_faq' (Dedicated FAQ — Separate from Website Article)**:
+**CRITICAL INSTRUCTION FOR '7_faq' (Dedicated FAQ)**:
 The '7_faq' key MUST be a nested JSON object containing exactly three keys: "en", "tc", and "jp".
-This FAQ is SEPARATE from the article body in '6_website'. It will be stored in its own dedicated database column and displayed in the website sidebar.
-
 Each language version must contain 3 to 5 Q&A pairs covering:
 1. What was the core challenge or brief?
 2. What was the creative/strategic approach?
@@ -154,16 +120,12 @@ Each language version must contain 3 to 5 Q&A pairs covering:
 
 FORMAT RULES FOR '7_faq' (STRICT):
 - Each language value MUST be a JSON array of objects.
-- Format for each object MUST follow this structure: {"Q1": "[Question]", "A1": "[Answer]"}, {"Q2": "[Question]", "A2": "[Answer]"}, etc.
+- Format for each object MUST follow this structure exactly: [{"Q1": "[Question]", "A1": "[Answer]"}, {"Q2": "[Question]", "A2": "[Answer]"}]
 - Example for "en":
   [
     {"Q1": "What is the event about?", "A1": "The event showcases..."},
     {"Q2": "Which services did Firebean provide?", "A2": "Firebean managed..."}
   ]
-- Language requirements:
-  - "en": English (professional editorial tone)
-  - "tc": Traditional Chinese (Hong Kong localization, natural editorial style)
-  - "jp": Japanese (polite Desu/Masu business tone)
 
 DO NOT output any conversational text outside the JSON object.
 """
@@ -176,7 +138,6 @@ def log_debug(msg, type="info"):
     st.session_state.debug_logs.append({"time": timestamp, "msg": msg, "type": type})
 
 def call_gemini_sdk(prompt, image_files=None, is_json=False, max_retries=2):
-    """呼叫 Gemini API，內建 JSON 容錯重試機制 (優化 C)"""
     secret_key = st.secrets.get("GEMINI_API_KEY", "")
     if not secret_key:
         st.error("🚨 找不到 API Key")
@@ -205,10 +166,8 @@ def call_gemini_sdk(prompt, image_files=None, is_json=False, max_retries=2):
                 text = response.text.strip()
                 if not is_json:
                     return text
-                # 嘗試提取 JSON
                 match = re.search(r'(\{.*\})|(\[.*\])', text, re.DOTALL)
                 json_str = match.group(0) if match else text
-                # 驗證 JSON 是否有效
                 json.loads(json_str)
                 return json_str
 
@@ -236,19 +195,18 @@ def init_session_state():
         "debug_logs": [], "mc_questions": [], "open_question_ans": "", 
         "challenge": "", "solution": "", "visual_facts": "",
         "hero_photo_index": 0,
-        "sync_success": False,  # 記錄同步是否成功
-        "draft_project_id": "",  # 記錄已載入的草稿 ID（用於更新而非新增）
-        "loaded_image_urls": [],  # 記錄從草稿載入的圖片 URLs
-        "faq_en": "",  # Dedicated FAQ EN (column AB)
-        "faq_tc": "",  # Dedicated FAQ TC (column AC)
-        "faq_jp": "",  # Dedicated FAQ JP (column AD)
+        "sync_success": False,  
+        "draft_project_id": "",  
+        "loaded_image_urls": [],  
+        "faq_en": "",  
+        "faq_tc": "",  
+        "faq_jp": "",  
     }
     for k, v in fields.items():
         if k not in st.session_state:
             st.session_state[k] = v
 
 def reset_for_new_case():
-    """完全清空所有資料，準備輸入下一個案例"""
     keys_to_reset = [
         "client_name", "project_name", "venue", "youtube",
         "event_year", "event_month", "category", "what_we_do", "scope",
@@ -268,11 +226,9 @@ def reset_for_new_case():
     }
     for k in keys_to_reset:
         st.session_state[k] = defaults.get(k, "")
-    # 清除 15 題答案
     for i in range(1, 16):
         if f"ans_{i}" in st.session_state:
             del st.session_state[f"ans_{i}"]
-    # 清除 logo uploader 的 widget key
     for key in ["l_b", "l_w"]:
         if key in st.session_state:
             del st.session_state[key]
@@ -314,12 +270,9 @@ def fill_dummy_data():
 # --- 3. UI 元件 ---
 
 def get_is_dark_mode():
-    """根據香港時間判斷是否為夜間模式 (20:00 - 07:59 為深色模式)"""
-    # 使用 UTC+8 (香港時間)
     from datetime import timezone, timedelta
     hk_tz = timezone(timedelta(hours=8))
     hk_hour = datetime.now(hk_tz).hour
-    # 晚上 8 點 (20:00) 至 早上 7 點 (07:59) 為 Dark Mode
     return hk_hour >= 20 or hk_hour < 8
 
 def get_circle_progress_html(percent, is_dark):
@@ -341,7 +294,6 @@ def get_circle_progress_html(percent, is_dark):
 
 def apply_styles(is_dark):
     if is_dark:
-        # ── Dark Mode Neumorphism ──
         bg_color       = "#1E2128"
         card_bg        = "#1E2128"
         shadow_dark    = "#14161C"
@@ -351,11 +303,9 @@ def apply_styles(is_dark):
         hr_color       = "#3A3F4D"
         input_bg       = "#252830"
         input_border   = "#3A3F4D"
-        toggle_label   = "🌙 夜間模式"
         toggle_bg      = "#252830"
         toggle_border  = "#3A3F4D"
     else:
-        # ── Light Mode Neumorphism ──
         bg_color       = "#E0E5EC"
         card_bg        = "#E0E5EC"
         shadow_dark    = "#bec3c9"
@@ -365,205 +315,41 @@ def apply_styles(is_dark):
         hr_color       = "#c8cdd4"
         input_bg       = "#e8ecf2"
         input_border   = "#d0d5dc"
-        toggle_label   = "☀️ 日間模式"
         toggle_bg      = "#E0E5EC"
         toggle_border  = "#c8cdd4"
 
     st.markdown(f"""<style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap');
-
         header {{visibility: hidden;}} footer {{visibility: hidden;}}
-
-        /* ── 全域底色與字色 ── */
-        .stApp {{
-            background-color: {bg_color} !important;
-            color: {text_color} !important;
-            font-family: 'Inter', sans-serif;
-            transition: background-color 0.6s ease, color 0.6s ease;
-        }}
-
-        /* ── 所有文字元素 ── */
-        .stApp p, .stApp span, .stApp label, .stApp div,
-        .stApp h1, .stApp h2, .stApp h3, .stApp h4, .stApp h5, .stApp h6,
-        .stMarkdown, .stText {{
-            color: {text_color} !important;
-        }}
-
-        /* ── Neumorphism 卡片（凸起效果） ── */
-        .neu-card {{
-            background: {card_bg};
-            border-radius: 20px;
-            box-shadow: 9px 9px 16px {shadow_dark}, -9px -9px 16px {shadow_light};
-            padding: 25px;
-            margin-bottom: 20px;
-            transition: background 0.6s ease, box-shadow 0.6s ease;
-        }}
-
-        /* ── 分隔線 ── */
-        hr {{
-            border-color: {hr_color} !important;
-        }}
-
-        /* ── 輸入框 ── */
-        .stTextInput > div > div > input,
-        .stTextArea > div > div > textarea,
-        .stSelectbox > div > div > div {{
-            background-color: {input_bg} !important;
-            color: {text_color} !important;
-            border: 1px solid {input_border} !important;
-            border-radius: 10px !important;
-            box-shadow: inset 3px 3px 6px {shadow_dark}, inset -3px -3px 6px {shadow_light} !important;
-            transition: all 0.4s ease;
-        }}
-
-        /* ── Selectbox 下拉選項 ── */
-        .stSelectbox [data-baseweb="select"] > div {{
-            background-color: {input_bg} !important;
-            color: {text_color} !important;
-            border: 1px solid {input_border} !important;
-            box-shadow: inset 3px 3px 6px {shadow_dark}, inset -3px -3px 6px {shadow_light} !important;
-        }}
-
-        /* ── Radio & Checkbox 標籤 ── */
-        .stRadio label, .stCheckbox label {{
-            color: {text_color} !important;
-        }}
-
-        /* ── Expander ── */
-        .streamlit-expanderHeader {{
-            background-color: {card_bg} !important;
-            color: {text_color} !important;
-            border-radius: 12px !important;
-            box-shadow: 4px 4px 8px {shadow_dark}, -4px -4px 8px {shadow_light} !important;
-        }}
-        .streamlit-expanderContent {{
-            background-color: {card_bg} !important;
-            border-radius: 0 0 12px 12px !important;
-        }}
-
-        /* ── 一般按鈕（凸起效果） ── */
-        .stButton > button {{
-            min-height: 55px !important;
-            font-size: 18px !important;
-            font-weight: 700 !important;
-            background-color: {card_bg} !important;
-            color: {text_color} !important;
-            border: none !important;
-            border-radius: 14px !important;
-            box-shadow: 6px 6px 12px {shadow_dark}, -6px -6px 12px {shadow_light} !important;
-            transition: all 0.2s ease !important;
-        }}
-        .stButton > button:hover {{
-            box-shadow: 3px 3px 6px {shadow_dark}, -3px -3px 6px {shadow_light} !important;
-            transform: translateY(1px) !important;
-        }}
-        .stButton > button:active {{
-            box-shadow: inset 3px 3px 6px {shadow_dark}, inset -3px -3px 6px {shadow_light} !important;
-            transform: translateY(2px) !important;
-        }}
-
-        /* ── Logo 按鈕（特殊樣式，不受一般按鈕覆蓋） ── */
-        div[data-testid="stElementContainer"]:has(#logo-anchor) + div[data-testid="stElementContainer"] button,
-        div.element-container:has(#logo-anchor) + div.element-container button {{
-            background-image: url('https://raw.githubusercontent.com/dickson-crypto/Firebean-app/main/Firebeanlogo2026.png') !important;
-            background-size: contain !important; background-repeat: no-repeat !important; background-position: left center !important;
-            background-color: transparent !important; border: none !important; box-shadow: none !important;
-            min-height: 180px !important; width: 540px !important; padding: 0 !important; margin-top: -10px;
-        }}
-        div.element-container:has(#logo-anchor) + div.element-container button:hover,
-        div[data-testid="stElementContainer"]:has(#logo-anchor) + div[data-testid="stElementContainer"] button:hover {{
-            transform: scale(1.03) !important; background-color: transparent !important; box-shadow: none !important;
-        }}
-        div.element-container:has(#logo-anchor) + div.element-container button p,
-        div[data-testid="stElementContainer"]:has(#logo-anchor) + div[data-testid="stElementContainer"] button p {{
-            display: none !important;
-        }}
-
-        /* ── Primary 按鈕（紅色 CTA） ── */
-        button[kind="primary"] {{
-            background-color: #FF2A2A !important;
-            color: white !important;
-            border: 2px solid #D00000 !important;
-            border-radius: 12px !important;
-            transition: all 0.3s ease-in-out !important;
-            box-shadow: 0px 4px 15px rgba(255, 0, 0, 0.35) !important;
-        }}
-        button[kind="primary"]:hover {{
-            background-color: #D00000 !important;
-            transform: scale(1.02) !important;
-            box-shadow: 0px 6px 20px rgba(255, 0, 0, 0.55) !important;
-        }}
-
-        /* ── MC 診斷題目 ── */
-        .mc-question {{
-            font-weight: 700;
-            color: #FF0000 !important;
-            margin-top: 15px;
-            border-left: 4px solid #FF0000;
-            padding-left: 10px;
-            margin-bottom: 10px;
-        }}
+        .stApp {{ background-color: {bg_color} !important; color: {text_color} !important; font-family: 'Inter', sans-serif; transition: background-color 0.6s ease, color 0.6s ease; }}
+        .stApp p, .stApp span, .stApp label, .stApp div, .stApp h1, .stApp h2, .stApp h3, .stApp h4, .stApp h5, .stApp h6, .stMarkdown, .stText {{ color: {text_color} !important; }}
+        .neu-card {{ background: {card_bg}; border-radius: 20px; box-shadow: 9px 9px 16px {shadow_dark}, -9px -9px 16px {shadow_light}; padding: 25px; margin-bottom: 20px; transition: background 0.6s ease, box-shadow 0.6s ease; }}
+        hr {{ border-color: {hr_color} !important; }}
+        .stTextInput > div > div > input, .stTextArea > div > div > textarea, .stSelectbox > div > div > div {{ background-color: {input_bg} !important; color: {text_color} !important; border: 1px solid {input_border} !important; border-radius: 10px !important; box-shadow: inset 3px 3px 6px {shadow_dark}, inset -3px -3px 6px {shadow_light} !important; transition: all 0.4s ease; }}
+        .stSelectbox [data-baseweb="select"] > div {{ background-color: {input_bg} !important; color: {text_color} !important; border: 1px solid {input_border} !important; box-shadow: inset 3px 3px 6px {shadow_dark}, inset -3px -3px 6px {shadow_light} !important; }}
+        .stRadio label, .stCheckbox label {{ color: {text_color} !important; }}
+        .streamlit-expanderHeader {{ background-color: {card_bg} !important; color: {text_color} !important; border-radius: 12px !important; box-shadow: 4px 4px 8px {shadow_dark}, -4px -4px 8px {shadow_light} !important; }}
+        .streamlit-expanderContent {{ background-color: {card_bg} !important; border-radius: 0 0 12px 12px !important; }}
+        .stButton > button {{ min-height: 55px !important; font-size: 18px !important; font-weight: 700 !important; background-color: {card_bg} !important; color: {text_color} !important; border: none !important; border-radius: 14px !important; box-shadow: 6px 6px 12px {shadow_dark}, -6px -6px 12px {shadow_light} !important; transition: all 0.2s ease !important; }}
+        .stButton > button:hover {{ box-shadow: 3px 3px 6px {shadow_dark}, -3px -3px 6px {shadow_light} !important; transform: translateY(1px) !important; }}
+        .stButton > button:active {{ box-shadow: inset 3px 3px 6px {shadow_dark}, inset -3px -3px 6px {shadow_light} !important; transform: translateY(2px) !important; }}
+        div[data-testid="stElementContainer"]:has(#logo-anchor) + div[data-testid="stElementContainer"] button, div.element-container:has(#logo-anchor) + div.element-container button {{ background-image: url('https://raw.githubusercontent.com/dickson-crypto/Firebean-app/main/Firebeanlogo2026.png') !important; background-size: contain !important; background-repeat: no-repeat !important; background-position: left center !important; background-color: transparent !important; border: none !important; box-shadow: none !important; min-height: 180px !important; width: 540px !important; padding: 0 !important; margin-top: -10px; }}
+        div.element-container:has(#logo-anchor) + div.element-container button:hover, div[data-testid="stElementContainer"]:has(#logo-anchor) + div[data-testid="stElementContainer"] button:hover {{ transform: scale(1.03) !important; background-color: transparent !important; box-shadow: none !important; }}
+        div.element-container:has(#logo-anchor) + div.element-container button p, div[data-testid="stElementContainer"]:has(#logo-anchor) + div[data-testid="stElementContainer"] button p {{ display: none !important; }}
+        button[kind="primary"] {{ background-color: #FF2A2A !important; color: white !important; border: 2px solid #D00000 !important; border-radius: 12px !important; transition: all 0.3s ease-in-out !important; box-shadow: 0px 4px 15px rgba(255, 0, 0, 0.35) !important; }}
+        button[kind="primary"]:hover {{ background-color: #D00000 !important; transform: scale(1.02) !important; box-shadow: 0px 6px 20px rgba(255, 0, 0, 0.55) !important; }}
+        .mc-question {{ font-weight: 700; color: #FF0000 !important; margin-top: 15px; border-left: 4px solid #FF0000; padding-left: 10px; margin-bottom: 10px; }}
         .checkbox-group {{ padding-left: 20px; }}
-
-        /* ── Debug Terminal ── */
-        .debug-terminal {{
-            background: #0D0F14 !important;
-            color: #00FF88 !important;
-            padding: 15px;
-            font-size: 11px;
-            border-top: 4px solid #FF0000;
-            border-radius: 10px;
-            height: 300px;
-            overflow-y: scroll;
-        }}
-
-        /* ── 模式標籤 ── */
-        .mode-badge {{
-            display: inline-block;
-            padding: 4px 14px;
-            border-radius: 20px;
-            font-size: 13px;
-            font-weight: 700;
-            background: {toggle_bg};
-            color: {text_color};
-            border: 1px solid {toggle_border};
-            box-shadow: 3px 3px 6px {shadow_dark}, -3px -3px 6px {shadow_light};
-            margin-top: 8px;
-        }}
-
-        /* ── File Uploader ── */
-        .stFileUploader > div {{
-            background-color: {input_bg} !important;
-            border: 2px dashed {input_border} !important;
-            border-radius: 12px !important;
-            color: {text_color} !important;
-        }}
-
-        /* ── Spinner / Status ── */
-        .stSpinner > div {{
-            border-top-color: #FF2A2A !important;
-        }}
-
-        /* ── Toast / Success / Error ── */
-        .stSuccess {{
-            background-color: {'#1a2e1a' if is_dark else '#d4edda'} !important;
-            color: {'#6fcf97' if is_dark else '#155724'} !important;
-            border-radius: 10px !important;
-        }}
-        .stError {{
-            background-color: {'#2e1a1a' if is_dark else '#f8d7da'} !important;
-            color: {'#eb5757' if is_dark else '#721c24'} !important;
-            border-radius: 10px !important;
-        }}
-
+        .debug-terminal {{ background: #0D0F14 !important; color: #00FF88 !important; padding: 15px; font-size: 11px; border-top: 4px solid #FF0000; border-radius: 10px; height: 300px; overflow-y: scroll; }}
+        .stFileUploader > div {{ background-color: {input_bg} !important; border: 2px dashed {input_border} !important; border-radius: 12px !important; color: {text_color} !important; }}
+        .stSpinner > div {{ border-top-color: #FF2A2A !important; }}
+        .stSuccess {{ background-color: {'#1a2e1a' if is_dark else '#d4edda'} !important; color: {'#6fcf97' if is_dark else '#155724'} !important; border-radius: 10px !important; }}
+        .stError {{ background-color: {'#2e1a1a' if is_dark else '#f8d7da'} !important; color: {'#eb5757' if is_dark else '#721c24'} !important; border-radius: 10px !important; }}
     </style>""", unsafe_allow_html=True)
 
 # --- 4. Main App ---
 
-# ── Draft Save / Load Helper Functions ──
-
 def fetch_draft_list():
-    """Fetch the list of saved drafts from Google Sheet Raw_Input_DB."""
     try:
         r = requests.post(SHEET_SCRIPT_URL, json={"action": "get_raw_input_list"}, timeout=15)
         if r.status_code == 200:
@@ -575,7 +361,6 @@ def fetch_draft_list():
     return []
 
 def load_draft_into_session(project_id):
-    """Load a specific draft from Google Sheet into session state."""
     try:
         r = requests.post(SHEET_SCRIPT_URL, json={"action": "get_raw_input_details", "project_id": project_id}, timeout=15)
         if r.status_code == 200:
@@ -598,8 +383,8 @@ def load_draft_into_session(project_id):
                 st.session_state.mc_questions = d.get("mc_questions", [])
                 st.session_state.loaded_image_urls = d.get("image_urls", [])
                 st.session_state.draft_project_id = project_id
-                st.session_state.project_photos = []  # Reset file uploader
-                st.session_state.ai_content = {}  # Reset AI content
+                st.session_state.project_photos = []  
+                st.session_state.ai_content = {}  
                 log_debug(f"✅ 已成功載入草稿: {project_id}", "success")
                 return True
     except Exception as e:
@@ -607,9 +392,7 @@ def load_draft_into_session(project_id):
     return False
 
 def save_draft_to_sheet():
-    """Save current input data as a draft to Google Sheet Raw_Input_DB."""
     try:
-        # Process new images to base64 if any are uploaded
         processed_imgs = []
         if st.session_state.project_photos:
             for f in st.session_state.project_photos:
@@ -617,7 +400,7 @@ def save_draft_to_sheet():
                 try:
                     img = Image.open(f).convert("RGB")
                     img = ImageOps.exif_transpose(img)
-                    img.thumbnail((800, 800))  # Smaller size for drafts
+                    img.thumbnail((800, 800))  
                     buf = io.BytesIO()
                     img.save(buf, format="JPEG", quality=70)
                     processed_imgs.append(base64.b64encode(buf.getvalue()).decode())
@@ -625,7 +408,6 @@ def save_draft_to_sheet():
                     if hasattr(f, "seek"): f.seek(0)
                     processed_imgs.append(base64.b64encode(f.read()).decode())
 
-        # Use existing draft ID if available, otherwise generate a new one
         draft_id = st.session_state.get("draft_project_id", "") or f"DRAFT_{st.session_state.client_name.replace(' ', '_')}_{int(time.time())}"
 
         payload = {
@@ -660,15 +442,13 @@ def main():
     st.set_page_config(page_title="Firebean Brain Collector", layout="wide")
     init_session_state()
 
-    # 自動偵測時間決定模式
     is_dark = get_is_dark_mode()
     apply_styles(is_dark)
 
     c1, c2 = st.columns([1, 1])
     with c1: 
         st.markdown('<span id="logo-anchor"></span>', unsafe_allow_html=True)
-        # ── HOME 按鈕：若已同步成功則完全重置；否則只切換回 Tab 1 ──
-        if st.button("🏠 HOME", key="logo_btn", help="返回主頁 / 同步後點擊可重置輸入下一個案例"):
+        if st.button("🏠 HOME", key="logo_btn"):
             if st.session_state.get("sync_success", False):
                 reset_for_new_case()
             else:
@@ -695,7 +475,6 @@ def main():
 
     st.markdown("<hr style='margin-top: 5px; margin-bottom: 20px;'>", unsafe_allow_html=True)
 
-    # --- TAB 分頁內容 ---
     if st.session_state.active_tab == "Load Project":
         st.markdown('<div class="neu-card">', unsafe_allow_html=True)
         st.markdown("### 📂 載入已儲存的草稿項目 (Load Existing Draft)")
@@ -725,7 +504,6 @@ def main():
                     else:
                         st.error("❌ 載入失敗，請檢查 Debug Terminal。")
 
-        # Show loaded image previews if any
         if st.session_state.get("loaded_image_urls"):
             st.markdown("<hr>", unsafe_allow_html=True)
             st.markdown("**🖼️ 已載入的圖片（儲存於 Google Drive）:**")
@@ -733,7 +511,6 @@ def main():
             for i, url in enumerate(st.session_state.loaded_image_urls):
                 with img_cols[i % 4]:
                     st.markdown(f"[🖼️ 圖片 {i+1}]({url})", unsafe_allow_html=False)
-            st.info("💡 如需更換圖片，請在 Project Collector 頁面直接重新上傳新照片即可。")
         st.markdown('</div>', unsafe_allow_html=True)
 
     elif st.session_state.active_tab == "Project Collector":
@@ -811,7 +588,6 @@ def main():
                         4. 人流規模 (Crowd & 參與度)
                         5. 餐飲細節 (F&B 服務水準)
                         """
-                        # 圖片自動轉正後傳給 AI
                         facts = call_gemini_sdk(vision_prompt, image_files=st.session_state.project_photos)
                         
                         st.write("📊 視覺分析完成！正在消化 SOW 與客戶背景資料...")
@@ -872,7 +648,7 @@ def main():
                 
                 photo_names = [f"Photo {i+1}" for i in range(len(st.session_state.project_photos))]
                 st.session_state.hero_photo_index = st.radio(
-                    "請選擇一張作為 Website 的 Hero Banner (這張將會被設定為 Hero Photo Link):",
+                    "請選擇一張作為 Website 的 Hero Banner:",
                     options=range(len(st.session_state.project_photos)),
                     format_func=lambda x: photo_names[x],
                     horizontal=True
@@ -884,7 +660,6 @@ def main():
                         try: 
                             if hasattr(f, "seek"): f.seek(0)
                             img = Image.open(f)
-                            # 🚀 修復：在 UI 畫面上顯示前，先旋轉為正確方向
                             img = ImageOps.exif_transpose(img)
                             st.image(img, use_container_width=True)
                             if i == st.session_state.hero_photo_index:
@@ -894,10 +669,8 @@ def main():
                             
             st.markdown('</div>', unsafe_allow_html=True)
 
-        # 進度計算
         filled_count = 0
         missing_items = []
-        # ── 修復：Logo Black 與 White 兩個都必須上傳 ──
         logo_ok = bool(st.session_state.logo_black) and bool(st.session_state.logo_white)
         if logo_ok: filled_count += 1
         else:
@@ -928,13 +701,12 @@ def main():
         if st.session_state.open_question_ans.strip(): filled_count += 1
         else: missing_items.append("最核心的概念 (文字不可留白)")
 
-        final_percent = min(100, int((filled_count / 12) * 100))  # 總項目由 11 改為 12
+        final_percent = min(100, int((filled_count / 12) * 100)) 
         progress_placeholder.markdown(get_circle_progress_html(final_percent, is_dark), unsafe_allow_html=True)
 
-        # ── Save Draft Button (visible at any progress) ──
         save_col1, save_col2 = st.columns([3, 1])
         with save_col1:
-            if st.button("💾 儲存草稿到 Google Sheet (Raw_Input_DB)", use_container_width=True, help="將目前所有輸入儲存為草稿，方便日後重新載入再生成"):
+            if st.button("💾 儲存草稿到 Google Sheet (Raw_Input_DB)", use_container_width=True):
                 if not st.session_state.client_name.strip() or not st.session_state.project_name.strip():
                     st.warning("❗ 請至少填寫 Client 及 Project 名稱才能儲存草稿。")
                 else:
@@ -962,7 +734,6 @@ def main():
         st.markdown('<div class="neu-card">', unsafe_allow_html=True)
         if st.button("生成六大平台對接文案"):
             with st.spinner("AI Strategist 正在構思文案..."):
-                # ── 優化 B：智能壓縮診斷數據，分類「痛點」與「強項」──
                 pain_points = []
                 strengths = []
                 for q in st.session_state.mc_questions:
@@ -970,7 +741,6 @@ def main():
                     ans = st.session_state.get(f"ans_{q['id']}", [])
                     ans_str = "、".join(ans) if ans else "未作答"
                     q_text = q.get('question', '')
-                    # 判斷答案是否含有負面/優化關鍵字
                     negative_keywords = ["優化", "改善", "不足", "欠缺", "低", "差", "未達", "問題", "挑戰", "弱", "缺乏"]
                     is_negative = any(kw in ans_str for kw in negative_keywords)
                     if is_negative:
@@ -979,7 +749,7 @@ def main():
                         strengths.append(f"[強項] {q_text} → {ans_str}")
 
                 pain_summary = "\n".join(pain_points) if pain_points else "診斷結果顯示整體表現良好，無明顯痛點。"
-                strength_summary = "\n".join(strengths[:5]) if strengths else ""  # 只取前5條強項避免 token 過多
+                strength_summary = "\n".join(strengths[:5]) if strengths else ""  
 
                 prompt = f"""
 分析專案: {st.session_state.project_name}. 生成 JSON。IG < 150 字。
@@ -1005,12 +775,11 @@ def main():
                             data = data[0]
                         
                         if isinstance(data, dict):
-                            # ✅ 直接寫入數據，完全移除不再需要的 Q&A Regex 校正代碼
                             st.session_state.ai_content = data
                             st.session_state.challenge = data.get("challenge_summary", "尚未生成")
                             st.session_state.solution = data.get("solution_summary", "尚未生成")
                             
-                            # ✅ 提取專屬 FAQ 欄位並自動格式化為漂亮的 JSON 字串，以符合使用者的 Array of Dict 格式
+                            # 🚀 強制轉換格式的安全裝置 (Force Array of Objects format)
                             faq_data = data.get("7_faq", {})
                             if isinstance(faq_data, dict):
                                 def format_faq(val):
@@ -1018,7 +787,22 @@ def main():
                                         return json.dumps(val, ensure_ascii=False, indent=2)
                                     elif isinstance(val, dict):
                                         return json.dumps([val], ensure_ascii=False, indent=2)
-                                    return str(val)
+                                    elif isinstance(val, str):
+                                        try:
+                                            parsed = json.loads(val)
+                                            if isinstance(parsed, list):
+                                                return json.dumps(parsed, ensure_ascii=False, indent=2)
+                                        except:
+                                            pass
+                                        # 正規表達式提取 Q1/A1，強制組成 JSON 陣列
+                                        qa_pairs = []
+                                        qs = re.findall(r'Q\d+[:：]\s*(.*?)(?=A\d+[:：]|$)', val, re.DOTALL | re.IGNORECASE)
+                                        as_ = re.findall(r'A\d+[:：]\s*(.*?)(?=Q\d+[:：]|$)', val, re.DOTALL | re.IGNORECASE)
+                                        for i in range(min(len(qs), len(as_))):
+                                            qa_pairs.append({f"Q{i+1}": qs[i].strip(), f"A{i+1}": as_[i].strip()})
+                                        if qa_pairs:
+                                            return json.dumps(qa_pairs, ensure_ascii=False, indent=2)
+                                    return "[]"
 
                                 st.session_state.faq_en = format_faq(faq_data.get("en", "[]"))
                                 st.session_state.faq_tc = format_faq(faq_data.get("tc", "[]"))
@@ -1035,7 +819,6 @@ def main():
         if st.session_state.ai_content:
             st.json(st.session_state.ai_content)
 
-            # ── FAQ Preview & Edit Section ──
             if st.session_state.get("faq_en") or st.session_state.get("faq_tc") or st.session_state.get("faq_jp"):
                 st.markdown("---")
                 st.markdown("### 💬 Dedicated FAQ (Columns AB / AC / AD)")
@@ -1060,7 +843,6 @@ def main():
             if st.button("Confirm & Sync (Sheet + Slide + Drive)", type="primary", use_container_width=True):
                 with st.spinner("🔄 同步中 (自動生成系統編號與日期)..."):
                     try:
-                        # 🚀 新增：生成 Project_id 與 Sort_date
                         project_id, sort_date = generate_system_metadata()
                         
                         processed_imgs = []
@@ -1068,7 +850,6 @@ def main():
                             if hasattr(f, "seek"): f.seek(0) 
                             try:
                                 img = Image.open(f).convert("RGB")
-                                # 🚀 修復：在壓縮儲存前，先轉正
                                 img = ImageOps.exif_transpose(img)
                                 img.thumbnail((1600, 1600))
                                 buf = io.BytesIO()
@@ -1103,9 +884,9 @@ def main():
                             "logo_black": st.session_state.logo_black,
                             "images": processed_imgs,
                             "ai_content": st.session_state.ai_content,
-                            "faq_en": st.session_state.get("faq_en", ""),
-                            "faq_tc": st.session_state.get("faq_tc", ""),
-                            "faq_jp": st.session_state.get("faq_jp", "")
+                            "faq_en": st.session_state.get("faq_en_edit", st.session_state.get("faq_en", "[]")),
+                            "faq_tc": st.session_state.get("faq_tc_edit", st.session_state.get("faq_tc", "[]")),
+                            "faq_jp": st.session_state.get("faq_jp_edit", st.session_state.get("faq_jp", "[]"))
                         }
                         
                         # --- 專門給 Google Slide 的資料 ---
@@ -1126,7 +907,6 @@ def main():
                         log_debug(f"Sync Fail: {str(e)}", "error")
                         st.error(f"同步失敗: {e}")
 
-        # ── 同步成功後顯示「準備輸入下一個案例」按鈕 ──
         if st.session_state.get("sync_success", False):
             st.markdown("<br>", unsafe_allow_html=True)
             st.success("✅ 資料已成功同步至 Google Sheet！")
@@ -1142,7 +922,6 @@ def main():
 
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # Debug Terminal
     st.markdown("<br><br>", unsafe_allow_html=True)
     with st.expander("🛠️ Debug Terminal & System Logs", expanded=False):
         if st.button("執行連線測試", use_container_width=True):
