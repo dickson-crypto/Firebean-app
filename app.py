@@ -71,16 +71,16 @@ def format_faq_to_python_string(faq_list):
             continue
         q_key = keys[0]
         a_key = keys[1]
-        question = str(qa_pair[q_key]).replace("\\", "\\\\").replace("\'", "\\'")
-        answer = str(qa_pair[a_key]).replace("\\", "\\\\").replace("\'", "\\'")
+        question = str(qa_pair[q_key]).replace("\\", "\\\\").replace("'", "\\'")
+        answer = str(qa_pair[a_key]).replace("\\", "\\\\").replace("'", "\\'")
         formatted_pairs.append(f"{{ \'{q_key}\' : \'{question}\' , \'{a_key}\' : \'{answer}\' }}")
-    return f'[' + ', '.join(formatted_pairs) + ']'
+    return f'[' + ", ".join(formatted_pairs) + ']'
 
 # --- 1. 核心配置 ---
 SHEET_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz2k7ZZ0shtl5wnhqB5J2wBcxnP7D08cRupRbz3hyi53G25mKYuz6qn5YqkTbPiYjIY/exec"
 SLIDE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyUsYLxjxDn1PjQHDzFXyYQ4yyt2XJW-131GCCxZ-kJ7VBOb1RVgSEfa5kzS7wKb_cam/exec"
 STABLE_MODEL_ID = "gemini-1.5-flash-latest"
-APP_VERSION = "v5.3"
+APP_VERSION = "v5.4"
 MC_QUESTION_COUNT = 10
 
 WHO_WE_HELP_OPTIONS = ["GOVERNMENT & PUBLIC SECTOR", "LIFESTYLE & CONSUMER", "F&B & HOSPITALITY", "MALLS & VENUES"]
@@ -158,7 +158,7 @@ def apply_styles(is_dark):
         .progress-circle-container {{ 
             position: relative; width: 150px; height: 150px; border-radius: 50%;
             display: flex; justify-content: center; align-items: center;
-            background: conic-gradient(transparent 0% 0%, #FF0000 0% 0%);
+            background: conic-gradient(#FF0000 0% 0%, transparent 0% 0%);
             box-shadow: 0 0 20px #FF0000, inset 0 0 15px #FF0000;
             transition: background 0.5s ease-in-out;
         }}
@@ -207,7 +207,7 @@ def main():
             st.session_state.category = random.sample(WHO_WE_HELP_OPTIONS, k=1)
             st.session_state.what_we_do = random.sample(WHAT_WE_DO_OPTIONS, k=2)
             st.session_state.scope = random.sample(SOW_OPTIONS, k=3)
-            st.session_state.open_question_ans = "This is a comprehensive set of dummy notes for testing."
+            st.session_state.open_question_ans = "This is a comprehensive set of dummy notes for testing. The project was a great success, engaging over 10,000 participants and achieving widespread media coverage."
             st.session_state.logo_black = "https://i.imgur.com/9J9a4oG.png"
             st.session_state.logo_white = "https://i.imgur.com/J4zL5aM.png"
             st.session_state.project_photos = [
@@ -258,41 +258,59 @@ def main():
             </div>
         ''', unsafe_allow_html=True)
 
+    # Project Info with 3 columns
+    st.markdown("### Project Info")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.multiselect("Category", WHO_WE_HELP_OPTIONS, default=st.session_state.category, key="category")
+    with col2:
+        st.multiselect("What We Do", WHAT_WE_DO_OPTIONS, default=st.session_state.what_we_do, key="what_we_do")
+    with col3:
+        st.multiselect("Scope of Work", SOW_OPTIONS, default=st.session_state.scope, key="scope")
+
+    # Client, Project, Venue, Year, Month, YouTube
     st.text_input("Client Name", value=st.session_state.client_name, key="client_name")
     st.text_input("Project Name", value=st.session_state.project_name, key="project_name")
     st.text_input("Venue", value=st.session_state.venue, key="venue")
-    st.selectbox("Event Year", YEAR_OPTIONS, index=YEAR_OPTIONS.index(st.session_state.event_year) if st.session_state.event_year in YEAR_OPTIONS else 0, key="event_year")
-    st.selectbox("Event Month", MONTH_OPTIONS, index=MONTH_OPTIONS.index(st.session_state.event_month) if st.session_state.event_month in MONTH_OPTIONS else 0, key="event_month")
-    st.text_input("YouTube Link (Optional)", value=st.session_state.youtube, key="youtube")
-    st.multiselect("Category", WHO_WE_HELP_OPTIONS, default=st.session_state.category, key="category")
-    st.multiselect("What We Do", WHAT_WE_DO_OPTIONS, default=st.session_state.what_we_do, key="what_we_do")
-    st.multiselect("Scope of Work", SOW_OPTIONS, default=st.session_state.scope, key="scope")
-    st.text_area("Additional Notes", value=st.session_state.open_question_ans, key="open_question_ans")
+    
+    col_year, col_month, col_youtube = st.columns(3)
+    with col_year:
+        st.selectbox("Event Year", YEAR_OPTIONS, index=YEAR_OPTIONS.index(st.session_state.event_year) if st.session_state.event_year in YEAR_OPTIONS else 0, key="event_year")
+    with col_month:
+        st.selectbox("Event Month", MONTH_OPTIONS, index=MONTH_OPTIONS.index(st.session_state.event_month) if st.session_state.event_month in MONTH_OPTIONS else 0, key="event_month")
+    with col_youtube:
+        st.text_input("YouTube Link (Optional)", value=st.session_state.youtube, key="youtube")
 
-    st.markdown("### Project Photos")
-    if isinstance(st.session_state.project_photos, list) and len(st.session_state.project_photos) > 0 and isinstance(st.session_state.project_photos[0], str):
-        st.write("Dummy Photos Loaded:")
-        cols = st.columns(4)
-        for i, photo_url in enumerate(st.session_state.project_photos):
-            with cols[i % 4]:
-                st.image(photo_url, width=150)
-    else:
-        st.file_uploader("Upload Project Photos (Up to 8)", accept_multiple_files=True, key="project_photos")
-
+    # Logos (same row)
     st.markdown("### Logos")
-    c1, c2 = st.columns(2)
-    with c1:
-        if isinstance(st.session_state.logo_black, str):
+    col_logo_black, col_logo_white = st.columns(2)
+    with col_logo_black:
+        if isinstance(st.session_state.logo_black, str) and st.session_state.logo_black.startswith("http"):
             st.write("Dummy Black Logo:")
             st.image(st.session_state.logo_black, width=150)
         else:
             st.file_uploader("Logo Black", key="logo_black")
-    with c2:
-        if isinstance(st.session_state.logo_white, str):
+    with col_logo_white:
+        if isinstance(st.session_state.logo_white, str) and st.session_state.logo_white.startswith("http"):
             st.write("Dummy White Logo:")
             st.image(st.session_state.logo_white, width=150)
         else:
             st.file_uploader("Logo White", key="logo_white")
+
+    # Project Photos and Additional Notes (same row)
+    st.markdown("### Project Photos & Additional Notes")
+    col_photos, col_notes = st.columns(2)
+    with col_photos:
+        if isinstance(st.session_state.project_photos, list) and len(st.session_state.project_photos) > 0 and isinstance(st.session_state.project_photos[0], str) and st.session_state.project_photos[0].startswith("http"):
+            st.write("Dummy Photos Loaded:")
+            cols_dummy_photos = st.columns(4)
+            for i, photo_url in enumerate(st.session_state.project_photos):
+                with cols_dummy_photos[i % 4]:
+                    st.image(photo_url, width=150)
+        else:
+            st.file_uploader("Upload Project Photos (Up to 8)", accept_multiple_files=True, key="project_photos")
+    with col_notes:
+        st.text_area("Anything else to add?", value=st.session_state.open_question_ans, key="open_question_ans")
 
     st.markdown("### 10 Diagnostic Questions (MC)")
     for i, q in enumerate(st.session_state.mc_questions):
@@ -300,11 +318,12 @@ def main():
 
     if progress_pct == 100:
         if st.button("🚀 FIREBEAN BRAIN!", type="primary"):
-            st.session_state.ai_content = "Dummy AI Content"
+            st.session_state.ai_content = "Dummy AI Content Generated!"
             st.rerun()
 
-    if st.session_state.ai_content:
+    if st.session_state.ai_content and st.session_state.ai_content != "Dummy AI Content Generated!": # Only switch if real content is generated
         st.switch_page("pages/review.py")
 
 if __name__ == "__main__":
     main()
+'''
