@@ -106,7 +106,7 @@ def format_faq_to_python_string(faq_list):
 SHEET_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz2k7ZZ0shtl5wnhqB5J2wBcxnP7D08cRupRbz3hyi53G25mKYuz6qn5YqkTbPiYjIY/exec"
 SLIDE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyUsYLxjxDn1PjQHDzFXyYQ4yyt2XJW-131GCCxZ-kJ7VBOb1RVgSEfa5kzS7wKb_cam/exec"
 STABLE_MODEL_ID = "gemini-2.5-flash"
-APP_VERSION = "v4.8" # Updated version
+APP_VERSION = "v4.9" # Updated version
 MC_QUESTION_COUNT = 10 # Reduced MC question count
 
 WHO_WE_HELP_OPTIONS = ["GOVERNMENT & PUBLIC SECTOR", "LIFESTYLE & CONSUMER", "F&B & HOSPITALITY", "MALLS & VENUES"]
@@ -413,11 +413,11 @@ def main():
         progress_pct = (completed / total) * 100 if total > 0 else 0
 
         st.markdown(f"""
-            <div style=\'text-align: right; padding-top: 10px;\
-                <div class=\'progress-circle-container\' style=\'background: conic-gradient(#FF0000 {progress_pct}%, transparent {progress_pct}% 100%);\
-                    <div class=\'progress-circle-inner\
+            <div style=\'text-align: right; padding-top: 10px;\'>
+                <div class=\'progress-circle-container\' style=\'background: conic-gradient(#FF0000 {progress_pct}%, transparent {progress_pct}% 100%);\'>
+                    <div class=\'progress-circle-inner\'>
                         {int(progress_pct)}%
-                        <div class=\'progress-version\
+                        <div class=\'progress-version\'>
                             {APP_VERSION}
                         </div>
                     </div>
@@ -445,7 +445,7 @@ def main():
         else:
             st.markdown("### ✅ All Requirements Met!")
         
-        st.markdown("<div class=\'neu-card\
+        st.markdown("<div class=\'neu-card\'>", unsafe_allow_html=True)
         st.markdown("### Project Basics")
         
         # Logo Uploads in one row
@@ -495,7 +495,7 @@ def main():
         
         st.markdown("</div>", unsafe_allow_html=True)
         
-        st.markdown("<div class=\'neu-card\
+        st.markdown("<div class=\'neu-card\'>", unsafe_allow_html=True)
         st.markdown("#### Client & Project Details")
         c1, c2 = st.columns([1, 1])
         with c1:
@@ -513,7 +513,7 @@ def main():
         st.markdown("</div>", unsafe_allow_html=True)
         
         # Project Photos and Open Question in one row
-        st.markdown("<div class=\'neu-card\
+        st.markdown("<div class=\'neu-card\'>", unsafe_allow_html=True)
         photo_col, text_col = st.columns([1, 1])
         with photo_col:
             st.markdown("#### Project Photos") 
@@ -545,7 +545,7 @@ def main():
             st.session_state.open_question_ans = st.text_area("Anything else to add?", value=st.session_state.open_question_ans, height=300, key="open_q_input") 
         st.markdown("</div>", unsafe_allow_html=True)
 
-        st.markdown("<div class=\'neu-card\
+        st.markdown("<div class=\'neu-card\'>", unsafe_allow_html=True)
         st.markdown(f"#### {MC_QUESTION_COUNT} Diagnostic Questions (MC)") 
         
         if st.button(f"生成 {MC_QUESTION_COUNT} 題繁中診斷題目", use_container_width=True):
@@ -590,7 +590,7 @@ def main():
 
         cr = st.columns([1])[0]
         with cr:
-            st.markdown("<div class=\'neu-card\
+            st.markdown("<div class=\'neu-card\'>", unsafe_allow_html=True)
             
             # Lock button if progress < 100%
             is_complete = progress_pct >= 100
@@ -618,7 +618,7 @@ def main():
                 st.session_state.active_tab = "Project Collector"
                 st.rerun()
         else:
-            st.markdown("<div class=\'neu-card\
+            st.markdown("<div class=\'neu-card\'>", unsafe_allow_html=True)
             st.markdown("### Review & Edit Content")
             
             ai = st.session_state.ai_content
@@ -657,7 +657,7 @@ def main():
             
             st.markdown("</div>", unsafe_allow_html=True)
             
-            st.markdown("<div class=\'neu-card\
+            st.markdown("<div class=\'neu-card\'>", unsafe_allow_html=True)
             if st.button("💾 Sync to Master DB", use_container_width=True, type="primary"):
                 with st.spinner("Syncing to Master DB and Google Slides..."):
                     if trigger_full_sync():
