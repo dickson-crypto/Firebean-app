@@ -80,7 +80,7 @@ def format_faq_to_python_string(faq_list):
 SHEET_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz2k7ZZ0shtl5wnhqB5J2wBcxnP7D08cRupRbz3hyi53G25mKYuz6qn5YqkTbPiYjIY/exec"
 SLIDE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyUsYLxjxDn1PjQHDzFXyYQ4yyt2XJW-131GCCxZ-kJ7VBOb1RVgSEfa5kzS7wKb_cam/exec"
 STABLE_MODEL_ID = "gemini-1.5-flash-latest"
-APP_VERSION = "v5.6"
+APP_VERSION = "v5.7"
 MC_QUESTION_COUNT = 10
 
 WHO_WE_HELP_OPTIONS = ["GOVERNMENT & PUBLIC SECTOR", "LIFESTYLE & CONSUMER", "F&B & HOSPITALITY", "MALLS & VENUES"]
@@ -155,14 +155,14 @@ def apply_styles(is_dark):
 <style>
 body {{ background-color: {bg_color}; color: {text_color}; }}
 .progress-circle-container {{
-    position: relative; width: 150px; height: 150px; border-radius: 50%;
+    position: relative; width: 150px; height: 150px; border-radius: 50%%;
     display: flex; justify-content: center; align-items: center;
     background: conic-gradient(#FF0000 0% 0%, transparent 0% 0%);
     box-shadow: 0 0 20px #FF0000, inset 0 0 15px #FF0000;
     transition: background 0.5s ease-in-out;
 }}
 .progress-circle-inner {{
-    position: absolute; width: 80%; height: 80%; border-radius: 50%;
+    position: absolute; width: 80%%; height: 80%%; border-radius: 50%%;;
     background: {bg_color}; display: flex; flex-direction: column;
     justify-content: center; align-items: center; font-size: 2.5em;
     font-weight: bold; color: #FF0000; text-shadow: 0 0 8px #FF0000;
