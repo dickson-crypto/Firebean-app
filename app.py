@@ -385,6 +385,7 @@ def apply_styles(is_dark):
         toggle_border  = "#3A3F4D"
     else:
         # ── Light Mode Neumorphism ──
+        # 底色：淺灰白 #E0E5EC
         bg_color       = "#E0E5EC"
         card_bg        = "#E0E5EC"
         shadow_dark    = "#bec3c9"
@@ -1134,17 +1135,17 @@ def main():
                 with faq_tabs[0]:
                     st.session_state.faq_en = st.text_area(
                         "FAQ EN", value=st.session_state.faq_en, height=250, key="faq_en_edit",
-                        help="5 Q&A pairs in English. Format: Q1: ...\\nA1: ..."
+                        help="5 Q&A pairs in English. Format: Q1: ...\nA1: ..."
                     )
                 with faq_tabs[1]:
                     st.session_state.faq_tc = st.text_area(
                         "FAQ TC", value=st.session_state.faq_tc, height=250, key="faq_tc_edit",
-                        help="5 對問答（繁體中文）。格式：Q1: ...\\nA1: ..."
+                        help="5 對問答（繁體中文）。格式：Q1: ...\nA1: ..."
                     )
                 with faq_tabs[2]:
                     st.session_state.faq_jp = st.text_area(
                         "FAQ JP", value=st.session_state.faq_jp, height=250, key="faq_jp_edit",
-                        help="5組のQ&A（日本語）。形式：Q1: ...\\nA1: ..."
+                        help="5組のQ&A（日本語）。形式：Q1: ...\nA1: ..."
                     )
 
             if st.button("Confirm & Sync (Sheet + Slide + Drive)", type="primary", use_container_width=True):
@@ -1173,32 +1174,40 @@ def main():
                             hero_img = processed_imgs.pop(hero_index)
                             processed_imgs.insert(0, hero_img) 
 
-                        payload = {
+                        # --- 給 Google Sheet 的資料 ---
+                        payload_sheet = {
                             "action": "sync_project",
-                            "project_id": project_id,      # 新增
-                            "sort_date": sort_date,        # 新增
+                            "project_id": project_id,
+                            "sort_date": sort_date,
                             "client_name": st.session_state.client_name,
                             "project_name": st.session_state.project_name,
                             "venue": st.session_state.venue,
                             "date": f"{st.session_state.event_year} {st.session_state.event_month}",
                             "youtube": st.session_state.youtube,
-                            "category": st.session_state.category, 
+                            "category": st.session_state.category,
                             "category_what": ", ".join(st.session_state.what_we_do),
-                            "scope": ", ".join(st.session_state.scope),       
+                            "scope": ", ".join(st.session_state.scope),
                             "challenge": st.session_state.challenge,
                             "solution": st.session_state.solution,
                             "open_question": st.session_state.open_question_ans,
-                            "logo_white": st.session_state.logo_white, 
+                            "logo_white": st.session_state.logo_white,
                             "logo_black": st.session_state.logo_black,
-                            "images": processed_imgs, 
+                            "images": processed_imgs,
                             "ai_content": st.session_state.ai_content,
                             "faq_en": st.session_state.get("faq_en", ""),
                             "faq_tc": st.session_state.get("faq_tc", ""),
                             "faq_jp": st.session_state.get("faq_jp", "")
                         }
                         
-                        r1 = requests.post(SHEET_SCRIPT_URL, json=payload, timeout=60)
-                        r2 = requests.post(SLIDE_SCRIPT_URL, json=payload, timeout=60)
+                        # --- 專門給 Google Slide 的資料 ---
+                        payload_slide = payload_sheet.copy()
+                        payload_slide["action"] = "create_slide"
+                        payload_slide["photos"] = processed_imgs
+                        payload_slide["logo_white_base64"] = st.session_state.logo_white
+                        
+                        r1 = requests.post(SHEET_SCRIPT_URL, json=payload_sheet, timeout=60)
+                        r2 = requests.post(SLIDE_SCRIPT_URL, json=payload_slide, timeout=60)
+                        
                         log_debug(f"Sync: {project_id}, Sheet {r1.status_code}, Slide {r2.status_code}", "success")
                         st.balloons()
                         st.success(f"✅ 全部數據同步對位成功！(編號: {project_id})")
