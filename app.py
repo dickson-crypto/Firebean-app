@@ -97,15 +97,15 @@ def format_faq_to_python_string(faq_list):
         question = str(qa_pair[q_key]).replace("\\", "\\\\").replace("'", "\\'")
         answer = str(qa_pair[a_key]).replace("\\", "\\\\").replace("'", "\\'")
         
-        formatted_pairs.append(f"{{'\\'{q_key}\\\' : \\'{question}\\\' , \\'{a_key}\\\' : \\'{answer}\\'}}")
+        formatted_pairs.append(f"{{'\\'{q_key}\\\' : \\'{question}\\\' , \\'{a_key}\\\' : \\'{answer}\\\'}}")
     
     return f"[" + ", ".join(formatted_pairs) + "]"
 
 # --- 1. 核心配置 ---
 SHEET_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz2k7ZZ0shtl5wnhqB5J2wBcxnP7D08cRupRbz3hyi53G25mKYuz6qn5YqkTbPiYjIY/exec"
-SLIDE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyUsYLxjxDn1PjQHDzFXyQ4yyt2XJW-131GCCxZ-kJ7VBOb1RVgSEfa5kzS7wKb_cam/exec"
+SLIDE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyUsYLxjxDn1PjQHDzFXyYQ4yyt2XJW-131GCCxZ-kJ7VBOb1RVgSEfa5kzS7wKb_cam/exec"
 STABLE_MODEL_ID = "gemini-2.5-flash"
-APP_VERSION = "v4.0" # Updated version
+APP_VERSION = "v4.1" # Updated version
 MC_QUESTION_COUNT = 10 # Reduced MC question count
 
 WHO_WE_HELP_OPTIONS = ["GOVERNMENT & PUBLIC SECTOR", "LIFESTYLE & CONSUMER", "F&B & HOSPITALITY", "MALLS & VENUES"]
@@ -254,13 +254,14 @@ def apply_styles(is_dark):
             margin-bottom: 20px;
         }}
         .progress-circle {{
-            width: 80px;
-            height: 80px;
+            width: 300px; /* Increased size to match logo width */
+            height: 300px; /* Increased size to match logo height */
             border-radius: 50%;
             display: flex;
+            flex-direction: column; /* Allow stacking of elements */
             justify-content: center;
             align-items: center;
-            font-size: 1.2em;
+            font-size: 3em; /* Adjusted font size for larger circle */
             font-weight: bold;
             color: #FF6B6B; /* Neon Red */
             background: radial-gradient(circle at center, rgba(255,107,107,0.1) 0%, rgba(255,107,107,0.3) 50%, rgba(255,107,107,0.5) 100%);
@@ -364,6 +365,16 @@ def main():
                 <div style='font-size: 0.8em; color: #FF6B6B; margin-top: 5px;'>{APP_VERSION}</div>
             </div>
             """, unsafe_allow_html=True)
+
+        # Display Missing Items Checklist (moved here)
+        if progress_pct < 100:
+            st.markdown("### 📌 溫馨提示 Checklist")
+            missing_items = [name for name, done in progress_items if not done]
+            for item in missing_items:
+                st.markdown(f"❌ **{item}**")
+        else:
+            st.markdown("### ✅ All Requirements Met!")
+
     st.markdown("</div>", unsafe_allow_html=True)
 
     # FIXED NAVIGATION
@@ -375,14 +386,6 @@ def main():
         st.rerun()
 
     if st.session_state.active_tab == "Project Collector":
-        # Display Missing Items Checklist
-        if progress_pct < 100:
-            st.markdown("### 📌 溫馨提示 Checklist")
-            missing_items = [name for name, done in progress_items if not done]
-            for item in missing_items:
-                st.markdown(f"❌ **{item}**")
-        else:
-            st.markdown("### ✅ All Requirements Met!")
         
         st.markdown("<div class='neu-card'>", unsafe_allow_html=True)
         st.markdown("### Project Basics")
@@ -395,9 +398,26 @@ def main():
         
         with c2:
             st.markdown("#### Project Info")
-            st.session_state.category = st.multiselect("Category", WHO_WE_HELP_OPTIONS, default=st.session_state.category, key="cat_sel") # Changed to multiselect
-            st.session_state.what_we_do = st.multiselect("What We Do", WHAT_WE_DO_OPTIONS, default=st.session_state.what_we_do, key="what_sel")
-            st.session_state.scope = st.multiselect("Scope of Work", SOW_OPTIONS, default=st.session_state.scope, key="scope_sel")
+            st.markdown("**Category**")
+            selected_categories = []
+            for option in WHO_WE_HELP_OPTIONS:
+                if st.checkbox(option, value=(option in st.session_state.category), key=f"cat_{option}"):
+                    selected_categories.append(option)
+            st.session_state.category = selected_categories
+
+            st.markdown("**What We Do**")
+            selected_what_we_do = []
+            for option in WHAT_WE_DO_OPTIONS:
+                if st.checkbox(option, value=(option in st.session_state.what_we_do), key=f"what_{option}"):
+                    selected_what_we_do.append(option)
+            st.session_state.what_we_do = selected_what_we_do
+
+            st.markdown("**Scope of Work**")
+            selected_scope = []
+            for option in SOW_OPTIONS:
+                if st.checkbox(option, value=(option in st.session_state.scope), key=f"scope_{option}"):
+                    selected_scope.append(option)
+            st.session_state.scope = selected_scope
         
         st.markdown("</div>", unsafe_allow_html=True)
         
