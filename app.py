@@ -98,7 +98,7 @@ def format_faq_to_python_string(faq_list):
         question = str(qa_pair[q_key]).replace("\\", "\\").replace("'", "\'")
         answer = str(qa_pair[a_key]).replace("\\", "\\").replace("'", "\'")
         
-        formatted_pairs.append(f"{{\'\\\'{q_key}\\\' : \\\'{question}\\\' , \\\'{a_key}\\\' : \\\'{answer}\\\'}}")
+        formatted_pairs.append(f"{{\\'\\\\'{q_key}\\\' : \\\'{question}\\\' , \\\'{a_key}\\\' : \\\'{answer}\\\'}}")
     
     return f"[" + ", ".join(formatted_pairs) + "]"
 
@@ -106,7 +106,7 @@ def format_faq_to_python_string(faq_list):
 SHEET_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz2k7ZZ0shtl5wnhqB5J2wBcxnP7D08cRupRbz3hyi53G25mKYuz6qn5YqkTbPiYjIY/exec"
 SLIDE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyUsYLxjxDn1PjQHDzFXyYQ4yyt2XJW-131GCCxZ-kJ7VBOb1RVgSEfa5kzS7wKb_cam/exec"
 STABLE_MODEL_ID = "gemini-2.5-flash"
-APP_VERSION = "v4.7" # Updated version
+APP_VERSION = "v4.8" # Updated version
 MC_QUESTION_COUNT = 10 # Reduced MC question count
 
 WHO_WE_HELP_OPTIONS = ["GOVERNMENT & PUBLIC SECTOR", "LIFESTYLE & CONSUMER", "F&B & HOSPITALITY", "MALLS & VENUES"]
@@ -387,7 +387,7 @@ def main():
             st.rerun()
 
     # Display Logo with Version Number and Progress Circle
-    st.markdown("<div id='logo-container'>", unsafe_allow_html=True)
+    st.markdown("<div id=\'logo-container\'>", unsafe_allow_html=True)
     col_logo, col_version_progress = st.columns([3, 1])
     with col_logo:
         logo_url = "https://raw.githubusercontent.com/dickson-crypto/Firebean-app/main/Firebeanlogo2026.png"
@@ -413,11 +413,13 @@ def main():
         progress_pct = (completed / total) * 100 if total > 0 else 0
 
         st.markdown(f"""
-            <div style='text-align: right; padding-top: 10px;'>
-                <div class='progress-circle-container' style='background: conic-gradient(#FF0000 {progress_pct}%, transparent {progress_pct}% 100%);'>
-                    <div class='progress-circle-inner'>
+            <div style=\'text-align: right; padding-top: 10px;\
+                <div class=\'progress-circle-container\' style=\'background: conic-gradient(#FF0000 {progress_pct}%, transparent {progress_pct}% 100%);\
+                    <div class=\'progress-circle-inner\
                         {int(progress_pct)}%
-                        <div class='progress-version'>{APP_VERSION}</div>
+                        <div class=\'progress-version\
+                            {APP_VERSION}
+                        </div>
                     </div>
                 </div>
             </div>
@@ -443,16 +445,26 @@ def main():
         else:
             st.markdown("### ✅ All Requirements Met!")
         
-        st.markdown("<div class='neu-card'>", unsafe_allow_html=True)
+        st.markdown("<div class=\'neu-card\
         st.markdown("### Project Basics")
         
         # Logo Uploads in one row
         st.markdown("#### Logo Upload ✱ (Required)")
         logo_col1, logo_col2 = st.columns(2)
         with logo_col1:
-            st.session_state.logo_black = st.file_uploader("Upload Black Logo", type=['png', 'jpg', 'jpeg'], key="logo_b")
+            # Display dummy image if it's a URL
+            if isinstance(st.session_state.logo_black, str) and st.session_state.logo_black.startswith("http"):
+                st.image(st.session_state.logo_black, caption="Black Logo (Dummy)", use_container_width=True)
+            uploaded_black_logo = st.file_uploader("Upload Black Logo", type=['png', 'jpg', 'jpeg'], key="logo_b")
+            if uploaded_black_logo:
+                st.session_state.logo_black = uploaded_black_logo
         with logo_col2:
-            st.session_state.logo_white = st.file_uploader("Upload White Logo", type=['png', 'jpg', 'jpeg'], key="logo_w")
+            # Display dummy image if it's a URL
+            if isinstance(st.session_state.logo_white, str) and st.session_state.logo_white.startswith("http"):
+                st.image(st.session_state.logo_white, caption="White Logo (Dummy)", use_container_width=True)
+            uploaded_white_logo = st.file_uploader("Upload White Logo", type=['png', 'jpg', 'jpeg'], key="logo_w")
+            if uploaded_white_logo:
+                st.session_state.logo_white = uploaded_white_logo
         
         st.markdown("#### Project Info")
         info_col1, info_col2, info_col3 = st.columns(3)
@@ -460,6 +472,7 @@ def main():
             st.markdown("**Category**")
             selected_categories = []
             for option in WHO_WE_HELP_OPTIONS:
+                # Explicitly set the value for checkboxes based on session state
                 if st.checkbox(option, value=(option in st.session_state.category), key=f"cat_{option}"):
                     selected_categories.append(option)
             st.session_state.category = selected_categories
@@ -467,6 +480,7 @@ def main():
             st.markdown("**What We Do**")
             selected_what_we_do = []
             for option in WHAT_WE_DO_OPTIONS:
+                # Explicitly set the value for checkboxes based on session state
                 if st.checkbox(option, value=(option in st.session_state.what_we_do), key=f"what_{option}"):
                     selected_what_we_do.append(option)
             st.session_state.what_we_do = selected_what_we_do
@@ -474,21 +488,24 @@ def main():
             st.markdown("**Scope of Work**")
             selected_scope = []
             for option in SOW_OPTIONS:
+                # Explicitly set the value for checkboxes based on session state
                 if st.checkbox(option, value=(option in st.session_state.scope), key=f"scope_{option}"):
                     selected_scope.append(option)
             st.session_state.scope = selected_scope
         
         st.markdown("</div>", unsafe_allow_html=True)
         
-        st.markdown("<div class='neu-card'>", unsafe_allow_html=True)
+        st.markdown("<div class=\'neu-card\
         st.markdown("#### Client & Project Details")
         c1, c2 = st.columns([1, 1])
         with c1:
+            # Set default value for text_input from session state
             st.session_state.client_name = st.text_input("Client Name", value=st.session_state.client_name, key="client_input")
             st.session_state.project_name = st.text_input("Project Name", value=st.session_state.project_name, key="proj_input")
             st.session_state.venue = st.text_input("Venue", value=st.session_state.venue, key="venue_input")
         
         with c2:
+            # Set default index for selectbox from session state
             st.session_state.event_year = st.selectbox("Event Year", YEAR_OPTIONS, index=YEAR_OPTIONS.index(st.session_state.event_year) if st.session_state.event_year in YEAR_OPTIONS else 0, key="year_sel")
             st.session_state.event_month = st.selectbox("Event Month", MONTH_OPTIONS, index=MONTH_OPTIONS.index(st.session_state.event_month) if st.session_state.event_month in MONTH_OPTIONS else 0, key="month_sel")
             st.session_state.youtube = st.text_input("YouTube Link (Optional)", value=st.session_state.youtube, key="yt_input")
@@ -496,34 +513,39 @@ def main():
         st.markdown("</div>", unsafe_allow_html=True)
         
         # Project Photos and Open Question in one row
-        st.markdown("<div class='neu-card'>", unsafe_allow_html=True)
+        st.markdown("<div class=\'neu-card\
         photo_col, text_col = st.columns([1, 1])
         with photo_col:
             st.markdown("#### Project Photos") 
-            up = st.file_uploader("Upload Project Photos (Up to 8)", type=['jpg', 'jpeg', 'png'], accept_multiple_files=True, key="p_u")
-            if up:
-                st.session_state.project_photos = up[:8]
-            
-            if st.session_state.project_photos:
-                st.markdown(f"**已上傳 {len(st.session_state.project_photos)} 張相片**")
-                st.markdown("##### Select Hero Photo")
-                cols = st.columns(4)
-                for idx, photo in enumerate(st.session_state.project_photos):
-                    with cols[idx % 4]:
-                        # Check if photo is a string (URL) or a file object
-                        if isinstance(photo, str):
+            # Display dummy images if they are URLs
+            if st.session_state.project_photos and isinstance(st.session_state.project_photos[0], str) and st.session_state.project_photos[0].startswith("http"):
+                for idx, photo_url in enumerate(st.session_state.project_photos):
+                    st.image(photo_url, caption=f"Dummy Photo {idx+1}", use_container_width=True)
+                st.markdown(f"**已上傳 {len(st.session_state.project_photos)} 張相片 (Dummy)**")
+                # Create a dummy file_uploader that doesn't actually upload but allows the UI to render
+                st.file_uploader("Upload Project Photos (Up to 8)", type=['jpg', 'jpeg', 'png'], accept_multiple_files=True, key="p_u_dummy", disabled=True)
+            else:
+                uploaded_files = st.file_uploader("Upload Project Photos (Up to 8)", type=['jpg', 'jpeg', 'png'], accept_multiple_files=True, key="p_u")
+                if uploaded_files:
+                    st.session_state.project_photos = uploaded_files[:8]
+                
+                if st.session_state.project_photos and not (isinstance(st.session_state.project_photos[0], str) and st.session_state.project_photos[0].startswith("http")):
+                    st.markdown(f"**已上傳 {len(st.session_state.project_photos)} 張相片**")
+                    st.markdown("##### Select Hero Photo")
+                    cols = st.columns(4)
+                    for idx, photo in enumerate(st.session_state.project_photos):
+                        with cols[idx % 4]:
                             st.image(photo, use_container_width=True)
-                        else:
-                            st.image(photo, use_container_width=True)
-                        if st.button(f"Hero", key=f"hero_{idx}", type="primary" if st.session_state.hero_photo_index == idx else "secondary"):
-                            st.session_state.hero_photo_index = idx
-                            st.rerun()
+                            if st.button(f"Hero", key=f"hero_{idx}", type="primary" if st.session_state.hero_photo_index == idx else "secondary"):
+                                st.session_state.hero_photo_index = idx
+                                st.rerun()
         with text_col:
             st.markdown("#### Additional Notes")
+            # Set default value for text_area from session state
             st.session_state.open_question_ans = st.text_area("Anything else to add?", value=st.session_state.open_question_ans, height=300, key="open_q_input") 
         st.markdown("</div>", unsafe_allow_html=True)
 
-        st.markdown("<div class='neu-card'>", unsafe_allow_html=True)
+        st.markdown("<div class=\'neu-card\
         st.markdown(f"#### {MC_QUESTION_COUNT} Diagnostic Questions (MC)") 
         
         if st.button(f"生成 {MC_QUESTION_COUNT} 題繁中診斷題目", use_container_width=True):
@@ -555,11 +577,12 @@ def main():
             st.markdown(f"**已生成 {len(st.session_state.mc_questions)} 題**")
             for i, q in enumerate(st.session_state.mc_questions):
                 q_id = q.get('id', q.get('number', q.get('q_id', i + 1)))
-                st.markdown(f"<div class='mc-question'>Q{q_id}. {q.get('question', '')}</div>", unsafe_allow_html=True)
+                st.markdown(f"<div class=\'mc-question\'>Q{q_id}. {q.get('question', '')}</div>", unsafe_allow_html=True)
                 ans_key = f"ans_{q_id}"
                 current_selections = st.session_state.get(ans_key, [])
                 new_selections = []
                 for opt in q.get('options', []):
+                    # Explicitly set the value for checkboxes based on session state
                     if st.checkbox(opt, value=(opt in current_selections), key=f"chk_{q_id}_{opt}"):
                         new_selections.append(opt)
                 st.session_state[ans_key] = new_selections
@@ -567,7 +590,7 @@ def main():
 
         cr = st.columns([1])[0]
         with cr:
-            st.markdown("<div class='neu-card'>", unsafe_allow_html=True)
+            st.markdown("<div class=\'neu-card\
             
             # Lock button if progress < 100%
             is_complete = progress_pct >= 100
@@ -595,7 +618,7 @@ def main():
                 st.session_state.active_tab = "Project Collector"
                 st.rerun()
         else:
-            st.markdown("<div class='neu-card'>", unsafe_allow_html=True)
+            st.markdown("<div class=\'neu-card\
             st.markdown("### Review & Edit Content")
             
             ai = st.session_state.ai_content
@@ -634,7 +657,7 @@ def main():
             
             st.markdown("</div>", unsafe_allow_html=True)
             
-            st.markdown("<div class='neu-card'>", unsafe_allow_html=True)
+            st.markdown("<div class=\'neu-card\
             if st.button("💾 Sync to Master DB", use_container_width=True, type="primary"):
                 with st.spinner("Syncing to Master DB and Google Slides..."):
                     if trigger_full_sync():
@@ -657,6 +680,7 @@ def trigger_full_sync():
                 response = requests.get(photo)
                 img = Image.open(io.BytesIO(response.content))
             else:
+                # For actual file_uploader objects, they are already file-like objects
                 img = Image.open(photo)
             
             img_byte_arr = io.BytesIO()
