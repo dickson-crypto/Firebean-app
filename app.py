@@ -22,7 +22,40 @@ CURRENT_YEAR = datetime.now().year
 YEAR_OPTIONS = [str(y) for y in range(CURRENT_YEAR, 2011, -1)]
 MONTH_OPTIONS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
 
-# --- NEW: 系統自動生成邏輯 (ID 與 日期) ---
+# --- 🛡️ FAQ 格式化與清洗函數 (核心修復) ---
+def format_faq_to_python_string(faq_list):
+    if not faq_list: return "[]"
+    if isinstance(faq_list, str):
+        if faq_list.strip().startswith('['): return faq_list
+        return "[]"
+    if not isinstance(faq_list, list): return "[]"
+
+    formatted_pairs = []
+    for qa_pair in faq_list:
+        if not isinstance(qa_pair, dict): continue
+        keys = list(qa_pair.keys())
+        if len(keys) < 2: continue
+        q_key, a_key = keys[0], keys[1]
+        
+        # 安全清洗特殊字元與引號
+        question = str(qa_pair[q_key]).replace("\\", "\\\\").replace("'", "\\'")
+        answer = str(qa_pair[a_key]).replace("\\", "\\\\").replace("'", "\\'")
+        formatted_pairs.append(f"{{'{q_key}': '{question}', '{a_key}': '{answer}'}}")
+    
+    return f"[" + ", ".join(formatted_pairs) + "]"
+
+def safe_format_faq(faq_input):
+    """安全解析文字框內的 JSON 字串，並轉換為單行 Python String 格式"""
+    if not faq_input or (isinstance(faq_input, str) and not faq_input.strip()):
+        return "[]"
+    try:
+        parsed = json.loads(faq_input) if isinstance(faq_input, str) else faq_input
+        return format_faq_to_python_string(parsed)
+    except Exception as e:
+        log_debug(f"FAQ 解析警告: {str(e)}", "warning")
+        return format_faq_to_python_string(faq_input)
+
+# --- 系統自動生成邏輯 (ID 與 日期) ---
 def generate_system_metadata():
     month_map = {m: str(i+1).zfill(2) for i, m in enumerate(MONTH_OPTIONS)}
     m_num = month_map.get(st.session_state.event_month, "01")
@@ -779,7 +812,6 @@ def main():
                             st.session_state.challenge = data.get("challenge_summary", "尚未生成")
                             st.session_state.solution = data.get("solution_summary", "尚未生成")
                             
-                            # 🚀 強制轉換格式的安全裝置 (Force Array of Objects format)
                             faq_data = data.get("7_faq", {})
                             if isinstance(faq_data, dict):
                                 def format_faq(val):
@@ -794,7 +826,6 @@ def main():
                                                 return json.dumps(parsed, ensure_ascii=False, indent=2)
                                         except:
                                             pass
-                                        # 正規表達式提取 Q1/A1，強制組成 JSON 陣列
                                         qa_pairs = []
                                         qs = re.findall(r'Q\d+[:：]\s*(.*?)(?=A\d+[:：]|$)', val, re.DOTALL | re.IGNORECASE)
                                         as_ = re.findall(r'A\d+[:：]\s*(.*?)(?=Q\d+[:：]|$)', val, re.DOTALL | re.IGNORECASE)
@@ -864,7 +895,7 @@ def main():
                             hero_img = processed_imgs.pop(hero_index)
                             processed_imgs.insert(0, hero_img) 
 
-                        # --- 給 Google Sheet 的資料 ---
+                        # --- 給 Google Sheet 的資料 (使用安全清洗後的單行 FAQ 字串) ---
                         payload_sheet = {
                             "action": "sync_project",
                             "project_id": project_id,
@@ -884,10 +915,10 @@ def main():
                             "logo_black": st.session_state.logo_black,
                             "images": processed_imgs,
                             "ai_content": st.session_state.ai_content,
-                            "faq_en": st.session_state.faq_en,
-                            "faq_tc": st.session_state.faq_tc,
-                            "faq_jp": st.session_state.faq_jp
-                            
+                            # 🚀 這裡就是核心：使用 safe_format_faq 來保證送出去的是安全的單行 Python string 格式
+                            "faq_en": safe_format_faq(st.session_state.get("faq_en_edit", st.session_state.get("faq_en", "[]"))),
+                            "faq_tc": safe_format_faq(st.session_state.get("faq_tc_edit", st.session_state.get("faq_tc", "[]"))),
+                            "faq_jp": safe_format_faq(st.session_state.get("faq_jp_edit", st.session_state.get("faq_jp", "[]")))
                         }
                         
                         # --- 專門給 Google Slide 的資料 ---
