@@ -927,6 +927,11 @@ def main():
                         payload_slide["photos"] = processed_imgs
                         payload_slide["logo_white_base64"] = st.session_state.logo_white
                         
+                        print("==== 準備發送給 Sheet 的 FAQ 資料 ====")
+                        print("EN:", payload_sheet["faq_en"])
+                        print("TC:", payload_sheet["faq_tc"])
+                        print("====================================")
+
                         r1 = requests.post(SHEET_SCRIPT_URL, json=payload_sheet, timeout=60)
                         r2 = requests.post(SLIDE_SCRIPT_URL, json=payload_slide, timeout=60)
                         
