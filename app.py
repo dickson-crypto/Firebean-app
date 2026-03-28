@@ -121,7 +121,8 @@ def init_session_state():
         "what_we_do": [], "scope": [], "project_photos": [], "ai_content": {}, "logo_white": "", "logo_black": "",
         "debug_logs": [], "mc_questions": [], "open_question_ans": "", "challenge": "", "solution": "",
         "hero_photo_index": 0, "sync_success": False, "draft_project_id": "", "loaded_image_urls": [],
-        "faq_en_edit": "", "faq_tc_edit": "", "faq_jp_edit": ""
+        "faq_en_edit": "", "faq_tc_edit": "", "faq_jp_edit": "",
+        "web_en": "", "web_tc": "", "web_jp": ""
     }
     for k, v in fields.items():
         if k not in st.session_state: st.session_state[k] = v
@@ -218,21 +219,40 @@ def build_content_prompt():
     for q in st.session_state.get("mc_questions", []):
         ans = st.session_state.get(f"ans_{q['id']}", [])
         mc_summary.append(f"Q{q['id']}. {q['question']} → {', '.join(ans)}")
+    client   = st.session_state.get("client_name", "")
+    project  = st.session_state.get("project_name", "")
+    venue    = st.session_state.get("venue", "")
+    year     = st.session_state.get("event_year", "")
+    month    = st.session_state.get("event_month", "")
+    category = st.session_state.get("category", "")
+    wwdo     = ", ".join(st.session_state.get("what_we_do", []))
+    scope    = ", ".join(st.session_state.get("scope", []))
+    concept  = st.session_state.get("open_question_ans", "")
+    mc_text  = "\n".join(mc_summary)
     return f"""
-以下是 Firebean 的項目診斷資料，請生成六大平台（Website、Instagram、LinkedIn、Facebook、EDM、Press Release）的對接文案 JSON。
+以下是 Firebean Limited 的項目資料。請生成完整內容 JSON，所有對應必須實際填寫，不可留空。
 
-客戶: {st.session_state.get('client_name','')}
-項目: {st.session_state.get('project_name','')}
-場地: {st.session_state.get('venue','')}
-分類: {st.session_state.get('category','')}
-服務範圍: {', '.join(st.session_state.get('what_we_do',[]))}
-工作範圍: {', '.join(st.session_state.get('scope',[]))}
-核心概念: {st.session_state.get('open_question_ans','')}
+客戶: {client}
+項目: {project}
+場地: {venue}
+日期: {year} {month}
+分類: {category}
+服務範圍: {wwdo}
+工作範圍: {scope}
+核心概念: {concept}
 
 診斷問卷:
-{''.join(mc_summary)}
+{mc_text}
 
-請輸出嚴格 JSON，格式:
+【web_en / web_tc / web_jp 要求】
+- 每篇是一篇完整的專業 PR 案例研究文章，800-1200 字
+- 使用 HTML 標籤：<h1> 標題, <h2>/<h3> 小標題, <p> 段落, <b> 重點字
+- 英文版使用專業商業英文，繁中版使用正體中文，日文版使用標準日文
+- 語調：過去式回顧 (retrospective)，儲學分析 (thought leadership)
+- 結構：<h1>標題</h1><h3>副標題</h3><p>開首段</p><p>背景</p><p>策略詳述</p><p>執行體驗</p><p>成果與影響</p>
+
+【faq 要求】5 題 Q&A，每個 key 為 "Q" 和 "A"，3 種語言
+
 {{
   "website": {{"headline":"","body":"","cta":""}},
   "instagram": {{"caption":"","hashtags":""}},
@@ -240,27 +260,30 @@ def build_content_prompt():
   "facebook": {{"caption":""}},
   "edm": {{"subject":"","preview":"","body":""}},
   "press_release": {{"headline":"","lead":"","body":""}},
+  "web_en": "",
+  "web_tc": "",
+  "web_jp": "",
   "faq": {{
     "en": [
-      {{"q":"What is this event about?","a":""}},
-      {{"q":"Who is it for?","a":""}},
-      {{"q":"Where and when?","a":""}},
-      {{"q":"How to participate?","a":""}},
-      {{"q":"Who is Firebean Limited?","a":""}}
+      {{"Q":"What is {project} about?","A":""}},
+      {{"Q":"Who is it for?","A":""}},
+      {{"Q":"Where and when did it take place?","A":""}},
+      {{"Q":"What did Firebean Limited do for this project?","A":""}},
+      {{"Q":"What was the outcome?","A":""}}
     ],
     "tc": [
-      {{"q":"這個活動是關於什麼？","a":""}},
-      {{"q":"活動對象是誰？","a":""}},
-      {{"q":"活動地點和時間？","a":""}},
-      {{"q":"如何參與？","a":""}},
-      {{"q":"Firebean Limited 是什麼公司？","a":""}}
+      {{"Q":"這個項目是關於什麼？","A":""}},
+      {{"Q":"服務對象是誰？","A":""}},
+      {{"Q":"活動地點和時間是？","A":""}},
+      {{"Q":"Firebean 在這個項目中做了什麼？","A":""}},
+      {{"Q":"最終成果如何？","A":""}}
     ],
     "jp": [
-      {{"q":"このイベントについて教えてください。","a":""}},
-      {{"q":"対象者は誰ですか？","a":""}},
-      {{"q":"場所と日時は？","a":""}},
-      {{"q":"参加方法を教えてください。","a":""}},
-      {{"q":"Firebean Limitedとはどんな会社ですか？","a":""}}
+      {{"Q":"このプロジェクトは何についてですか？","A":""}},
+      {{"Q":"対象者は誰ですか？","A":""}},
+      {{"Q":"場所と日時はいつですか？","A":""}},
+      {{"Q":"Firebeanはこのプロジェクトで何をお手伝いしましたか？","A":""}},
+      {{"Q":"成果はどうでしたか？","A":""}}
     ]
   }}
 }}
@@ -479,16 +502,25 @@ def main():
                 if res:
                     try:
                         parsed = json.loads(res)
-                        # Auto-populate FAQ text areas from AI output
+                        # Extract FAQ as proper JSON list (matching sheet format {"Q":..,"A":..})
                         faq_data = parsed.pop("faq", {})
                         if faq_data:
-                            def _faq_to_text(items):
-                                return "\n".join([f"Q: {x.get('q','')}\nA: {x.get('a','')}" for x in items])
-                            st.session_state.faq_en_edit = _faq_to_text(faq_data.get("en", []))
-                            st.session_state.faq_tc_edit = _faq_to_text(faq_data.get("tc", []))
-                            st.session_state.faq_jp_edit = _faq_to_text(faq_data.get("jp", []))
+                            def _normalise_faq(items):
+                                out = []
+                                for x in items:
+                                    q = x.get("Q") or x.get("q", "")
+                                    a = x.get("A") or x.get("a", "")
+                                    out.append({"Q": q, "A": a})
+                                return json.dumps(out, ensure_ascii=False)
+                            st.session_state.faq_en_edit = _normalise_faq(faq_data.get("en", []))
+                            st.session_state.faq_tc_edit = _normalise_faq(faq_data.get("tc", []))
+                            st.session_state.faq_jp_edit = _normalise_faq(faq_data.get("jp", []))
+                        # Pull web_en / web_tc / web_jp out of ai_content into separate session keys
+                        st.session_state.web_en = parsed.pop("web_en", "")
+                        st.session_state.web_tc = parsed.pop("web_tc", "")
+                        st.session_state.web_jp = parsed.pop("web_jp", "")
                         st.session_state.ai_content = parsed
-                        log_debug("✅ 六大平台文案 + FAQ 生成成功", "success")
+                        log_debug("✅ 六大平台文案 + Web Article + FAQ 生成成功", "success")
                     except json.JSONDecodeError as je:
                         log_debug(f"JSON parse error: {je} | raw: {res[:300]}", "error")
                         st.error("AI 返回格式有誤，請重試。")
@@ -512,11 +544,19 @@ def main():
 
             st.markdown("---")
 
+            # ── Web Articles ──
+            with st.expander("🌐 Web Articles (EN / 繁中 / JP)", expanded=False):
+                st.caption("These fill columns R, S, T (Web EN / Web TC / Web JP) in Master DB")
+                st.session_state.web_en = st.text_area("Web Article (English)", st.session_state.web_en, height=250, key="web_en_area")
+                st.session_state.web_tc = st.text_area("Web Article (繁中)", st.session_state.web_tc, height=250, key="web_tc_area")
+                st.session_state.web_jp = st.text_area("Web Article (日文)", st.session_state.web_jp, height=250, key="web_jp_area")
+
             # ── FAQ fields ──
-            with st.expander("🌐 FAQ (多語言)", expanded=False):
-                st.session_state.faq_en_edit = st.text_area("FAQ (English)", st.session_state.faq_en_edit, height=100)
-                st.session_state.faq_tc_edit = st.text_area("FAQ (繁中)", st.session_state.faq_tc_edit, height=100)
-                st.session_state.faq_jp_edit = st.text_area("FAQ (日文)", st.session_state.faq_jp_edit, height=100)
+            with st.expander("❓ FAQ (多語言 — 填入 AB / AC / AD 欄)", expanded=False):
+                st.caption("Stored as JSON list [{Q:..., A:...}] in columns AB (FAQ_EN), AC (FAQ_TC), AD (FAQ_JP)")
+                st.session_state.faq_en_edit = st.text_area("FAQ (English) — col AB", st.session_state.faq_en_edit, height=150)
+                st.session_state.faq_tc_edit = st.text_area("FAQ (繁中) — col AC", st.session_state.faq_tc_edit, height=150)
+                st.session_state.faq_jp_edit = st.text_area("FAQ (日文) — col AD", st.session_state.faq_jp_edit, height=150)
 
             # ── Confirm & Sync button ──
             if st.button("✅ Confirm & Sync to Master DB + Slide", type="primary", use_container_width=True):
@@ -553,9 +593,12 @@ def main():
                         "images":        processed_imgs,
                         "logo_white":    st.session_state.logo_white,
                         "logo_black":    st.session_state.logo_black,
-                        "faq_en":        safe_flatten_faq(st.session_state.faq_en_edit),
-                        "faq_tc":        safe_flatten_faq(st.session_state.faq_tc_edit),
-                        "faq_jp":        safe_flatten_faq(st.session_state.faq_jp_edit),
+                        "web_en":        st.session_state.web_en,
+                        "web_tc":        st.session_state.web_tc,
+                        "web_jp":        st.session_state.web_jp,
+                        "faq_en":        st.session_state.faq_en_edit,
+                        "faq_tc":        st.session_state.faq_tc_edit,
+                        "faq_jp":        st.session_state.faq_jp_edit,
                         "hero_index":    st.session_state.hero_photo_index,
                     }
 
