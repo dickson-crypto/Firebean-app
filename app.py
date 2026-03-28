@@ -16,10 +16,11 @@ try:
 except ImportError:
     pass
 
-# --- 1. 核心配置 (2026 URLs) ---
+# --- 1. 核心配置 (Updated with 2026 URLs & Pro Model) ---
 SHEET_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxy6JwJpmclJOBerKJO4EJ50oKyL86Ux1Qci2oHx1RQiw8ruL_Um6qVYsWydyEsLawQ/exec"
-SLIDE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxKP-8Xrvy6hblPqTmtXn76rO3DFOeU6jYQtLw5QDfDP1-adNDk02bhoKihfvp_Xsvy/exec"
-STABLE_MODEL_ID = "gemini-1.5-flash" 
+SLIDE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx_7Xf8_HERQel93WJB2F_KjFOWHtCXzfvEkP9B_p7Kh4ImRAWRgWSXtLklvdbYsqbI/exec"
+# 🚀 FIX: Using Pro model for your account to fix 404
+STABLE_MODEL_ID = "gemini-1.5-pro" 
 
 WHO_WE_HELP_OPTIONS = ["GOVERNMENT & PUBLIC SECTOR", "LIFESTYLE & CONSUMER", "F&B & HOSPITALITY", "MALLS & VENUES"]
 WHAT_WE_DO_OPTIONS = ["ROVING EXHIBITIONS", "SOCIAL & CONTENT", "INTERACTIVE & TECH", "PR & MEDIA", "EVENTS & CEREMONIES"]
@@ -29,22 +30,31 @@ CURRENT_YEAR = datetime.now().year
 YEAR_OPTIONS = [str(y) for y in range(CURRENT_YEAR, 2011, -1)]
 MONTH_OPTIONS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
 
+# --- 🛡️ FAQ 扁平化清洗函數 ---
 def safe_flatten_faq(faq_input):
     if not faq_input: return "[]"
-    if isinstance(faq_input, (list, dict)): return json.dumps(faq_input, ensure_ascii=False)
+    if isinstance(faq_input, (list, dict)):
+        return json.dumps(faq_input, ensure_ascii=False)
     if isinstance(faq_input, str):
-        try: return json.dumps(json.loads(faq_input.strip()), ensure_ascii=False)
-        except: return faq_input.replace("\n", " ").strip()
+        faq_input = faq_input.strip()
+        try:
+            return json.dumps(json.loads(faq_input), ensure_ascii=False)
+        except:
+            return faq_input.replace("\n", " ").replace("\r", "").strip()
     return "[]"
 
+# --- 系統自動生成邏輯 ---
 def generate_system_metadata():
     m_num = {m: str(i+1).zfill(2) for i, m in enumerate(MONTH_OPTIONS)}.get(st.session_state.event_month, "01")
     sort_date = f"{st.session_state.event_year}-{m_num}-01"
     try:
         count_res = requests.get(SHEET_SCRIPT_URL + "?action=get_row_count", timeout=5)
         next_index = int(count_res.text) + 1 if count_res.status_code == 200 else 100
-    except: next_index = 999 
+    except:
+        next_index = 999 
     return f"FB{st.session_state.event_year}{str(next_index).zfill(3)}", sort_date
+
+FIREBEAN_SYSTEM_PROMPT = "You are a Lead PR Strategist. Transform diagnostic data into a professional PR strategy JSON. Written in past tense retrospective mode."
 
 # --- 2. 核心邏輯 ---
 def log_debug(msg, type="info"):
@@ -56,7 +66,7 @@ def call_gemini_sdk(prompt, image_files=None, is_json=False):
     if not secret_key: return None
     try:
         genai.configure(api_key=secret_key)
-        model = genai.GenerativeModel(model_name=STABLE_MODEL_ID)
+        model = genai.GenerativeModel(model_name=STABLE_MODEL_ID, system_instruction=FIREBEAN_SYSTEM_PROMPT)
         contents = [prompt]
         if image_files:
             for f in image_files:
@@ -64,11 +74,11 @@ def call_gemini_sdk(prompt, image_files=None, is_json=False):
                 img = Image.open(f)
                 img.thumbnail((800, 800))
                 contents.append(img)
-        res = model.generate_content(contents)
+        response = model.generate_content(contents)
         if is_json:
-            match = re.search(r'(\{.*\})|(\[.*\])', res.text, re.DOTALL)
-            return match.group(0) if match else res.text
-        return res.text
+            match = re.search(r'(\{.*\})|(\[.*\])', response.text, re.DOTALL)
+            return match.group(0) if match else response.text
+        return response.text
     except Exception as e:
         log_debug(f"AI Error: {str(e)}", "error")
         return None
@@ -79,7 +89,8 @@ def init_session_state():
         "event_year": str(CURRENT_YEAR), "event_month": "FEB", "category": WHO_WE_HELP_OPTIONS[0],
         "what_we_do": [], "scope": [], "project_photos": [], "ai_content": {}, "logo_white": "", "logo_black": "", 
         "debug_logs": [], "mc_questions": [], "open_question_ans": "", "challenge": "", "solution": "", 
-        "hero_photo_index": 0, "sync_success": False, "draft_project_id": "", "loaded_image_urls": []
+        "hero_photo_index": 0, "sync_success": False, "draft_project_id": "", "loaded_image_urls": [],
+        "faq_en_edit": "", "faq_tc_edit": "", "faq_jp_edit": "", 
     }
     for k, v in fields.items():
         if k not in st.session_state: st.session_state[k] = v
@@ -90,44 +101,47 @@ def reset_for_new_case():
         if f"ans_{i}" in st.session_state: del st.session_state[f"ans_{i}"]
     st.session_state.active_tab = "Project Collector"
 
+# 🚀 RESTORED Helper for Dummy Images and Logos
 def create_dummy_image(color, label):
     img = Image.new('RGB', (800, 600), color=color)
-    ImageDraw.Draw(img).text((40, 40), label, fill=(255, 255, 255))
+    d = ImageDraw.Draw(img)
+    d.text((40, 40), label, fill=(255, 255, 255))
     buf = io.BytesIO()
     img.save(buf, format="JPEG")
+    buf.seek(0)
     return buf
 
 def fill_dummy_data():
-    # 🚀 FIX: Correctly set widget keys to select checkboxes visually
+    # 🚀 RESTORED Full Boss logic with UI updates
     st.session_state.client_name = "Firebean HQ"
     st.session_state.project_name = f"{CURRENT_YEAR} 旗艦同步測試" 
     st.session_state.venue = "香港會議展覽中心"
     st.session_state.category = "LIFESTYLE & CONSUMER"
     
-    # Check "What we do" and "Scope of work" boxes
+    # 🚀 FIX: Correctly check checkboxes visually
     st.session_state.what_we_do = ["INTERACTIVE & TECH", "PR & MEDIA"]
     for w in st.session_state.what_we_do: st.session_state[f"w_{w}"] = True
-    
     st.session_state.scope = ["Theme Design", "Event Production", "Concept Development"]
     for s in st.session_state.scope: st.session_state[f"s_{s}"] = True
 
     st.session_state.open_question_ans = "將 15 個通用診斷問題轉化為一套連貫且可操作的跨平台策略。"
     
-    # Generate 8 photos and 2 logos
+    # 🚀 FIX: Generate 8 Photos and 2 Logos
     colors = ["#FF5733", "#33FF57", "#3357FF", "#F333FF", "#33FFF3", "#F3FF33", "#999999", "#222222"]
     st.session_state.project_photos = [create_dummy_image(c, f"P{i+1}") for i, c in enumerate(colors)]
-    dummy_logo = base64.b64encode(create_dummy_image("#000000", "LOGO").getvalue()).decode()
-    st.session_state.logo_black = dummy_logo
-    st.session_state.logo_white = dummy_logo
+    logo_data = base64.b64encode(create_dummy_image("#000000", "LOGO").getvalue()).decode()
+    st.session_state.logo_black = logo_data
+    st.session_state.logo_white = logo_data
     
-    # 15 questions
-    st.session_state.mc_questions = [{"id": i+1, "question": f"指標 {i+1}", "options": ["戰略優化"]} for i in range(15)]
+    st.session_state.mc_questions = [{"id": i+1, "question": f"診斷指標 {i+1}", "options": ["戰略優化", "維持"]} for i in range(15)]
     for i in range(1, 16): st.session_state[f"ans_{i}"] = ["戰略優化"]
-    log_debug("🚀 Boss Fill Complete (All boxes checked).", "success")
+    log_debug("🚀 老細一鍵填充完成 (All requirements met).", "success")
 
-# --- 3. UI 元件 (Progress Circle & Night Mode) ---
+# --- 3. UI 元件 (Night Mode & Progress SVG) ---
 def get_is_dark_mode():
-    hk_hour = datetime.now().hour
+    from datetime import timezone, timedelta
+    hk_tz = timezone(timedelta(hours=8))
+    hk_hour = datetime.now(hk_tz).hour
     return hk_hour >= 20 or hk_hour < 8
 
 def get_circle_progress_html(percent, is_dark):
@@ -141,7 +155,7 @@ def apply_styles(is_dark):
     st.markdown(f"""<style>
         .stApp {{ background-color: {bg} !important; color: {txt} !important; font-family: 'Inter', sans-serif; }}
         .neu-card {{ background: {card}; border-radius: 20px; box-shadow: 9px 9px 16px {sh_d}, -9px -9px 16px {sh_l}; padding: 25px; margin-bottom: 20px; }}
-        div[data-testid="stElementContainer"]:has(#logo-anchor) + div button {{ background-image: url('https://raw.githubusercontent.com/dickson-crypto/Firebean-app/main/Firebeanlogo2026.png') !important; background-size: contain !important; background-repeat: no-repeat !important; min-height: 180px !important; width: 540px !important; background-color: transparent !important; border: none !important; box-shadow: none !important; cursor: pointer; }}
+        div[data-testid="stElementContainer"]:has(#logo-anchor) + div button {{ background-image: url('https://raw.githubusercontent.com/dickson-crypto/Firebean-app/main/Firebeanlogo2026.png') !important; background-size: contain !important; background-repeat: no-repeat !important; min-height: 180px !important; width: 540px !important; background-color: transparent !important; border: none !important; box-shadow: none !important; }}
         .mc-question {{ font-weight: 700; color: #FF0000 !important; border-left: 4px solid #FF0000; padding-left: 10px; margin-top: 15px; }}
         button[kind="primary"] {{ background-color: #FF2A2A !important; color: white !important; border-radius: 12px !important; box-shadow: 0px 4px 15px rgba(255, 0, 0, 0.35) !important; }}
     </style>""", unsafe_allow_html=True)
@@ -160,9 +174,13 @@ def main():
             reset_for_new_case()
             st.rerun()
     with c2:
-        mc_answered = sum([1 for i in range(1, 16) if st.session_state.get(f"ans_{i}")])
-        items = [bool(st.session_state.logo_black), bool(st.session_state.client_name), bool(st.session_state.project_name), len(st.session_state.what_we_do)>0, len(st.session_state.scope)>0, len(st.session_state.project_photos)>=4, mc_answered==15]
-        percent = int((sum(items)/7)*100)
+        # 🚀 RESTORED: 100% Tracking (12 items)
+        mc_ans = sum([1 for i in range(1, 16) if st.session_state.get(f"ans_{i}")])
+        logo_ok = bool(st.session_state.logo_black) and bool(st.session_state.logo_white)
+        criteria = [logo_ok, bool(st.session_state.client_name), bool(st.session_state.project_name), bool(st.session_state.venue), 
+                   bool(st.session_state.category), len(st.session_state.what_we_do)>0, len(st.session_state.scope)>0, 
+                   len(st.session_state.project_photos)>=4, mc_ans==15, bool(st.session_state.open_question_ans.strip())]
+        percent = int((sum(criteria)/10)*100)
         st.markdown(get_circle_progress_html(percent, is_dark), unsafe_allow_html=True)
 
     nav_cols = st.columns(4)
@@ -197,7 +215,7 @@ def main():
         ca, cb, cc = st.columns(3)
         with ca:
             st.markdown("##### Category")
-            st.session_state.category = st.radio("Cat", WHO_WE_HELP_OPTIONS, index=WHO_WE_HELP_OPTIONS.index(st.session_state.category), label_visibility="collapsed")
+            st.session_state.category = st.radio("Category", WHO_WE_HELP_OPTIONS, index=WHO_WE_HELP_OPTIONS.index(st.session_state.category), label_visibility="collapsed")
         with cb:
             st.markdown("##### What we do")
             st.session_state.what_we_do = [o for o in WHAT_WE_DO_OPTIONS if st.checkbox(o, key=f"w_{o}", value=(o in st.session_state.what_we_do))]
@@ -210,7 +228,7 @@ def main():
         with cl:
             st.markdown('<div class="neu-card">', unsafe_allow_html=True)
             if st.button("生成 15 題繁中診斷題目"):
-                with st.spinner("AI Thinking..."):
+                with st.spinner("AI Strategist..."):
                     res = call_gemini_sdk("生成 15 題專業 PR 診斷 JSON。", image_files=st.session_state.project_photos, is_json=True)
                     if res: st.session_state.mc_questions = json.loads(res)
                     st.rerun()
@@ -231,7 +249,7 @@ def main():
             f_up = st.file_uploader("Upload 4-8 Photos", accept_multiple_files=True)
             if f_up: st.session_state.project_photos = f_up
             if st.session_state.project_photos:
-                st.session_state.hero_photo_index = st.radio("Hero Banner:", range(len(st.session_state.project_photos)), horizontal=True)
+                st.session_state.hero_photo_index = st.radio("Hero:", range(len(st.session_state.project_photos)), horizontal=True)
                 g_cols = st.columns(4)
                 for i, f in enumerate(st.session_state.project_photos):
                     with g_cols[i%4]:
@@ -251,20 +269,20 @@ def main():
     elif st.session_state.active_tab == "Review & Multi-Sync":
         st.markdown('<div class="neu-card">', unsafe_allow_html=True)
         if st.button("生成六大平台對接文案"):
-            with st.spinner("AI Writing..."):
-                res = call_gemini_sdk("撰寫文案 JSON。", is_json=True)
+            with st.spinner("AI Thinking..."):
+                res = call_gemini_sdk("生成文案 JSON。", is_json=True)
                 if res: st.session_state.ai_content = json.loads(res)
         
         if st.session_state.ai_content:
             st.json(st.session_state.ai_content)
             if st.button("Confirm & Sync"):
-                with st.spinner("🔄 Syncing..."):
+                with st.spinner("🔄 Sequential Sync..."):
                     pid, sdate = generate_system_metadata()
                     processed_imgs = []
                     for f in st.session_state.project_photos:
                         if hasattr(f, "seek"): f.seek(0)
                         try: img = Image.open(f).convert("RGB")
-                        except: img = f.convert("RGB")
+                        except: img = f.convert("RGB") # Boss fill dummy handling
                         buf = io.BytesIO()
                         img.save(buf, format="JPEG", quality=85)
                         processed_imgs.append(base64.b64encode(buf.getvalue()).decode())
@@ -275,15 +293,15 @@ def main():
                         "images": processed_imgs, "logo_white": st.session_state.logo_white,
                         "faq_en": safe_flatten_faq(st.session_state.get("faq_en_edit", ""))
                     }
-                    # Master DB
+                    # Save to Sheet (Master DB)
                     requests.post(SHEET_SCRIPT_URL, json=payload, timeout=60)
-                    # Slide Creator
+                    # Generate Slide
                     payload["action"] = "create_slide"
                     payload["photos"] = processed_imgs
                     payload["logo_white_base64"] = st.session_state.logo_white
                     requests.post(SLIDE_SCRIPT_URL, json=payload, timeout=60)
                     st.balloons()
-                    st.success(f"Success: {pid}")
+                    st.success(f"Successfully Synced: {pid}")
 
     with st.expander("🛠️ Debug Terminal", expanded=False):
         logs = "".join([f"<div>[{l['time']}] {l['msg']}</div>" for l in reversed(st.session_state.get("debug_logs", []))])
