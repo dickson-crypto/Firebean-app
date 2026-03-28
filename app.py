@@ -16,10 +16,10 @@ try:
 except ImportError:
     pass
 
-# --- 1. 核心配置 (Updated with 2026 URLs) ---
+# --- 1. 核心配置 (Updated with your New 2026 URLs) ---
 SHEET_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxy6JwJpmclJOBerKJO4EJ50oKyL86Ux1Qci2oHx1RQiw8ruL_Um6qVYsWydyEsLawQ/exec"
 SLIDE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxKP-8Xrvy6hblPqTmtXn76rO3DFOeU6jYQtLw5QDfDP1-adNDk02bhoKihfvp_Xsvy/exec"
-STABLE_MODEL_ID = "gemini-1.5-flash" # FIX: Use stable model to resolve 404 errors
+STABLE_MODEL_ID = "gemini-1.5-flash" # FIX: Use stable production model to avoid 404 errors
 
 WHO_WE_HELP_OPTIONS = ["GOVERNMENT & PUBLIC SECTOR", "LIFESTYLE & CONSUMER", "F&B & HOSPITALITY", "MALLS & VENUES"]
 WHAT_WE_DO_OPTIONS = ["ROVING EXHIBITIONS", "SOCIAL & CONTENT", "INTERACTIVE & TECH", "PR & MEDIA", "EVENTS & CEREMONIES"]
@@ -57,7 +57,7 @@ def generate_system_metadata():
     return project_id, sort_date
 
 FIREBEAN_SYSTEM_PROMPT = """
-You are a Lead PR Strategist and Chief Editor. Transform diagnostic data into a professional PR strategy JSON.
+You are a Lead PR Strategist and Chief Editor for a premium B2B/B2C communications agency.
 Retrospective mode. Past tense. No internal terminology like 'Firebean Brain'.
 """
 
@@ -88,9 +88,10 @@ def call_gemini_sdk(prompt, image_files=None, is_json=False, max_retries=2):
                 if not is_json: return text
                 match = re.search(r'(\{.*\})|(\[.*\])', text, re.DOTALL)
                 json_str = match.group(0) if match else text
+                json.loads(json_str)
                 return json_str
         except Exception as e:
-            log_debug(f"AI Error: {str(e)}", "error")
+            log_debug(f"AI API Error: {str(e)}", "error")
     return None
 
 def init_session_state():
@@ -110,10 +111,10 @@ def reset_for_new_case():
     for i in range(1, 16):
         if f"ans_{i}" in st.session_state: del st.session_state[f"ans_{i}"]
     st.session_state.active_tab = "Project Collector"
-    log_debug("🔄 App Reset.", "success")
+    log_debug("🔄 App Data Reset.", "success")
 
 def fill_dummy_data():
-    # 🚀 FIX: Updated to correctly check checkboxes and populate text areas
+    # 🚀 RESTORED Boss Fill logic to correctly check boxes
     st.session_state.client_name = "Firebean HQ"
     st.session_state.project_name = f"{CURRENT_YEAR} 旗艦同步測試" 
     st.session_state.venue = "香港會議展覽中心"
@@ -121,42 +122,67 @@ def fill_dummy_data():
     st.session_state.what_we_do = ["INTERACTIVE & TECH", "PR & MEDIA"]
     st.session_state.scope = ["Theme Design", "Event Production", "Concept Development"]
     st.session_state.open_question_ans = "將 15 個通用診斷問題轉化為一套連貫、引人入勝且可操作的跨平台策略。"
-    # Set MC Questions dummy check
-    st.session_state.mc_questions = [{"id": i+1, "question": f"指標 {i+1}", "options": ["戰略優化", "維持"]} for i in range(15)]
-    for i in range(1, 16):
-        st.session_state[f"ans_{i}"] = ["戰略優化"]
-    log_debug("🚀 Boss Fill Complete.", "success")
+    st.session_state.mc_questions = [{"id": i+1, "question": f"診斷指標 {i+1}", "options": ["戰略優化", "維持"]} for i in range(15)]
+    for i in range(1, 16): st.session_state[f"ans_{i}"] = ["戰略優化"]
+    log_debug("🚀 老細一鍵填充完成。", "success")
+
+# --- 3. UI 元件 (Restored Time-based Night Mode & SVG Circle) ---
+
+def get_is_dark_mode():
+    from datetime import timezone, timedelta
+    hk_tz = timezone(timedelta(hours=8))
+    hk_hour = datetime.now(hk_tz).hour
+    return hk_hour >= 20 or hk_hour < 8
+
+def get_circle_progress_html(percent, is_dark):
+    circum = 439.8
+    offset = circum * (1 - percent/100)
+    if is_dark:
+        bg, shadow_d, shadow_l, text, track = "#2A2D35", "#1a1d23", "#3a3f4d", "#E0E5EC", "#1E2128"
+    else:
+        bg, shadow_d, shadow_l, text, track = "#E0E5EC", "#bec3c9", "#ffffff", "#2D3436", "#d1d9e6"
+    return f"""<div style='display: flex; justify-content: flex-end;'><div style='position: relative; width: 110px; height: 110px; border-radius: 50%; background: {bg}; box-shadow: 9px 9px 16px {shadow_d}, -9px -9px 16px {shadow_l}; display: flex; align-items: center; justify-content: center;'><svg width='110' height='110'><circle stroke='{track}' stroke-width='8' fill='transparent' r='45' cx='55' cy='55'/><circle stroke='#FF0000' stroke-width='8' stroke-dasharray='{circum}' stroke-dashoffset='{offset}' stroke-linecap='round' fill='transparent' r='45' cx='55' cy='55' style='transition: all 0.8s; transform: rotate(-90deg); transform-origin: center;'/></svg><div style='position: absolute; font-size: 20px; font-weight: 900; color: {text};'>{percent}%</div></div></div>"""
 
 def apply_styles(is_dark):
-    bg = "#1E2128" if is_dark else "#E0E5EC"
-    txt = "#E0E5EC" if is_dark else "#2D3436"
+    if is_dark:
+        bg, card, sh_d, sh_l, txt, in_bg = "#1E2128", "#1E2128", "#14161C", "#282C38", "#E0E5EC", "#252830"
+    else:
+        bg, card, sh_d, sh_l, txt, in_bg = "#E0E5EC", "#E0E5EC", "#bec3c9", "#ffffff", "#2D3436", "#e8ecf2"
+
     st.markdown(f"""<style>
         .stApp {{ background-color: {bg} !important; color: {txt} !important; font-family: 'Inter', sans-serif; }}
-        .neu-card {{ background: {bg}; border-radius: 20px; box-shadow: 9px 9px 16px rgba(0,0,0,0.2), -9px -9px 16px rgba(255,255,255,0.05); padding: 25px; margin-bottom: 20px; }}
+        .neu-card {{ background: {card}; border-radius: 20px; box-shadow: 9px 9px 16px {sh_d}, -9px -9px 16px {sh_l}; padding: 25px; margin-bottom: 20px; }}
+        .stTextInput input, .stTextArea textarea {{ background-color: {in_bg} !important; color: {txt} !important; border-radius: 10px !important; box-shadow: inset 2px 2px 5px rgba(0,0,0,0.1); }}
         div[data-testid="stElementContainer"]:has(#logo-anchor) + div button {{ background-image: url('https://raw.githubusercontent.com/dickson-crypto/Firebean-app/main/Firebeanlogo2026.png') !important; background-size: contain !important; background-repeat: no-repeat !important; min-height: 180px !important; width: 540px !important; background-color: transparent !important; border: none !important; box-shadow: none !important; cursor: pointer; }}
         .mc-question {{ font-weight: 700; color: #FF0000 !important; border-left: 4px solid #FF0000; padding-left: 10px; margin-top: 15px; }}
         .checkbox-group {{ padding-left: 20px; margin-bottom: 10px; }}
         .debug-terminal {{ background: #0D0F14 !important; color: #00FF88 !important; padding: 15px; border-radius: 10px; height: 300px; overflow-y: scroll; }}
     </style>""", unsafe_allow_html=True)
 
+# --- 4. Main App ---
+
+def fetch_draft_list():
+    try:
+        r = requests.post(SHEET_SCRIPT_URL, json={"action": "get_raw_input_list"}, timeout=15)
+        if r.status_code == 200: return r.json().get("data", [])
+    except: return []
+
 def main():
     st.set_page_config(page_title="Firebean Brain Collector", layout="wide")
     init_session_state()
-    is_dark = datetime.now().hour >= 20 or datetime.now().hour < 8
+    is_dark = get_is_dark_mode()
     apply_styles(is_dark)
 
-    # --- 🚀 LOGO HEADER (Removed separate Home Button) ---
+    # --- 🚀 HEADER (Logo acts as HOME/Reset) ---
     c1, c2 = st.columns([1, 1])
     with c1:
         st.markdown('<span id="logo-anchor"></span>', unsafe_allow_html=True)
-        # Clicking the Logo resets the app
         if st.button("", key="logo_btn"):
             reset_for_new_case()
             st.rerun()
     with c2:
         percent = int((sum([bool(st.session_state.client_name), bool(st.session_state.project_name), len(st.session_state.project_photos)>=4])/3)*100)
-        # 🚀 Use 2026 standard for progress display
-        st.markdown(f"<div style='text-align: right; font-size: 30px; font-weight: 900;'>{percent}%</div>", unsafe_allow_html=True)
+        st.markdown(get_circle_progress_html(percent, is_dark), unsafe_allow_html=True)
 
     nav_cols = st.columns(4)
     tabs = ["Project Collector", "Review & Multi-Sync", "Load Project", "老細一鍵填充 (深度內容測試)"]
@@ -185,10 +211,10 @@ def main():
         st.session_state.project_name = b2.text_input("Project", st.session_state.project_name)
         st.session_state.venue = b3.text_input("Venue", st.session_state.venue)
 
-        # --- RESTORED CHECKBOX LAYOUTS ---
+        # --- RESTORED CHECKBOX GROUPS ---
         ca, cb, cc = st.columns(3)
         with ca:
-            st.markdown("##### Who we help")
+            st.markdown("##### Category")
             st.session_state.category = st.radio("Category", WHO_WE_HELP_OPTIONS, index=WHO_WE_HELP_OPTIONS.index(st.session_state.category), label_visibility="collapsed")
         with cb:
             st.markdown("##### What we do")
@@ -202,12 +228,12 @@ def main():
         with cl:
             st.markdown('<div class="neu-card">', unsafe_allow_html=True)
             if st.button("生成 15 題繁中診斷題目"):
-                with st.spinner("AI Strategist..."):
-                    res = call_gemini_sdk("生成 15 題專業 PR 診斷選擇題 JSON。", image_files=st.session_state.project_photos, is_json=True)
+                with st.spinner("AI Strategizing..."):
+                    res = call_gemini_sdk("生成 15 題專業 PR 診斷 JSON。", image_files=st.session_state.project_photos, is_json=True)
                     if res: st.session_state.mc_questions = json.loads(res)
                     st.rerun()
             
-            # 🚀 RESTORED: Bulleted Checkboxes for Diagnostic questions
+            # 🚀 RESTORED Bulleted Checkbox Diagnostic
             if st.session_state.mc_questions:
                 for q in st.session_state.mc_questions:
                     st.markdown(f"<div class='mc-question'>Q{q['id']}. {q['question']}</div>", unsafe_allow_html=True)
@@ -216,8 +242,7 @@ def main():
                     current = st.session_state.get(ans_key, [])
                     new_ans = []
                     for opt in q['options']:
-                        if st.checkbox(opt, value=(opt in current), key=f"chk_{q['id']}_{opt}"):
-                            new_ans.append(opt)
+                        if st.checkbox(opt, value=(opt in current), key=f"chk_{q['id']}_{opt}"): new_ans.append(opt)
                     st.session_state[ans_key] = new_ans
                     st.markdown("</div>", unsafe_allow_html=True)
             st.session_state.open_question_ans = st.text_area("最核心的概念？", st.session_state.open_question_ans)
@@ -234,15 +259,14 @@ def main():
                     with g_cols[i%4]:
                         try:
                             if hasattr(f, "seek"): f.seek(0)
-                            # 🚀 Updated width parameter for 2026 compatibility
-                            st.image(f, width='stretch')
+                            st.image(f, width='stretch') # FIX: 2026 Streamlit parameter
                         except: st.image(f, width='stretch')
             st.markdown('</div>', unsafe_allow_html=True)
 
     elif st.session_state.active_tab == "Review & Multi-Sync":
         st.markdown('<div class="neu-card">', unsafe_allow_html=True)
         if st.button("Confirm & Sync"):
-            with st.spinner("🔄 Syncing (2026 High-Fidelity Fix enabled)..."):
+            with st.spinner("🔄 Sequential Syncing (Center-Crop logic enabled)..."):
                 pid, sdate = generate_system_metadata()
                 processed_imgs = []
                 for f in st.session_state.project_photos:
@@ -255,18 +279,18 @@ def main():
                 payload = {
                     "action": "sync_project", "project_id": pid, "sort_date": sdate,
                     "client_name": st.session_state.client_name, "project_name": st.session_state.project_name,
-                    "venue": st.session_state.venue, "images": processed_imgs,
-                    "logo_white": st.session_state.logo_white, "faq_en": safe_flatten_faq(st.session_state.faq_en_edit),
+                    "images": processed_imgs, "logo_white": st.session_state.logo_white,
+                    "faq_en": safe_flatten_faq(st.session_state.faq_en_edit),
                 }
-                # Seq 1: Master DB
+                # Target 1: Master DB
                 requests.post(SHEET_SCRIPT_URL, json=payload, timeout=60)
-                # Seq 2: Slide Creator
+                # Target 2: Slide Creator (using fixed keys)
                 payload["action"] = "create_slide"
                 payload["photos"] = processed_imgs
                 payload["logo_white_base64"] = st.session_state.logo_white
                 requests.post(SLIDE_SCRIPT_URL, json=payload, timeout=60)
                 st.balloons()
-                st.success(f"Success: {pid}")
+                st.success(f"Successfully Synced: {pid}")
 
     with st.expander("🛠️ Debug Terminal", expanded=False):
         logs = "".join([f"<div>[{l['time']}] {l['msg']}</div>" for l in reversed(st.session_state.get("debug_logs", []))])
