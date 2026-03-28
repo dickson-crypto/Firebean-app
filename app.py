@@ -21,8 +21,8 @@ SHEET_SCRIPT_URL   = "https://script.google.com/macros/s/AKfycbxy6JwJpmclJOBerKJ
 SLIDE_DB_URL       = "https://script.google.com/macros/s/AKfycbx_7Xf8_HERQel93WJB2F_KjFOWHtCXzfvEkP9B_p7Kh4ImRAWRgWSXtLklvdbYsqbI/exec"
 CASE_STUDY_URL     = "https://script.google.com/macros/s/AKfycbxKP-8Xrvy6hblPqTmtXn76rO3DFOeU6jYQtLw5QDfDP1-adNDk02bhoKihfvp_Xsvy/exec"
 
-# 🚀 FIX: gemini-2.0-flash — stable, multimodal, works on v1 and v1beta
-STABLE_MODEL_ID = "gemini-2.0-flash"
+# ✅ gemini-2.5-flash — current stable model for new API keys (2026)
+STABLE_MODEL_ID = "gemini-2.5-flash"
 
 WHO_WE_HELP_OPTIONS = ["GOVERNMENT & PUBLIC SECTOR", "LIFESTYLE & CONSUMER", "F&B & HOSPITALITY", "MALLS & VENUES"]
 WHAT_WE_DO_OPTIONS  = ["ROVING EXHIBITIONS", "SOCIAL & CONTENT", "INTERACTIVE & TECH", "PR & MEDIA", "EVENTS & CEREMONIES"]
