@@ -237,17 +237,14 @@ function syncProjectFromStreamlit(data) {
 
   if (driveFolder) {
     var folderUrl = 'https://drive.google.com/drive/folders/' + driveFolder.getId();
-    // Clear any data validation on image/URL columns before writing (prevents "data validation" errors)
-    [CONFIG.COL.DRIVE_FOLDER, CONFIG.COL.HERO_PHOTO, CONFIG.COL.LOGO_BLACK, CONFIG.COL.LOGO_WHITE].forEach(function(col) {
-      sheet.getRange(targetRow, col).clearDataValidations();
-    });
     var currentFolder = String(sheet.getRange(targetRow, CONFIG.COL.DRIVE_FOLDER).getValue() || '');
     if (currentFolder !== folderUrl) {
+      // Drive Folder cell has no validation — write directly
       sheet.getRange(targetRow, CONFIG.COL.DRIVE_FOLDER).setValue(folderUrl);
       needsImageSync = true;
     }
 
-    // Save logo_black base64 to Drive
+    // Save logo_black base64 to Drive (no validation on Logo cols)
     if (data.logo_black) {
       var lbFile = saveBase64ToDrive_(driveFolder, 'Logo_Black.png', data.logo_black, 'image/png');
       if (lbFile) {
@@ -270,29 +267,40 @@ function syncProjectFromStreamlit(data) {
     }
 
     // Save photo images (base64 array) to Drive as Photo_1.jpg, Photo_2.jpg...
+    // Then rebuild the Hero Photo dropdown with all photo URLs from the folder
+    var heroPhotoUrl = '';
     if (data.images && data.images.length > 0) {
       var heroIndex = parseInt(data.hero_index || 0, 10);
+      var allPhotoUrls = [];
       for (var pi = 0; pi < data.images.length; pi++) {
         var photoFile = saveBase64ToDrive_(driveFolder, 'Photo_' + (pi + 1) + '.jpg', data.images[pi], 'image/jpeg');
-        if (photoFile && pi === heroIndex) {
-          sheet.getRange(targetRow, CONFIG.COL.HERO_PHOTO).setValue('https://drive.google.com/file/d/' + photoFile.getId() + '/view?usp=drivesdk');
-          needsImageSync = true;
+        if (photoFile) {
+          var photoUrl = 'https://drive.google.com/file/d/' + photoFile.getId() + '/view?usp=drivesdk';
+          allPhotoUrls.push(photoUrl);
+          if (pi === heroIndex) heroPhotoUrl = photoUrl;
         }
+      }
+      // Rebuild Hero Photo picker dropdown with all uploaded photo URLs
+      if (allPhotoUrls.length > 0) {
+        if (!heroPhotoUrl) heroPhotoUrl = allPhotoUrls[0];
+        rebuildHeroPhotoPicker_(sheet, targetRow, allPhotoUrls, heroPhotoUrl);
       }
       needsImageSync = true;
     } else if (data.hero_photo_id) {
-      sheet.getRange(targetRow, CONFIG.COL.HERO_PHOTO).setValue('https://drive.google.com/file/d/' + data.hero_photo_id + '/view?usp=drivesdk');
+      heroPhotoUrl = 'https://drive.google.com/file/d/' + data.hero_photo_id + '/view?usp=drivesdk';
+      sheet.getRange(targetRow, CONFIG.COL.HERO_PHOTO).clearDataValidations().setValue(heroPhotoUrl);
     } else if (data.hero_photo_url) {
-      sheet.getRange(targetRow, CONFIG.COL.HERO_PHOTO).setValue(data.hero_photo_url);
+      heroPhotoUrl = data.hero_photo_url;
+      sheet.getRange(targetRow, CONFIG.COL.HERO_PHOTO).clearDataValidations().setValue(heroPhotoUrl);
     }
   } else {
     // Fallback: no Drive folder, use IDs directly if provided
-    [CONFIG.COL.DRIVE_FOLDER, CONFIG.COL.HERO_PHOTO, CONFIG.COL.LOGO_BLACK, CONFIG.COL.LOGO_WHITE].forEach(function(col) {
-      sheet.getRange(targetRow, col).clearDataValidations();
-    });
     if (data.logo_black_id) sheet.getRange(targetRow, CONFIG.COL.LOGO_BLACK).setValue('https://drive.google.com/file/d/' + data.logo_black_id);
     if (data.logo_white_id) sheet.getRange(targetRow, CONFIG.COL.LOGO_WHITE).setValue('https://drive.google.com/file/d/' + data.logo_white_id);
-    if (data.hero_photo_id) sheet.getRange(targetRow, CONFIG.COL.HERO_PHOTO).setValue('https://drive.google.com/file/d/' + data.hero_photo_id);
+    if (data.hero_photo_id) {
+      sheet.getRange(targetRow, CONFIG.COL.HERO_PHOTO).clearDataValidations()
+        .setValue('https://drive.google.com/file/d/' + data.hero_photo_id);
+    }
     if (data.drive_folder_id) {
       sheet.getRange(targetRow, CONFIG.COL.DRIVE_FOLDER).setValue('https://drive.google.com/drive/folders/' + data.drive_folder_id);
       needsImageSync = true;
@@ -311,6 +319,20 @@ function syncProjectFromStreamlit(data) {
     project_id: pid,
     message: 'Data + images saved to Drive. Run CMS Sync to push to GitHub.'
   })).setMimeType(ContentService.MimeType.JSON);
+}
+
+// ─── HELPER: Rebuild Hero Photo picker dropdown ─────────────────────────────
+// Sets a dropdown on col W listing all Drive photo URLs for this project.
+// Staff can click the cell and pick a different hero — flows into projects.json
+// on next CMS sync. allowInvalid=true so pasted URLs also work.
+function rebuildHeroPhotoPicker_(sheet, row, photoUrls, selectedUrl) {
+  var cell = sheet.getRange(row, CONFIG.COL.HERO_PHOTO);
+  var rule = SpreadsheetApp.newDataValidation()
+    .requireValueInList(photoUrls, true)
+    .setAllowInvalid(true)
+    .build();
+  cell.setDataValidation(rule);
+  cell.setValue(selectedUrl);
 }
 
 // ─── HELPER: Get or create project folder in Drive ─────────
