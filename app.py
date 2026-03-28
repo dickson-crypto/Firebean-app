@@ -220,18 +220,20 @@ def _project_context():
     mc_summary = []
     for q in st.session_state.get("mc_questions", []):
         ans = st.session_state.get(f"ans_{q['id']}", [])
-        mc_summary.append(f"Q{q['id']}. {q['question']} → {', '.join(ans)}")
-    return (
-        f"Client: {st.session_state.get('client_name','\')}\n"
-        f"Project: {st.session_state.get('project_name','\')}\n"
-        f"Venue: {st.session_state.get('venue','\')}\n"
-        f"Date: {st.session_state.get('event_year','')} {st.session_state.get('event_month','')}\n"
-        f"Category: {st.session_state.get('category','\')}\n"
-        f"Services: {', '.join(st.session_state.get('what_we_do',[]))}\n"
-        f"Scope: {', '.join(st.session_state.get('scope',[]))}\n"
-        f"Core Concept: {st.session_state.get('open_question_ans','')}\n"
-        f"Diagnostic Q&A:\n" + "\n".join(mc_summary)
-    )
+        mc_summary.append("Q" + str(q["id"]) + ". " + q["question"] + " → " + ", ".join(ans))
+    ss = st.session_state
+    parts = [
+        "Client: " + ss.get("client_name", ""),
+        "Project: " + ss.get("project_name", ""),
+        "Venue: " + ss.get("venue", ""),
+        "Date: " + ss.get("event_year", "") + " " + ss.get("event_month", ""),
+        "Category: " + ss.get("category", ""),
+        "Services: " + ", ".join(ss.get("what_we_do", [])),
+        "Scope: " + ", ".join(ss.get("scope", [])),
+        "Core Concept: " + ss.get("open_question_ans", ""),
+        "Diagnostic Q&A:",
+    ] + mc_summary
+    return "\n".join(parts)
 
 def build_platform_prompt():
     """Prompt 1 — 6 platform copy fields only (short, clean JSON)."""
