@@ -583,31 +583,48 @@ def main():
                         except Exception as ie:
                             log_debug(f"Image encode skipped: {ie}", "warning")
 
-                    # Build full payload
+                    # Build full payload — field names match sync-to-github.gs exactly
+                    ai = st.session_state.ai_content or {}
+                    # Map new platform keys → legacy Apps Script keys
+                    ai_mapped = {
+                        "1_google_slide":  json.dumps(ai.get("website", {}), ensure_ascii=False),
+                        "2_facebook_post": ai.get("facebook", {}).get("caption", ""),
+                        "3_threads_post":  ai.get("instagram", {}).get("caption", ""),
+                        "4_instagram_post":ai.get("instagram", {}).get("caption", "") + "\n" + ai.get("instagram", {}).get("hashtags", ""),
+                        "5_linkedin_post": ai.get("linkedin", {}).get("headline", "") + "\n\n" + ai.get("linkedin", {}).get("body", ""),
+                        "6_edm":           json.dumps(ai.get("edm", {}), ensure_ascii=False),
+                        "7_press_release": ai.get("press_release", {}).get("headline", "") + "\n\n" + ai.get("press_release", {}).get("body", ""),
+                    }
                     payload = {
-                        "action":        "sync_project",
-                        "project_id":    pid,
-                        "sort_date":     sdate,
-                        "client_name":   st.session_state.client_name,
-                        "project_name":  st.session_state.project_name,
-                        "venue":         st.session_state.venue,
-                        "event_year":    st.session_state.event_year,
-                        "event_month":   st.session_state.event_month,
-                        "category":      st.session_state.category,
-                        "what_we_do":    st.session_state.what_we_do,
-                        "scope":         st.session_state.scope,
-                        "youtube":       st.session_state.youtube,
-                        "ai_content":    st.session_state.ai_content,
-                        "images":        processed_imgs,
-                        "logo_white":    st.session_state.logo_white,
-                        "logo_black":    st.session_state.logo_black,
-                        "web_en":        st.session_state.web_en,
-                        "web_tc":        st.session_state.web_tc,
-                        "web_jp":        st.session_state.web_jp,
-                        "faq_en":        st.session_state.faq_en_edit,
-                        "faq_tc":        st.session_state.faq_tc_edit,
-                        "faq_jp":        st.session_state.faq_jp_edit,
-                        "hero_index":    st.session_state.hero_photo_index,
+                        # ── Identity ──
+                        "action":           "sync_project",
+                        "project_id":       pid,
+                        "sort_date":        sdate,
+                        # ── Basic fields (matching COL keys in .gs) ──
+                        "client_name":      st.session_state.client_name,
+                        "project_name":     st.session_state.project_name,
+                        "date":             st.session_state.event_month + " " + st.session_state.event_year,
+                        "venue":            st.session_state.venue,
+                        "category":         st.session_state.category,
+                        "category_what":    ", ".join(st.session_state.what_we_do),
+                        "scope":            ", ".join(st.session_state.scope),
+                        "youtube":          st.session_state.youtube,
+                        "open_question":    st.session_state.open_question_ans,
+                        "challenge":        st.session_state.challenge,
+                        "solution":         st.session_state.solution,
+                        # ── AI content (legacy key names Apps Script reads) ──
+                        "ai_content":       ai_mapped,
+                        # ── Web articles (direct fields) ──
+                        "website_texts":    {"en": st.session_state.web_en, "tc": st.session_state.web_tc, "jp": st.session_state.web_jp},
+                        # ── FAQ (flat fields) ──
+                        "faq_en":           st.session_state.faq_en_edit,
+                        "faq_tc":           st.session_state.faq_tc_edit,
+                        "faq_jp":           st.session_state.faq_jp_edit,
+                        # ── Images (base64) ──
+                        "images":           processed_imgs,
+                        "logo_white":       st.session_state.logo_white,
+                        "logo_black":       st.session_state.logo_black,
+                        "hero_index":       st.session_state.hero_photo_index,
                     }
 
                     errors = []
