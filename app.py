@@ -250,8 +250,13 @@ JSON format (fill every field, no empty strings):
   "linkedin": {{"headline": "", "body": ""}},
   "facebook": {{"caption": ""}},
   "edm": {{"subject": "", "preview": "", "body": ""}},
-  "press_release": {{"headline": "", "lead": "", "body": ""}}
-}}"""
+  "press_release": {{"headline": "", "lead": "", "body": ""}},
+  "challenge": "",
+  "solution": ""
+}}
+
+challenge: 2-3 sentences describing the core PR/event challenge faced.
+solution: 2-3 sentences describing how Firebean solved it creatively."""
 
 def build_web_faq_prompt():
     """Prompt 2 — 3 web articles + 3-language FAQ only."""
@@ -484,6 +489,18 @@ def main():
             col_b.markdown(f"**Category:** {st.session_state.category}")
             col_b.markdown(f"**What We Do:** {', '.join(st.session_state.what_we_do)}")
 
+        # ── Challenge & Solution (for Google Slide page 2) ──
+        with st.expander("💡 Challenge & Solution (Google Slide Page 2)", expanded=False):
+            st.caption("Auto-filled by AI when you click 生成六大平台對接文案. Edit before syncing.")
+            st.session_state.challenge = st.text_area(
+                "Challenge (挑戰)", st.session_state.challenge, height=100,
+                key="challenge_area", placeholder="What was the core PR/event challenge?"
+            )
+            st.session_state.solution = st.text_area(
+                "Solution (解決方案)", st.session_state.solution, height=100,
+                key="solution_area", placeholder="How did Firebean solve it creatively?"
+            )
+
         # ── AI content generation ──
         if st.button("生成六大平台對接文案", type="primary", use_container_width=True):
             photos = st.session_state.project_photos if st.session_state.project_photos else None
@@ -497,7 +514,11 @@ def main():
                 )
                 if res1:
                     try:
-                        st.session_state.ai_content = json.loads(res1)
+                        p1 = json.loads(res1)
+                        # Pull challenge + solution into session state for slide + sheet
+                        st.session_state.challenge = p1.pop("challenge", "")
+                        st.session_state.solution  = p1.pop("solution", "")
+                        st.session_state.ai_content = p1
                         log_debug("✅ 六大平台文案生成成功", "success")
                     except json.JSONDecodeError as je:
                         log_debug(f"Platform JSON error: {je} | raw: {res1[:200]}", "error")
