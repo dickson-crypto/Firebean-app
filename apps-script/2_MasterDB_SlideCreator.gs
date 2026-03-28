@@ -1,32 +1,52 @@
 /**
  * ============================================================
- * SCRIPT 2 of 3 — MASTER DB SLIDE CREATOR  v3.0
+ * SCRIPT 2 of 3 — MASTER DB SLIDE CREATOR  v4.0
  * ============================================================
  * Deploy URL:  https://script.google.com/macros/s/AKfycbx_7Xf8_HERQel93WJB2F_KjFOWHtCXzfvEkP9B_p7Kh4ImRAWRgWSXtLklvdbYsqbI/exec
  * app.py var:  SLIDE_DB_URL
  * Action:      create_slide
  *
- * Template structure (confirmed from live template):
- *   Slide 1: PHOTO1–PHOTO4 image placeholders + {{WHITE_LOGO}} shape + text fields
- *   Slide 2: PHOTO5–PHOTO8 image placeholders + text fields
+ * PHOTO STRATEGY (v4.0):
+ *   - Find each PHOTO1-8 placeholder by alt-text title
+ *   - Record exact left/top/width/height
+ *   - Delete placeholder
+ *   - Decode base64 → blob → insertImage(blob, left, top, w, h)
+ *   - Falls back to hardcoded coordinates if alt-text lookup fails
+ *   - If no photo provided for a slot, keep original gradient (don't delete)
  *
- * Strategy:
- *   1. Copy slides 1+2 from template to end of presentation
- *   2. Upload each base64 photo to Drive as a temp file → get public URL
- *   3. Use replaceAllShapesWithImage (alt-text match) to fill PHOTO1–PHOTO8 in-place
- *      → image fills placeholder exactly, cropped to center (no floating images)
- *   4. If fewer than 8 photos, unused slots keep the original gradient placeholder
- *   5. Replace {{WHITE_LOGO}} shape with logo image in-place
- *   6. Replace all text placeholders
- *   7. Update Master DB col M with slide URL
+ * LOGO STRATEGY (v4.0):
+ *   - Find {{WHITE_LOGO}} shape by text content or description
+ *   - Record exact bounds
+ *   - Delete shape
+ *   - Decode base64 → blob → insertImage(blob, left, top, w, h)
+ *
+ * HARDCODED FALLBACK COORDINATES (from live template, confirmed):
+ *   Slide 1: PHOTO1(210.6, 0, 254.7, 202.5) PHOTO2(465.3, 0, 254.7, 202.5)
+ *            PHOTO3(210.6, 202.5, 254.7, 202.5) PHOTO4(465.3, 202.5, 254.7, 202.5)
+ *            LOGO(24.3, 25.5, 166.2, 71.6)
+ *   Slide 2: PHOTO5(210.5, 0, 254.8, 202.5) PHOTO6(465.2, 0, 254.8, 202.5)
+ *            PHOTO7(210.5, 202.5, 254.8, 202.5) PHOTO8(465.2, 202.5, 254.8, 202.5)
  * ============================================================
  */
 
-var TEMPLATE_ID  = '19rmqCzgKD8y2ZiLxkiAqhhkV6_t-8QAumZkSi0Eu9C0';
-var SHEET_ID     = '1aTuqgmmSKMWgNCl2KR0QhK4Cj8G7W5yPsr4t39pi-yc';
-var SHEET_NAME   = 'Basic Info';
-// Temp folder for base64 → Drive uploads (images need a public URL for Slides API)
-var TEMP_FOLDER_NAME = '_Firebean_Temp_Uploads';
+var TEMPLATE_ID = '19rmqCzgKD8y2ZiLxkiAqhhkV6_t-8QAumZkSi0Eu9C0';
+var SHEET_ID    = '1aTuqgmmSKMWgNCl2KR0QhK4Cj8G7W5yPsr4t39pi-yc';
+var SHEET_NAME  = 'Basic Info';
+
+// Hardcoded fallback positions (points) — [left, top, width, height]
+var PHOTO_COORDS = {
+  'PHOTO1': [210.6,   0,   254.7, 202.5],
+  'PHOTO2': [465.3,   0,   254.7, 202.5],
+  'PHOTO3': [210.6, 202.5, 254.7, 202.5],
+  'PHOTO4': [465.3, 202.5, 254.7, 202.5],
+  'PHOTO5': [210.5,   0,   254.8, 202.5],
+  'PHOTO6': [465.2,   0,   254.8, 202.5],
+  'PHOTO7': [210.5, 202.5, 254.8, 202.5],
+  'PHOTO8': [465.2, 202.5, 254.8, 202.5]
+};
+var LOGO_COORDS = [24.3, 25.5, 166.2, 71.6]; // [left, top, width, height]
+
+// ─── ENTRY POINT ─────────────────────────────────────────────────────────────
 
 function doPost(e) {
   try {
@@ -55,19 +75,14 @@ function createCaseStudySlide_(data) {
   var newSlide1 = presentation.appendSlide(templateSlides[0]);
   var newSlide2 = presentation.appendSlide(templateSlides[1]);
 
-  // 2. Build date string
+  // 2. Build strings
   var dateStr = (data.date || ((data.event_month || '') + ' ' + (data.event_year || ''))).trim();
+  var scopeStr = Array.isArray(data.scope)
+    ? data.scope.join('\n')
+    : String(data.scope || '').replace(/,\s*/g, '\n');
 
-  // 3. Build scope string
-  var scopeStr = '';
-  if (Array.isArray(data.scope)) {
-    scopeStr = data.scope.join('\n');
-  } else {
-    scopeStr = String(data.scope || '').replace(/,\s*/g, '\n');
-  }
-
-  // 4. Replace all text placeholders on both slides
-  var textReplacements = [
+  // 3. Replace all text placeholders on BOTH slides
+  var replacements = [
     ['{{CLIENT_NAME}}',  data.client_name  || ''],
     ['{{PROJECT_NAME}}', data.project_name || ''],
     ['{{CATEGORY}}',     data.category     || ''],
@@ -77,153 +92,135 @@ function createCaseStudySlide_(data) {
     ['{{CHALLENGE}}',    data.challenge    || ''],
     ['{{SOLUTION}}',     data.solution     || '']
   ];
-  textReplacements.forEach(function(pair) {
+  replacements.forEach(function(pair) {
     newSlide1.replaceAllText(pair[0], pair[1]);
     newSlide2.replaceAllText(pair[0], pair[1]);
   });
 
-  // 5. Upload photos to Drive → get public URLs → replace PHOTO1–PHOTO8 in-place
+  // 4. Insert photos using blob (no Drive URL needed)
   var photos = data.photos || data.images || [];
-  var tempFolder = getOrCreateTempFolder_();
-  var photoUrls = [];
+  var heroIndex = parseInt(data.hero_index || 0, 10);
+  var photoResults = [];
 
-  for (var pi = 0; pi < Math.min(photos.length, 8); pi++) {
+  for (var i = 0; i < Math.min(photos.length, 8); i++) {
+    var photoNum = i + 1;
+    var altText  = 'PHOTO' + photoNum;
+    var targetSlide = photoNum <= 4 ? newSlide1 : newSlide2;
+
     try {
-      var url = saveBase64ToPublicDrive_(tempFolder, 'slide_photo_' + (pi+1) + '.jpg', photos[pi], 'image/jpeg');
-      photoUrls.push(url);
-    } catch(e) {
-      photoUrls.push(null);
-      Logger.log('Photo ' + pi + ' upload failed: ' + e.message);
+      var blob = base64ToBlob_(photos[i], 'image/jpeg', 'photo' + photoNum + '.jpg');
+      var coords = findAndRemoveImageByAltText_(targetSlide, altText);
+      if (!coords) coords = PHOTO_COORDS[altText]; // fallback to hardcoded
+
+      var img = targetSlide.insertImage(blob, coords[0], coords[1], coords[2], coords[3]);
+      img.setTitle(altText);
+      img.setDescription(altText);
+
+      // Hero photo gets a subtle red border
+      if (i === heroIndex) {
+        img.getBorder().getLineFill().setSolidFill('#FF2A2A');
+        img.getBorder().setWeight(2);
+      }
+      photoResults.push(altText + ':OK');
+    } catch (photoErr) {
+      Logger.log('Photo ' + photoNum + ' failed: ' + photoErr.message);
+      photoResults.push(altText + ':FAIL:' + photoErr.message);
     }
   }
 
-  // Replace PHOTO1–PHOTO4 on slide 1, PHOTO5–PHOTO8 on slide 2
-  for (var i = 0; i < photoUrls.length; i++) {
-    if (!photoUrls[i]) continue;
-    var photoNum = i + 1;                          // 1-based
-    var targetSlide = photoNum <= 4 ? newSlide1 : newSlide2;
-    var altText = 'PHOTO' + photoNum;
-    replaceImageByAltText_(targetSlide, altText, photoUrls[i]);
-  }
-
-  // 6. Replace {{WHITE_LOGO}} shape with logo image
+  // 5. Insert white logo using blob
   var logoBase64 = data.logo_white_base64 || data.logo_white || '';
+  var logoResult = 'no_logo';
   if (logoBase64) {
     try {
-      var logoUrl = saveBase64ToPublicDrive_(tempFolder, 'slide_logo_white.png', logoBase64, 'image/png');
-      replaceLogoShape_(newSlide1, logoUrl);
-    } catch(e) {
-      Logger.log('Logo replace failed: ' + e.message);
-      // Clear the placeholder text so it doesn't show raw {{WHITE_LOGO}}
+      var logoBlob   = base64ToBlob_(logoBase64, 'image/png', 'logo_white.png');
+      var logoCoords = findAndRemoveLogoShape_(newSlide1);
+      if (!logoCoords) logoCoords = LOGO_COORDS; // fallback to hardcoded
+
+      var logoImg = newSlide1.insertImage(logoBlob, logoCoords[0], logoCoords[1], logoCoords[2], logoCoords[3]);
+      logoImg.setTitle('logo_white');
+      logoImg.setDescription('project_logo');
+      logoResult = 'OK';
+    } catch (logoErr) {
+      Logger.log('Logo failed: ' + logoErr.message);
+      logoResult = 'FAIL:' + logoErr.message;
       clearLogoPlaceholderText_(newSlide1);
     }
-  } else {
-    clearLogoPlaceholderText_(newSlide1);
   }
 
   presentation.saveAndClose();
 
-  // 7. Update Master DB col M
+  // 6. Update Master DB col M with slide URL
   updateSheetWithSlideUrl_(data.project_id, slideUrl);
 
   return ContentService.createTextOutput(JSON.stringify({
     status: 'success',
     slide_url: slideUrl,
-    photos_replaced: photoUrls.filter(function(u){return !!u;}).length
+    photos: photoResults,
+    logo: logoResult
   })).setMimeType(ContentService.MimeType.JSON);
 }
 
-// ─── REPLACE IMAGE BY ALT TEXT ───────────────────────────────────────────────
-// Finds the image element whose title == altText, then replaces it in-place
-// using the Slides REST API replaceAllShapesWithImage approach via UrlFetchApp.
-// Falls back to remove+insert if the API call fails.
-function replaceImageByAltText_(slide, altText, imageUrl) {
-  var elements = slide.getImages();
-  for (var i = 0; i < elements.length; i++) {
-    var img = elements[i];
+// ─── HELPERS — IMAGE FINDING ─────────────────────────────────────────────────
+
+/**
+ * Finds image element by alt-text title, records its bounds, removes it.
+ * Returns [left, top, width, height] in points, or null if not found.
+ */
+function findAndRemoveImageByAltText_(slide, altText) {
+  var images = slide.getImages();
+  for (var i = 0; i < images.length; i++) {
+    var img = images[i];
     if (img.getTitle() === altText || img.getDescription() === altText) {
-      // Get position and size before removing
-      var left   = img.getLeft();
-      var top    = img.getTop();
-      var width  = img.getWidth();
-      var height = img.getHeight();
-
-      // Remove old image, insert new one at exact same position/size
+      var coords = [img.getLeft(), img.getTop(), img.getWidth(), img.getHeight()];
       img.remove();
-
-      var newImg = slide.insertImage(imageUrl, left, top, width, height);
-      // Set alt text on new image to preserve naming
-      newImg.setTitle(altText);
-      newImg.setDescription(altText);
-      return true;
+      return coords;
     }
   }
-  Logger.log('Alt text not found: ' + altText);
-  return false;
+  return null; // Not found — caller uses hardcoded fallback
 }
 
-// ─── REPLACE LOGO SHAPE ──────────────────────────────────────────────────────
-// Finds shape containing {{WHITE_LOGO}}, removes it, inserts logo image at same bounds
-function replaceLogoShape_(slide, logoUrl) {
+/**
+ * Finds the {{WHITE_LOGO}} shape, records its bounds, removes it.
+ * Returns [left, top, width, height] in points, or null if not found.
+ */
+function findAndRemoveLogoShape_(slide) {
   var shapes = slide.getShapes();
   for (var i = 0; i < shapes.length; i++) {
     var sh = shapes[i];
-    if (sh.getText().asString().indexOf('{{WHITE_LOGO}}') !== -1 ||
-        sh.getDescription() === 'project_logo' ||
-        sh.getTitle() === 'photo1_placeholder') {
-      var left   = sh.getLeft();
-      var top    = sh.getTop();
-      var width  = sh.getWidth();
-      var height = sh.getHeight();
+    var isLogo = (
+      sh.getText().asString().indexOf('{{WHITE_LOGO}}') !== -1 ||
+      sh.getDescription() === 'project_logo' ||
+      sh.getTitle() === 'photo1_placeholder'
+    );
+    if (isLogo) {
+      var coords = [sh.getLeft(), sh.getTop(), sh.getWidth(), sh.getHeight()];
       sh.remove();
-      var logoImg = slide.insertImage(logoUrl, left, top, width, height);
-      logoImg.setTitle('logo_white');
-      logoImg.setDescription('project_logo');
-      return;
+      return coords;
     }
   }
+  return null;
 }
 
 function clearLogoPlaceholderText_(slide) {
   var shapes = slide.getShapes();
   for (var i = 0; i < shapes.length; i++) {
-    var sh = shapes[i];
-    if (sh.getText().asString().indexOf('{{WHITE_LOGO}}') !== -1) {
-      sh.getText().setText('');
+    if (shapes[i].getText().asString().indexOf('{{WHITE_LOGO}}') !== -1) {
+      shapes[i].getText().setText('');
       return;
     }
   }
 }
 
-// ─── DRIVE HELPERS ───────────────────────────────────────────────────────────
+// ─── HELPERS — BASE64 → BLOB ─────────────────────────────────────────────────
 
-function getOrCreateTempFolder_() {
-  var folders = DriveApp.getFoldersByName(TEMP_FOLDER_NAME);
-  if (folders.hasNext()) return folders.next();
-  var f = DriveApp.createFolder(TEMP_FOLDER_NAME);
-  // Make publicly readable so Slides API can fetch the URL
-  f.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-  return f;
-}
-
-// Upload base64 image to Drive, make it public, return the direct content URL
-function saveBase64ToPublicDrive_(folder, filename, base64Data, mimeType) {
-  var clean = base64Data.replace(/^data:[^;]+;base64,/, '');
+function base64ToBlob_(base64Data, mimeType, filename) {
+  var clean = String(base64Data).replace(/^data:[^;]+;base64,/, '').replace(/\s/g, '');
   var bytes = Utilities.base64Decode(clean);
-  var blob  = Utilities.newBlob(bytes, mimeType, filename);
-
-  // Delete existing file with same name to avoid duplicates
-  var existing = folder.getFilesByName(filename);
-  while (existing.hasNext()) { existing.next().setTrashed(true); }
-
-  var file = folder.createFile(blob);
-  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-
-  // Return a URL that Google Slides API can fetch directly
-  return 'https://drive.google.com/uc?export=download&id=' + file.getId();
+  return Utilities.newBlob(bytes, mimeType, filename);
 }
 
-// ─── UPDATE MASTER DB ────────────────────────────────────────────────────────
+// ─── HELPERS — MASTER DB ─────────────────────────────────────────────────────
 
 function updateSheetWithSlideUrl_(projectId, slideUrl) {
   if (!projectId) return;
