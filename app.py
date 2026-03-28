@@ -239,7 +239,30 @@ def build_content_prompt():
   "linkedin": {{"headline":"","body":""}},
   "facebook": {{"caption":""}},
   "edm": {{"subject":"","preview":"","body":""}},
-  "press_release": {{"headline":"","lead":"","body":""}}
+  "press_release": {{"headline":"","lead":"","body":""}},
+  "faq": {{
+    "en": [
+      {{"q":"What is this event about?","a":""}},
+      {{"q":"Who is it for?","a":""}},
+      {{"q":"Where and when?","a":""}},
+      {{"q":"How to participate?","a":""}},
+      {{"q":"Who is Firebean Limited?","a":""}}
+    ],
+    "tc": [
+      {{"q":"這個活動是關於什麼？","a":""}},
+      {{"q":"活動對象是誰？","a":""}},
+      {{"q":"活動地點和時間？","a":""}},
+      {{"q":"如何參與？","a":""}},
+      {{"q":"Firebean Limited 是什麼公司？","a":""}}
+    ],
+    "jp": [
+      {{"q":"このイベントについて教えてください。","a":""}},
+      {{"q":"対象者は誰ですか？","a":""}},
+      {{"q":"場所と日時は？","a":""}},
+      {{"q":"参加方法を教えてください。","a":""}},
+      {{"q":"Firebean Limitedとはどんな会社ですか？","a":""}}
+    ]
+  }}
 }}
 """.strip()
 
@@ -455,8 +478,17 @@ def main():
                 )
                 if res:
                     try:
-                        st.session_state.ai_content = json.loads(res)
-                        log_debug("✅ 六大平台文案生成成功", "success")
+                        parsed = json.loads(res)
+                        # Auto-populate FAQ text areas from AI output
+                        faq_data = parsed.pop("faq", {})
+                        if faq_data:
+                            def _faq_to_text(items):
+                                return "\n".join([f"Q: {x.get('q','')}\nA: {x.get('a','')}" for x in items])
+                            st.session_state.faq_en_edit = _faq_to_text(faq_data.get("en", []))
+                            st.session_state.faq_tc_edit = _faq_to_text(faq_data.get("tc", []))
+                            st.session_state.faq_jp_edit = _faq_to_text(faq_data.get("jp", []))
+                        st.session_state.ai_content = parsed
+                        log_debug("✅ 六大平台文案 + FAQ 生成成功", "success")
                     except json.JSONDecodeError as je:
                         log_debug(f"JSON parse error: {je} | raw: {res[:300]}", "error")
                         st.error("AI 返回格式有誤，請重試。")
