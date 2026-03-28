@@ -69,7 +69,7 @@ def open_image_safe(f):
         f.seek(0)
     return Image.open(f)
 
-def call_gemini_sdk(prompt, image_files=None, is_json=False, system_prompt=None):
+def call_gemini_sdk(prompt, image_files=None, is_json=False, system_prompt=None, force_json_mime=False):
     api_key = st.secrets.get("GEMINI_API_KEY", "")
     if not api_key:
         log_debug("GEMINI_API_KEY not found in secrets.", "error")
@@ -77,34 +77,34 @@ def call_gemini_sdk(prompt, image_files=None, is_json=False, system_prompt=None)
     try:
         client = genai.Client(api_key=api_key)
         contents = []
-        # Add images first (before text, as recommended)
         if image_files:
             for f in image_files:
                 try:
                     img = open_image_safe(f)
                     img.thumbnail((800, 800))
-                    # Convert PIL image to inline bytes part
                     buf = io.BytesIO()
                     img.save(buf, format="JPEG")
-                    img_bytes = buf.getvalue()
-                    contents.append(types.Part.from_bytes(data=img_bytes, mime_type="image/jpeg"))
+                    contents.append(types.Part.from_bytes(data=buf.getvalue(), mime_type="image/jpeg"))
                 except Exception as img_err:
                     log_debug(f"Image load skipped: {img_err}", "warning")
-        # Add text prompt
         contents.append(prompt)
 
-        cfg = types.GenerateContentConfig(
+        cfg_kwargs = dict(
             system_instruction=system_prompt if system_prompt else None,
             temperature=0.7,
         )
+        # force_json_mime uses the SDK's native JSON mode — guarantees valid JSON output
+        if force_json_mime:
+            cfg_kwargs["response_mime_type"] = "application/json"
+
+        cfg = types.GenerateContentConfig(**cfg_kwargs)
         res = client.models.generate_content(
             model=STABLE_MODEL_ID,
             contents=contents,
             config=cfg,
         )
         raw = res.text
-        if is_json:
-            # Strip markdown code fences if present
+        if is_json or force_json_mime:
             raw = re.sub(r"^```(?:json)?\s*", "", raw.strip(), flags=re.IGNORECASE)
             raw = re.sub(r"\s*```$", "", raw.strip())
             match = re.search(r'(\{.*\})|(\[.*\])', raw, re.DOTALL)
@@ -213,81 +213,74 @@ def apply_styles(is_dark):
         .debug-terminal {{ background: #111; color: #0f0; font-family: monospace; font-size: 12px; padding: 10px; border-radius: 8px; max-height: 300px; overflow-y: auto; }}
     </style>""", unsafe_allow_html=True)
 
-# --- 4. Review tab helper: build rich AI prompt from session state ---
-def build_content_prompt():
+# --- 4. Review tab helpers: two focused AI prompts -------------------------
+
+def _project_context():
+    """Shared project context string."""
     mc_summary = []
     for q in st.session_state.get("mc_questions", []):
         ans = st.session_state.get(f"ans_{q['id']}", [])
         mc_summary.append(f"Q{q['id']}. {q['question']} → {', '.join(ans)}")
-    client   = st.session_state.get("client_name", "")
-    project  = st.session_state.get("project_name", "")
-    venue    = st.session_state.get("venue", "")
-    year     = st.session_state.get("event_year", "")
-    month    = st.session_state.get("event_month", "")
-    category = st.session_state.get("category", "")
-    wwdo     = ", ".join(st.session_state.get("what_we_do", []))
-    scope    = ", ".join(st.session_state.get("scope", []))
-    concept  = st.session_state.get("open_question_ans", "")
-    mc_text  = "\n".join(mc_summary)
-    return f"""
-以下是 Firebean Limited 的項目資料。請生成完整內容 JSON，所有對應必須實際填寫，不可留空。
+    return (
+        f"Client: {st.session_state.get('client_name','\')}\n"
+        f"Project: {st.session_state.get('project_name','\')}\n"
+        f"Venue: {st.session_state.get('venue','\')}\n"
+        f"Date: {st.session_state.get('event_year','')} {st.session_state.get('event_month','')}\n"
+        f"Category: {st.session_state.get('category','\')}\n"
+        f"Services: {', '.join(st.session_state.get('what_we_do',[]))}\n"
+        f"Scope: {', '.join(st.session_state.get('scope',[]))}\n"
+        f"Core Concept: {st.session_state.get('open_question_ans','')}\n"
+        f"Diagnostic Q&A:\n" + "\n".join(mc_summary)
+    )
 
-客戶: {client}
-項目: {project}
-場地: {venue}
-日期: {year} {month}
-分類: {category}
-服務範圍: {wwdo}
-工作範圍: {scope}
-核心概念: {concept}
+def build_platform_prompt():
+    """Prompt 1 — 6 platform copy fields only (short, clean JSON)."""
+    ctx = _project_context()
+    return f"""You are a PR strategist at Firebean Limited, Hong Kong.
+Generate platform copy for this project. Return ONLY a single valid JSON object, no markdown.
 
-診斷問卷:
-{mc_text}
+{ctx}
 
-【web_en / web_tc / web_jp 要求】
-- 每篇是一篇完整的專業 PR 案例研究文章，800-1200 字
-- 使用 HTML 標籤：<h1> 標題, <h2>/<h3> 小標題, <p> 段落, <b> 重點字
-- 英文版使用專業商業英文，繁中版使用正體中文，日文版使用標準日文
-- 語調：過去式回顧 (retrospective)，儲學分析 (thought leadership)
-- 結構：<h1>標題</h1><h3>副標題</h3><p>開首段</p><p>背景</p><p>策略詳述</p><p>執行體驗</p><p>成果與影響</p>
-
-【faq 要求】5 題 Q&A，每個 key 為 "Q" 和 "A"，3 種語言
-
+JSON format (fill every field, no empty strings):
 {{
-  "website": {{"headline":"","body":"","cta":""}},
-  "instagram": {{"caption":"","hashtags":""}},
-  "linkedin": {{"headline":"","body":""}},
-  "facebook": {{"caption":""}},
-  "edm": {{"subject":"","preview":"","body":""}},
-  "press_release": {{"headline":"","lead":"","body":""}},
-  "web_en": "",
-  "web_tc": "",
-  "web_jp": "",
-  "faq": {{
-    "en": [
-      {{"Q":"What is {project} about?","A":""}},
-      {{"Q":"Who is it for?","A":""}},
-      {{"Q":"Where and when did it take place?","A":""}},
-      {{"Q":"What did Firebean Limited do for this project?","A":""}},
-      {{"Q":"What was the outcome?","A":""}}
-    ],
-    "tc": [
-      {{"Q":"這個項目是關於什麼？","A":""}},
-      {{"Q":"服務對象是誰？","A":""}},
-      {{"Q":"活動地點和時間是？","A":""}},
-      {{"Q":"Firebean 在這個項目中做了什麼？","A":""}},
-      {{"Q":"最終成果如何？","A":""}}
-    ],
-    "jp": [
-      {{"Q":"このプロジェクトは何についてですか？","A":""}},
-      {{"Q":"対象者は誰ですか？","A":""}},
-      {{"Q":"場所と日時はいつですか？","A":""}},
-      {{"Q":"Firebeanはこのプロジェクトで何をお手伝いしましたか？","A":""}},
-      {{"Q":"成果はどうでしたか？","A":""}}
-    ]
-  }}
-}}
-""".strip()
+  "website": {{"headline": "", "body": "", "cta": ""}},
+  "instagram": {{"caption": "", "hashtags": ""}},
+  "linkedin": {{"headline": "", "body": ""}},
+  "facebook": {{"caption": ""}},
+  "edm": {{"subject": "", "preview": "", "body": ""}},
+  "press_release": {{"headline": "", "lead": "", "body": ""}}
+}}"""
+
+def build_web_faq_prompt():
+    """Prompt 2 — 3 web articles + 3-language FAQ only."""
+    ctx = _project_context()
+    client  = st.session_state.get("client_name", "")
+    project = st.session_state.get("project_name", "")
+    return f"""You are a PR strategist at Firebean Limited, Hong Kong.
+Generate web articles and FAQ for this project. Return ONLY a single valid JSON object, no markdown.
+
+{ctx}
+
+Requirements for web_en / web_tc / web_jp:
+- 600-900 words each (shorter = cleaner JSON)
+- HTML tags only: <h1> <h2> <h3> <p> <b> — NO quotes inside attribute values
+- Tone: retrospective, thought leadership
+- web_en: professional English
+- web_tc: Traditional Chinese (正體中文)
+- web_jp: Standard Japanese
+
+Requirements for faq: exactly 5 items per language, keys must be "Q" and "A"
+
+JSON format:
+{{
+  "web_en": "<h1>Title</h1><p>Body...</p>",
+  "web_tc": "<h1>標題</h1><p>內文...</p>",
+  "web_jp": "<h1>タイトル</h1><p>本文...</p>",
+  "faq_en": [{{"Q": "", "A": ""}}, {{"Q": "", "A": ""}}, {{"Q": "", "A": ""}}, {{"Q": "", "A": ""}}, {{"Q": "", "A": ""}}],
+  "faq_tc": [{{"Q": "", "A": ""}}, {{"Q": "", "A": ""}}, {{"Q": "", "A": ""}}, {{"Q": "", "A": ""}}, {{"Q": "", "A": ""}}],
+  "faq_jp": [{{"Q": "", "A": ""}}, {{"Q": "", "A": ""}}, {{"Q": "", "A": ""}}, {{"Q": "", "A": ""}}, {{"Q": "", "A": ""}}]
+}}"""
+
 
 # --- 5. Main App ---
 def main():
@@ -491,41 +484,54 @@ def main():
 
         # ── AI content generation ──
         if st.button("生成六大平台對接文案", type="primary", use_container_width=True):
-            with st.spinner("AI 正在生成六大平台文案..."):
-                prompt = build_content_prompt()
-                res = call_gemini_sdk(
-                    prompt,
-                    image_files=st.session_state.project_photos if st.session_state.project_photos else None,
-                    is_json=True,
-                    system_prompt=FIREBEAN_SYSTEM_PROMPT,
+            photos = st.session_state.project_photos if st.session_state.project_photos else None
+
+            # ── Call 1: Platform copy (website, instagram, linkedin, facebook, edm, press_release) ──
+            with st.spinner("AI 生成平台文案 (1/2)..."):
+                res1 = call_gemini_sdk(
+                    build_platform_prompt(),
+                    image_files=photos,
+                    force_json_mime=True,
                 )
-                if res:
+                if res1:
                     try:
-                        parsed = json.loads(res)
-                        # Extract FAQ as proper JSON list (matching sheet format {"Q":..,"A":..})
-                        faq_data = parsed.pop("faq", {})
-                        if faq_data:
-                            def _normalise_faq(items):
-                                out = []
-                                for x in items:
-                                    q = x.get("Q") or x.get("q", "")
-                                    a = x.get("A") or x.get("a", "")
-                                    out.append({"Q": q, "A": a})
-                                return json.dumps(out, ensure_ascii=False)
-                            st.session_state.faq_en_edit = _normalise_faq(faq_data.get("en", []))
-                            st.session_state.faq_tc_edit = _normalise_faq(faq_data.get("tc", []))
-                            st.session_state.faq_jp_edit = _normalise_faq(faq_data.get("jp", []))
-                        # Pull web_en / web_tc / web_jp out of ai_content into separate session keys
-                        st.session_state.web_en = parsed.pop("web_en", "")
-                        st.session_state.web_tc = parsed.pop("web_tc", "")
-                        st.session_state.web_jp = parsed.pop("web_jp", "")
-                        st.session_state.ai_content = parsed
-                        log_debug("✅ 六大平台文案 + Web Article + FAQ 生成成功", "success")
+                        st.session_state.ai_content = json.loads(res1)
+                        log_debug("✅ 六大平台文案生成成功", "success")
                     except json.JSONDecodeError as je:
-                        log_debug(f"JSON parse error: {je} | raw: {res[:300]}", "error")
-                        st.error("AI 返回格式有誤，請重試。")
+                        log_debug(f"Platform JSON error: {je} | raw: {res1[:200]}", "error")
+                        st.error("平台文案格式有誤，請重試。")
                 else:
-                    st.error("AI 生成失敗，請檢查 Debug Terminal。")
+                    st.error("平台文案生成失敗，請檢查 Debug Terminal。")
+
+            # ── Call 2: Web articles + FAQ ──
+            with st.spinner("AI 生成網頁文章 + FAQ (2/2)..."):
+                res2 = call_gemini_sdk(
+                    build_web_faq_prompt(),
+                    image_files=photos,
+                    force_json_mime=True,
+                )
+                if res2:
+                    try:
+                        parsed2 = json.loads(res2)
+                        def _normalise_faq(items):
+                            out = []
+                            for x in items:
+                                q = x.get("Q") or x.get("q", "")
+                                a = x.get("A") or x.get("a", "")
+                                out.append({"Q": q, "A": a})
+                            return json.dumps(out, ensure_ascii=False)
+                        st.session_state.web_en = parsed2.get("web_en", "")
+                        st.session_state.web_tc = parsed2.get("web_tc", "")
+                        st.session_state.web_jp = parsed2.get("web_jp", "")
+                        st.session_state.faq_en_edit = _normalise_faq(parsed2.get("faq_en", []))
+                        st.session_state.faq_tc_edit = _normalise_faq(parsed2.get("faq_tc", []))
+                        st.session_state.faq_jp_edit = _normalise_faq(parsed2.get("faq_jp", []))
+                        log_debug("✅ Web 文章 + FAQ 生成成功", "success")
+                    except json.JSONDecodeError as je:
+                        log_debug(f"Web/FAQ JSON error: {je} | raw: {res2[:200]}", "error")
+                        st.error("網頁文章格式有誤，請重試。")
+                else:
+                    st.error("網頁文章生成失敗，請檢查 Debug Terminal。")
 
         # ── Show & edit AI content ──
         if st.session_state.ai_content:
