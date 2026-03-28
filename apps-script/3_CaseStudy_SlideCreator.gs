@@ -79,8 +79,8 @@ function createCaseStudySlide_(data) {
     ['{{DATE}}',         dateStr],
     ['{{VENUE}}',        data.venue        || ''],
     ['{{SCOPE}}',        scopeStr],
-    ['{{CHALLENGE}}',    data.challenge    || ''],
-    ['{{SOLUTION}}',     data.solution     || '']
+    ['{{CHALLENGE}}',    data.challenge || '(Challenge TBC)'],
+    ['{{SOLUTION}}',     data.solution  || '(Solution TBC)']
   ];
   replacements.forEach(function(pair) {
     newSlide1.replaceAllText(pair[0], pair[1]);

@@ -156,6 +156,8 @@ def fill_dummy_data():
     for s in SOW_OPTIONS: st.session_state[f"s_{s}"] = (s in st.session_state.scope)
 
     st.session_state.open_question_ans = "將 15 個通用診斷問題轉化為一套連貫且可操作的跨平台策略。"
+    st.session_state.challenge = "The core challenge was transforming 15 generic diagnostic indicators into a coherent, actionable cross-platform PR strategy that resonated with diverse stakeholders across INTERACTIVE & TECH and PR & MEDIA domains."
+    st.session_state.solution = "Firebean deployed an integrated synchronisation framework combining real-time data diagnostics with multi-channel content deployment, delivering a flagship 2026 experience at 香港會議展覽中心 that unified brand messaging across all six platforms simultaneously."
 
     colors = ["#FF5733", "#33FF57", "#3357FF", "#F333FF", "#33FFF3", "#F3FF33", "#999999", "#222222"]
     st.session_state.project_photos = [create_dummy_image(c, f"P{i+1}") for i, c in enumerate(colors)]
