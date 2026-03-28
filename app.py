@@ -1,5 +1,6 @@
 import streamlit as st
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 import io
 import base64
 import time
@@ -74,19 +75,33 @@ def call_gemini_sdk(prompt, image_files=None, is_json=False, system_prompt=None)
         log_debug("GEMINI_API_KEY not found in secrets.", "error")
         return None
     try:
-        genai.configure(api_key=api_key)
-        full_prompt = f"{system_prompt}\n\n{prompt}" if system_prompt else prompt
-        model    = genai.GenerativeModel(STABLE_MODEL_ID)
-        contents = [full_prompt]
+        client = genai.Client(api_key=api_key)
+        contents = []
+        # Add images first (before text, as recommended)
         if image_files:
             for f in image_files:
                 try:
                     img = open_image_safe(f)
                     img.thumbnail((800, 800))
-                    contents.append(img)
+                    # Convert PIL image to inline bytes part
+                    buf = io.BytesIO()
+                    img.save(buf, format="JPEG")
+                    img_bytes = buf.getvalue()
+                    contents.append(types.Part.from_bytes(data=img_bytes, mime_type="image/jpeg"))
                 except Exception as img_err:
                     log_debug(f"Image load skipped: {img_err}", "warning")
-        res = model.generate_content(contents)
+        # Add text prompt
+        contents.append(prompt)
+
+        cfg = types.GenerateContentConfig(
+            system_instruction=system_prompt if system_prompt else None,
+            temperature=0.7,
+        )
+        res = client.models.generate_content(
+            model=STABLE_MODEL_ID,
+            contents=contents,
+            config=cfg,
+        )
         raw = res.text
         if is_json:
             # Strip markdown code fences if present
