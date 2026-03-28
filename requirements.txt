@@ -5,3 +5,4 @@ Pillow
 rembg
 onnxruntime
 opencv-python-headless
+pillow-heif
