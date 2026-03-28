@@ -237,6 +237,10 @@ function syncProjectFromStreamlit(data) {
 
   if (driveFolder) {
     var folderUrl = 'https://drive.google.com/drive/folders/' + driveFolder.getId();
+    // Clear any data validation on image/URL columns before writing (prevents "data validation" errors)
+    [CONFIG.COL.DRIVE_FOLDER, CONFIG.COL.HERO_PHOTO, CONFIG.COL.LOGO_BLACK, CONFIG.COL.LOGO_WHITE].forEach(function(col) {
+      sheet.getRange(targetRow, col).clearDataValidations();
+    });
     var currentFolder = String(sheet.getRange(targetRow, CONFIG.COL.DRIVE_FOLDER).getValue() || '');
     if (currentFolder !== folderUrl) {
       sheet.getRange(targetRow, CONFIG.COL.DRIVE_FOLDER).setValue(folderUrl);
@@ -283,6 +287,9 @@ function syncProjectFromStreamlit(data) {
     }
   } else {
     // Fallback: no Drive folder, use IDs directly if provided
+    [CONFIG.COL.DRIVE_FOLDER, CONFIG.COL.HERO_PHOTO, CONFIG.COL.LOGO_BLACK, CONFIG.COL.LOGO_WHITE].forEach(function(col) {
+      sheet.getRange(targetRow, col).clearDataValidations();
+    });
     if (data.logo_black_id) sheet.getRange(targetRow, CONFIG.COL.LOGO_BLACK).setValue('https://drive.google.com/file/d/' + data.logo_black_id);
     if (data.logo_white_id) sheet.getRange(targetRow, CONFIG.COL.LOGO_WHITE).setValue('https://drive.google.com/file/d/' + data.logo_white_id);
     if (data.hero_photo_id) sheet.getRange(targetRow, CONFIG.COL.HERO_PHOTO).setValue('https://drive.google.com/file/d/' + data.hero_photo_id);

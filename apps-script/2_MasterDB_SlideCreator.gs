@@ -129,9 +129,10 @@ function createCaseStudySlide_(data) {
 
 // ── Insert photos into a 2×3 grid on slide1 ──────────────────────────────────
 function insertPhotosIntoSlide_(slide, photos, heroIndex) {
-  // Slide dimensions (default Google Slides widescreen = 9144000 x 5143500 EMU = ~720×405 pt)
-  var slideW = slide.getWidth();   // points (e.g. 720)
-  var slideH = slide.getHeight();  // points (e.g. 405)
+  // Get dimensions from the presentation object (not the slide)
+  var pres    = SlidesApp.openById(TEMPLATE_ID);
+  var slideW  = pres.getPageWidth();   // points, e.g. 720
+  var slideH  = pres.getPageHeight();  // points, e.g. 405
 
   // Right half of slide = photo area (left half = text/logo area)
   var photoAreaLeft  = slideW * 0.5;
