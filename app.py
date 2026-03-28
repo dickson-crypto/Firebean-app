@@ -1,6 +1,5 @@
 import streamlit as st
-from google import genai  # 🚀 FIX: Updated to 2026 Standard SDK to solve 404 error
-from google.genai import types
+import google.generativeai as genai
 import io
 import base64
 import time
@@ -10,7 +9,7 @@ import re
 from PIL import Image, ImageDraw, ImageOps
 from datetime import datetime
 
-# 🚀 FIX: HEIC support for iPhone uploads (Fixed UnidentifiedImageError from logs)
+# 🚀 FIX: HEIC support for iPhone uploads identified in logs
 try:
     from pillow_heif import register_heif_opener
     register_heif_opener()
@@ -19,8 +18,9 @@ except ImportError:
 
 # --- 1. 核心配置 (Updated with your 2026 URLs) ---
 SHEET_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxy6JwJpmclJOBerKJO4EJ50oKyL86Ux1Qci2oHx1RQiw8ruL_Um6qVYsWydyEsLawQ/exec"
-SLIDE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxKP-8Xrvy6hblPqTmtXn76rO3DFOeU6jYQtLw5QDfDP1-adNDk02bhoKihfvp_Xsvy/exec"
-STABLE_MODEL_ID = "gemini-2.0-flash" # Current 2026 stable production model
+SLIDE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx_7Xf8_HERQel93WJB2F_KjFOWHtCXzfvEkP9B_p7Kh4ImRAWRgWSXtLklvdbYsqbI/exec"
+# 🚀 FIX: Using 1.5-flash as the production stable model for 2026 to resolve 404 errors
+STABLE_MODEL_ID = "gemini-1.5-flash" 
 
 WHO_WE_HELP_OPTIONS = ["GOVERNMENT & PUBLIC SECTOR", "LIFESTYLE & CONSUMER", "F&B & HOSPITALITY", "MALLS & VENUES"]
 WHAT_WE_DO_OPTIONS = ["ROVING EXHIBITIONS", "SOCIAL & CONTENT", "INTERACTIVE & TECH", "PR & MEDIA", "EVENTS & CEREMONIES"]
@@ -49,16 +49,19 @@ def generate_system_metadata():
     except: next_index = 999 
     return f"FB{st.session_state.event_year}{str(next_index).zfill(3)}", sort_date
 
-# --- 2. 核心邏輯 (Updated SDK) ---
+FIREBEAN_SYSTEM_PROMPT = "You are a Lead PR Strategist. Transform diagnostic data into a professional PR strategy JSON. Written in past tense retrospective mode."
+
+# --- 2. 核心邏輯 ---
 def log_debug(msg, type="info"):
     if "debug_logs" not in st.session_state: st.session_state.debug_logs = []
     st.session_state.debug_logs.append({"time": datetime.now().strftime("%H:%M:%S"), "msg": msg, "type": type})
 
 def call_gemini_sdk(prompt, image_files=None, is_json=False):
-    api_key = st.secrets.get("GEMINI_API_KEY", "")
-    if not api_key: return None
+    secret_key = st.secrets.get("GEMINI_API_KEY", "")
+    if not secret_key: return None
     try:
-        client = genai.Client(api_key=api_key)
+        genai.configure(api_key=secret_key)
+        model = genai.GenerativeModel(STABLE_MODEL_ID)
         contents = [prompt]
         if image_files:
             for f in image_files:
@@ -66,10 +69,11 @@ def call_gemini_sdk(prompt, image_files=None, is_json=False):
                 img = Image.open(f)
                 img.thumbnail((800, 800))
                 contents.append(img)
-        
-        config = {"response_mime_type": "application/json"} if is_json else None
-        response = client.models.generate_content(model=STABLE_MODEL_ID, contents=contents, config=config)
-        return response.text
+        res = model.generate_content(contents)
+        if is_json:
+            match = re.search(r'(\{.*\})|(\[.*\])', res.text, re.DOTALL)
+            return match.group(0) if match else res.text
+        return res.text
     except Exception as e:
         log_debug(f"AI API Error: {str(e)}", "error")
         return None
@@ -102,7 +106,7 @@ def create_dummy_image(color, label):
     return buf
 
 def fill_dummy_data():
-    # 🚀 FIX: Visually checks boxes and generates photos/logos
+    # 🚀 BOSS FILL: Fills 8 photos, 2 logos, checks boxes visually, and triggers 100%
     st.session_state.client_name = "Firebean HQ"
     st.session_state.project_name = f"{CURRENT_YEAR} 旗艦同步測試" 
     st.session_state.venue = "香港會議展覽中心"
@@ -123,11 +127,13 @@ def fill_dummy_data():
     
     st.session_state.mc_questions = [{"id": i+1, "question": f"診斷指標 {i+1}", "options": ["戰略優化"]} for i in range(15)]
     for i in range(1, 16): st.session_state[f"ans_{i}"] = ["戰略優化"]
-    log_debug("🚀 Boss Fill Complete (100% Status).", "success")
+    log_debug("🚀 老細一鍵填充成功 (100% Status).", "success")
 
-# --- 3. UI 元件 (Restored Night Mode & Animated Circle) ---
+# --- 3. UI 元件 (Restored SVG & Night Mode) ---
 def get_is_dark_mode():
-    hk_hour = datetime.now().hour
+    from datetime import timezone, timedelta
+    hk_tz = timezone(timedelta(hours=8))
+    hk_hour = datetime.now(hk_tz).hour
     return hk_hour >= 20 or hk_hour < 8
 
 def get_circle_progress_html(percent, is_dark):
@@ -141,7 +147,7 @@ def apply_styles(is_dark):
     st.markdown(f"""<style>
         .stApp {{ background-color: {bg} !important; color: {txt} !important; font-family: 'Inter', sans-serif; }}
         .neu-card {{ background: {card}; border-radius: 20px; box-shadow: 9px 9px 16px {sh_d}, -9px -9px 16px {sh_l}; padding: 25px; margin-bottom: 20px; }}
-        div[data-testid="stElementContainer"]:has(#logo-anchor) + div button {{ background-image: url('https://raw.githubusercontent.com/dickson-crypto/Firebean-app/main/Firebeanlogo2026.png') !important; background-size: contain !important; background-repeat: no-repeat !important; min-height: 180px !important; width: 540px !important; background-color: transparent !important; border: none !important; box-shadow: none !important; }}
+        div[data-testid="stElementContainer"]:has(#logo-anchor) + div button {{ background-image: url('https://raw.githubusercontent.com/dickson-crypto/Firebean-app/main/Firebeanlogo2026.png') !important; background-size: contain !important; background-repeat: no-repeat !important; min-height: 180px !important; width: 540px !important; background-color: transparent !important; border: none !important; box-shadow: none !important; cursor: pointer; }}
         .mc-question {{ font-weight: 700; color: #FF0000 !important; border-left: 4px solid #FF0000; padding-left: 10px; margin-top: 15px; }}
         .checkbox-group {{ padding-left: 20px; margin-bottom: 10px; }}
         button[kind="primary"] {{ background-color: #FF2A2A !important; color: white !important; border-radius: 12px !important; box-shadow: 0px 4px 15px rgba(255, 0, 0, 0.35) !important; }}
@@ -161,12 +167,14 @@ def main():
             reset_for_new_case()
             st.rerun()
     with c2:
+        # 🚀 RESTORED: 100% Tracking (All 12 items)
         mc_ans = sum([1 for i in range(1, 16) if st.session_state.get(f"ans_{i}")])
         logo_ok = bool(st.session_state.logo_black) and bool(st.session_state.logo_white)
         criteria = [logo_ok, bool(st.session_state.client_name), bool(st.session_state.project_name), bool(st.session_state.venue), 
-                   bool(st.session_state.category), len(st.session_state.what_we_do)>0, len(st.session_state.scope)>0, 
-                   len(st.session_state.project_photos)>=4, mc_ans==15, bool(st.session_state.open_question_ans.strip())]
-        percent = int((sum(criteria)/10)*100)
+                   bool(st.session_state.event_year), bool(st.session_state.event_month), bool(st.session_state.category), 
+                   len(st.session_state.what_we_do)>0, len(st.session_state.scope)>0, len(st.session_state.project_photos)>=4, 
+                   mc_ans==15, bool(st.session_state.open_question_ans.strip())]
+        percent = int((sum(criteria)/12)*100)
         st.markdown(get_circle_progress_html(percent, is_dark), unsafe_allow_html=True)
 
     nav_cols = st.columns(4)
@@ -201,7 +209,7 @@ def main():
         ca, cb, cc = st.columns(3)
         with ca:
             st.markdown("##### Category")
-            st.session_state.category = st.radio("Category", WHO_WE_HELP_OPTIONS, index=WHO_WE_HELP_OPTIONS.index(st.session_state.category), label_visibility="collapsed")
+            st.session_state.category = st.radio("Cat", WHO_WE_HELP_OPTIONS, index=WHO_WE_HELP_OPTIONS.index(st.session_state.category), label_visibility="collapsed")
         with cb:
             st.markdown("##### What we do")
             st.session_state.what_we_do = [o for o in WHAT_WE_DO_OPTIONS if st.checkbox(o, key=f"w_{o}", value=st.session_state.get(f"w_{o}", False))]
@@ -214,11 +222,12 @@ def main():
         with cl:
             st.markdown('<div class="neu-card">', unsafe_allow_html=True)
             if st.button("生成 15 題繁中診斷題目"):
-                with st.spinner("AI Thinking..."):
+                with st.spinner("AI Analysis..."):
                     res = call_gemini_sdk("生成 15 題專業 PR 診斷 JSON。", image_files=st.session_state.project_photos, is_json=True)
                     if res: st.session_state.mc_questions = json.loads(res)
                     st.rerun()
             
+            # 🚀 Bulleted Checkboxes for Diagnostic
             if st.session_state.mc_questions:
                 for q in st.session_state.mc_questions:
                     st.markdown(f"<div class='mc-question'>Q{q['id']}. {q['question']}</div>", unsafe_allow_html=True)
@@ -248,6 +257,7 @@ def main():
                         except: st.image(f, width='stretch')
             st.markdown('</div>', unsafe_allow_html=True)
 
+        # 🚀 Auto-navigation drive to Page 2 at 100%
         if percent >= 100:
             st.markdown("---")
             st.success("🎉 完美！進度達 100%！")
@@ -258,8 +268,8 @@ def main():
     elif st.session_state.active_tab == "Review & Multi-Sync":
         st.markdown('<div class="neu-card">', unsafe_allow_html=True)
         if st.button("生成六大平台對接文案"):
-            with st.spinner("AI Thinking..."):
-                res = call_gemini_sdk("撰寫文案 JSON。", is_json=True)
+            with st.spinner("AI Generating..."):
+                res = call_gemini_sdk("生成文案 JSON。", is_json=True)
                 if res: st.session_state.ai_content = json.loads(res)
         
         if st.session_state.ai_content:
