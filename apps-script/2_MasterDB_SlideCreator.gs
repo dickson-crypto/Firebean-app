@@ -87,10 +87,11 @@ function createCaseStudySlide_(data) {
     newSlide2.replaceAllText(pair[0], pair[1]);
   });
 
-  // 4. Save now so we can use REST API on the new slide objects
+  // 4. Save so REST API can see the new slides
   presentation.saveAndClose();
+  Utilities.sleep(1500); // give Slides time to commit
 
-  // 5. Re-open to get updated objectIds for the new slides
+  // 5. Re-open to get updated objectIds
   presentation = SlidesApp.openById(TEMPLATE_ID);
   var allSlides = presentation.getSlides();
   newSlide1 = allSlides[allSlides.length - 2];
@@ -173,10 +174,11 @@ function createCaseStudySlide_(data) {
     }
   }
 
-  // 8. Save before REST API call
+  // 8. Save and wait — REST API needs presentation fully committed
   presentation.saveAndClose();
+  Utilities.sleep(2000);
 
-  // 9. Apply all crop-centre fills via Slides REST API in one batchUpdate
+  // 9. Apply size + position + centre-crop via Slides REST API via Slides REST API in one batchUpdate
   if (cropRequests.length > 0) {
     applyCropCentreFill_(TEMPLATE_ID, cropRequests);
   }
