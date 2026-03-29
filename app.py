@@ -19,7 +19,7 @@ except ImportError:
 
 # --- 1. 核心配置 ---
 SHEET_SCRIPT_URL   = "https://script.google.com/macros/s/AKfycbxy6JwJpmclJOBerKJO4EJ50oKyL86Ux1Qci2oHx1RQiw8ruL_Um6qVYsWydyEsLawQ/exec"
-SLIDE_DB_URL       = "https://script.google.com/macros/s/AKfycbx_7Xf8_HERQel93WJB2F_KjFOWHtCXzfvEkP9B_p7Kh4ImRAWRgWSXtLklvdbYsqbI/exec"
+SLIDE_DB_URL       = "https://script.google.com/macros/s/AKfycbxkDNmqsAZo3r9NZf-Es8jKQ3b2vDjz28cRIzjBEM8JqiBtTDelW0pcaAxiPxrnirzQ/exec"
 CASE_STUDY_URL     = "https://script.google.com/macros/s/AKfycbxKP-8Xrvy6hblPqTmtXn76rO3DFOeU6jYQtLw5QDfDP1-adNDk02bhoKihfvp_Xsvy/exec"
 
 # ✅ gemini-2.5-flash — current stable model for new API keys (2026)
