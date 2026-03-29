@@ -230,9 +230,12 @@ function createMasterSlides_(data) {
   var apiBase      = 'https://slides.googleapis.com/v1/presentations/' + TEMPLATE_ID;
 
   // 1. Read template
-  var pres = JSON.parse(UrlFetchApp.fetch(apiBase,
-    {headers:{'Authorization':'Bearer '+token},muteHttpExceptions:true}).getContentText());
-  if (!pres.slides || pres.slides.length < 2) throw new Error('Template needs 2 slides');
+  var presResp = UrlFetchApp.fetch(apiBase,
+    {headers:{'Authorization':'Bearer '+token},muteHttpExceptions:true});
+  Logger.log('GET presentation HTTP: '+presResp.getResponseCode());
+  var pres = JSON.parse(presResp.getContentText());
+  if (pres.error) throw new Error('Slides API error: '+pres.error.code+' '+pres.error.message);
+  if (!pres.slides || pres.slides.length < 2) throw new Error('Template needs 2 slides, got: '+(pres.slides?pres.slides.length:0));
   var tmplId1 = pres.slides[0].objectId;
   var tmplId2 = pres.slides[1].objectId;
   Logger.log('Templates: '+tmplId1+', '+tmplId2+' | Total: '+pres.slides.length);
