@@ -116,6 +116,27 @@ function onOpen() {
     .addToUi();
 }
 
+// ─── AUTH TEST — run this ONCE from the editor to approve all scopes ──────
+// After it shows "Auth OK" in the logs, you can use the menu normally.
+function testAuthAndConnection() {
+  var token = ScriptApp.getOAuthToken();
+  var TEMPLATE_ID = '19rmqCzgKD8y2ZiLxkiAqhhkV6_t-8QAumZkSi0Eu9C0';
+  var resp = UrlFetchApp.fetch(
+    'https://slides.googleapis.com/v1/presentations/' + TEMPLATE_ID + '?fields=presentationId,slides.objectId',
+    {headers:{'Authorization':'Bearer '+token}, muteHttpExceptions:true}
+  );
+  Logger.log('HTTP: ' + resp.getResponseCode());
+  var body = JSON.parse(resp.getContentText());
+  if (body.error) {
+    Logger.log('ERROR: ' + body.error.code + ' — ' + body.error.message);
+  } else {
+    Logger.log('Auth OK — slide count: ' + (body.slides ? body.slides.length : 0));
+  }
+  // Also trigger Drive scope
+  DriveApp.getRootFolder();
+  Logger.log('Drive scope OK');
+}
+
 // ─── CREATE SLIDES FROM SHEET ROW ─────────────────────────────────────────
 // Called directly from sheet menu — no HTTP, no retries, no Streamlit
 function createSlidesForSelectedRow() {
