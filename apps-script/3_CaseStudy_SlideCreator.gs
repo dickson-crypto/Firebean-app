@@ -1,16 +1,14 @@
 /**
  * ============================================================
- * SCRIPT 3 of 3 — FIREBEAN CASE STUDY SLIDE CREATOR  v17.0
+ * SCRIPT 3 of 3 — FIREBEAN CASE STUDY SLIDE CREATOR  v18.0
  * ============================================================
  * Deploy URL:  https://script.google.com/macros/s/AKfycbxKP-8Xrvy6hblPqTmtXn76rO3DFOeU6jYQtLw5QDfDP1-adNDk02bhoKihfvp_Xsvy/exec
  * app.py var:  CASE_STUDY_URL
  *
- * v17: hybrid approach
- *   - doPost returns immediately (no retry trigger)
- *   - ScriptLock prevents concurrent execution
- *   - REST duplicateObject creates truly independent slides (appended at end)
- *   - SlidesApp used for replaceAllText + insertImage on the new slides
- *   - Photos inserted by matching PHOTO1-PHOTO8 alt-text, image placed on top
+ * v18: 3 separate sessions to avoid timing/linking issues
+ *   Session 1: REST duplicateObject — creates 2 independent slides at end
+ *   Session 2: REST re-read — confirm new slides exist, get their element IDs
+ *   Session 3: REST replaceAllText + SlidesApp insertImage for photos
  * ============================================================
  */
 
@@ -26,190 +24,211 @@ function doPost(e) {
     if (data.action !== 'create_slide' && data.action !== 'create_case_study') {
       return resp_({status:'error', message:'Unknown action'});
     }
-
     var pid   = String(data.project_id || '');
     var props = PropertiesService.getScriptProperties();
-
-    // Fast dedup check before lock
+    // Fast dedup
     if (pid) {
-      var existing = props.getProperty(pid);
-      if (existing && existing.indexOf('http') === 0) {
-        return resp_({status:'success', slide_url:existing, skipped:true});
-      }
+      var ex = props.getProperty(pid);
+      if (ex && ex.indexOf('http') === 0) return resp_({status:'success', slide_url:ex, skipped:true});
     }
-
-    // Try async trigger first; fall back to sync
+    // Try async trigger first
     try {
-      var key = 'PAYLOAD_' + (pid || String(new Date().getTime()));
-      props.setProperty(key, JSON.stringify(data));
+      props.setProperty('PAYLOAD_'+(pid||Date.now()), JSON.stringify(data));
       if (pid) props.setProperty(pid, 'QUEUED');
       ScriptApp.newTrigger('processSlideTrigger_').timeBased().after(3000).create();
       return resp_({status:'queued', project_id:pid});
-    } catch(triggerErr) {
+    } catch(te) {
       return createSlide_(data);
     }
-
   } catch(err) {
     return resp_({status:'error', message:err.toString()});
   }
 }
 
 function resp_(obj) {
-  return ContentService.createTextOutput(JSON.stringify(obj))
-    .setMimeType(ContentService.MimeType.JSON);
+  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
 }
 
 function processSlideTrigger_() {
   ScriptApp.getProjectTriggers().forEach(function(t) {
-    if (t.getHandlerFunction() === 'processSlideTrigger_') ScriptApp.deleteTrigger(t);
+    if (t.getHandlerFunction()==='processSlideTrigger_') ScriptApp.deleteTrigger(t);
   });
   var props = PropertiesService.getScriptProperties();
   var all   = props.getProperties();
   Object.keys(all).forEach(function(key) {
-    if (key.indexOf('PAYLOAD_') !== 0) return;
+    if (key.indexOf('PAYLOAD_')!==0) return;
     try {
       var data = JSON.parse(all[key]);
       props.deleteProperty(key);
       createSlide_(data);
-    } catch(e) { Logger.log('Trigger err: ' + e.message); }
+    } catch(e) { Logger.log('Trigger err: '+e.message); }
   });
 }
 
-// ─── MAIN ────────────────────────────────────────────────────────────────────
+// ─── MAIN — 3 separate sessions ──────────────────────────────────────────────
 
 function createSlide_(data) {
-  var token    = ScriptApp.getOAuthToken();
-  var apiBase  = 'https://slides.googleapis.com/v1/presentations/' + TEMPLATE_ID;
-  var slideUrl = 'https://docs.google.com/presentation/d/' + TEMPLATE_ID + '/edit';
-  var props    = PropertiesService.getScriptProperties();
-  var pid      = String(data.project_id || '');
+  var token   = ScriptApp.getOAuthToken();
+  var apiBase = 'https://slides.googleapis.com/v1/presentations/'+TEMPLATE_ID;
+  var slideUrl = 'https://docs.google.com/presentation/d/'+TEMPLATE_ID+'/edit';
+  var props   = PropertiesService.getScriptProperties();
+  var pid     = String(data.project_id || '');
 
-  // ScriptLock — held for full execution, prevents concurrent runs
+  // ScriptLock for full execution
   var lock = LockService.getScriptLock();
-  if (!lock.tryLock(30000)) {
-    Logger.log('Lock timeout for: ' + pid);
-    return resp_({status:'error', message:'Another instance running'});
-  }
+  if (!lock.tryLock(30000)) return resp_({status:'error', message:'Busy'});
 
   try {
-    // Recheck after lock — another instance may have finished
     if (pid) {
-      var state = props.getProperty(pid);
-      if (state && state.indexOf('http') === 0) {
-        return resp_({status:'success', slide_url:state, skipped:true});
-      }
-      if (state === 'RUNNING') {
-        return resp_({status:'error', message:'Already processing'});
-      }
+      var st = props.getProperty(pid);
+      if (st && st.indexOf('http')===0) return resp_({status:'success', slide_url:st, skipped:true});
+      if (st==='RUNNING') return resp_({status:'error', message:'Already running'});
       props.setProperty(pid, 'RUNNING');
     }
 
-    // ── STEP 1: Read template slides ────────────────────────────────────────
-    var getResp = UrlFetchApp.fetch(apiBase, {
-      headers:{'Authorization':'Bearer '+token}, muteHttpExceptions:true
-    });
-    if (getResp.getResponseCode() !== 200) throw new Error('GET failed: '+getResp.getResponseCode());
-    var pres   = JSON.parse(getResp.getContentText());
-    var tmpl1  = pres.slides[0].objectId;
-    var tmpl2  = pres.slides[1].objectId;
-    Logger.log('Templates: '+tmpl1+', '+tmpl2+' | Total: '+pres.slides.length);
+    // ════════════════════════════════════════════════════════
+    // SESSION 1: Duplicate template slides 1 & 2 via REST
+    // Creates truly independent copies appended at the end
+    // ════════════════════════════════════════════════════════
+    var pres1 = JSON.parse(UrlFetchApp.fetch(apiBase,
+      {headers:{'Authorization':'Bearer '+token},muteHttpExceptions:true}).getContentText());
+    var tmplId1 = pres1.slides[0].objectId;
+    var tmplId2 = pres1.slides[1].objectId;
+    var totalBefore = pres1.slides.length;
+    Logger.log('SESSION 1 — Total before: '+totalBefore+', templates: '+tmplId1+', '+tmplId2);
 
-    // ── STEP 2: Duplicate via REST (truly independent copies, appended at end) ─
-    var dupResp = UrlFetchApp.fetch(apiBase+':batchUpdate', {
+    var dup = JSON.parse(UrlFetchApp.fetch(apiBase+':batchUpdate',{
       method:'post', contentType:'application/json',
       headers:{'Authorization':'Bearer '+token},
       payload:JSON.stringify({requests:[
-        {duplicateObject:{objectId:tmpl1}},
-        {duplicateObject:{objectId:tmpl2}}
+        {duplicateObject:{objectId:tmplId1}},
+        {duplicateObject:{objectId:tmplId2}}
       ]}), muteHttpExceptions:true
-    });
-    if (dupResp.getResponseCode() !== 200) throw new Error('Dup failed: '+dupResp.getContentText().substring(0,200));
-    var dupResult = JSON.parse(dupResp.getContentText());
-    var newId1    = dupResult.replies[0].duplicateObject.objectId;
-    var newId2    = dupResult.replies[1].duplicateObject.objectId;
-    Logger.log('New slides: '+newId1+', '+newId2);
+    }).getContentText());
+    var newId1 = dup.replies[0].duplicateObject.objectId;
+    var newId2 = dup.replies[1].duplicateObject.objectId;
+    Logger.log('SESSION 1 done — new IDs: '+newId1+', '+newId2);
 
-    // ── STEP 3: Replace text via REST (scoped to new slides only) ────────────
+    // ════════════════════════════════════════════════════════
+    // SESSION 2: Re-read & confirm new slides at end
+    // ════════════════════════════════════════════════════════
+    Utilities.sleep(2000);
+    var pres2 = JSON.parse(UrlFetchApp.fetch(apiBase,
+      {headers:{'Authorization':'Bearer '+token},muteHttpExceptions:true}).getContentText());
+    var totalAfter = pres2.slides.length;
+    Logger.log('SESSION 2 — Total after: '+totalAfter+' (added '+(totalAfter-totalBefore)+')');
+
+    // Find the new slides
+    var slide1data = null, slide2data = null;
+    pres2.slides.forEach(function(s) {
+      if (s.objectId===newId1) slide1data = s;
+      if (s.objectId===newId2) slide2data = s;
+    });
+    if (!slide1data||!slide2data) throw new Error('New slides not found after re-read');
+    Logger.log('SESSION 2 done — slides confirmed at positions');
+
+    // ════════════════════════════════════════════════════════
+    // SESSION 3: Fill in text + photos + logo
+    // ════════════════════════════════════════════════════════
     Utilities.sleep(1000);
+
+    // 3a) Replace text via REST (scoped to new slides only)
     var dateStr  = (data.date||((data.event_month||'')+' '+(data.event_year||''))).trim();
     var scopeStr = Array.isArray(data.scope)?data.scope.join('\n'):String(data.scope||'').replace(/,\s*/g,'\n');
     var textReqs = [];
-    [['{{CLIENT_NAME}}',data.client_name||''],['{{PROJECT_NAME}}',data.project_name||''],
-     ['{{CATEGORY}}',data.category||''],['{{DATE}}',dateStr],['{{VENUE}}',data.venue||''],
-     ['{{SCOPE}}',scopeStr],['{{CHALLENGE}}',data.challenge||''],['{{SOLUTION}}',data.solution||'']
-    ].forEach(function(p){
-      textReqs.push({replaceAllText:{containsText:{text:p[0],matchCase:true},replaceText:p[1],pageObjectIds:[newId1,newId2]}});
+    [['{{CLIENT_NAME}}',data.client_name||''],
+     ['{{PROJECT_NAME}}',data.project_name||''],
+     ['{{CATEGORY}}',data.category||''],
+     ['{{DATE}}',dateStr],
+     ['{{VENUE}}',data.venue||''],
+     ['{{SCOPE}}',scopeStr],
+     ['{{CHALLENGE}}',data.challenge||''],
+     ['{{SOLUTION}}',data.solution||'']
+    ].forEach(function(p) {
+      textReqs.push({replaceAllText:{
+        containsText:{text:p[0],matchCase:true},
+        replaceText:p[1],
+        pageObjectIds:[newId1,newId2]
+      }});
     });
-    var txtResp = UrlFetchApp.fetch(apiBase+':batchUpdate',{
+    var txtR = UrlFetchApp.fetch(apiBase+':batchUpdate',{
       method:'post',contentType:'application/json',
       headers:{'Authorization':'Bearer '+token},
       payload:JSON.stringify({requests:textReqs}),muteHttpExceptions:true
     });
-    Logger.log('Text replace: '+txtResp.getResponseCode());
+    Logger.log('SESSION 3 text: '+txtR.getResponseCode());
 
-    // ── STEP 4: Insert photos via SlidesApp on the new independent slides ────
-    Utilities.sleep(1500);
-    var presApp  = SlidesApp.openById(TEMPLATE_ID);
-    var allSlides = presApp.getSlides();
-    var slide1 = null, slide2 = null;
-    allSlides.forEach(function(s) {
-      if (s.getObjectId() === newId1) slide1 = s;
-      if (s.getObjectId() === newId2) slide2 = s;
-    });
-    if (!slide1||!slide2) throw new Error('Cannot find new slides via SlidesApp');
-
+    // 3b) Upload photos to Drive
     var photos     = data.photos || data.images || [];
     var tempFolder = getOrCreateTempFolder_();
     var photoUrls  = [];
     for (var i=0; i<Math.min(photos.length,8); i++) {
       try {
-        photoUrls.push(saveBase64ToPublicDrive_(tempFolder,'ph'+(i+1)+'.jpg',photos[i],'image/jpeg'));
-      } catch(e) { photoUrls.push(null); Logger.log('Photo '+(i+1)+' err: '+e.message); }
+        var url = saveBase64ToPublicDrive_(tempFolder,'ph'+(i+1)+'.jpg',photos[i],'image/jpeg');
+        photoUrls.push(url);
+        Logger.log('Photo '+(i+1)+' uploaded');
+      } catch(e) {
+        photoUrls.push(null);
+        Logger.log('Photo '+(i+1)+' upload err: '+e.message);
+      }
     }
 
-    [slide1, slide2].forEach(function(slide) {
-      slide.getPageElements().forEach(function(el) {
-        var altText = '';
-        try { altText = el.getTitle()||''; } catch(e) {}
-        if (!altText) try { altText = el.getDescription()||''; } catch(e) {}
-        var m = altText.match(/^PHOTO([1-8])$/);
-        if (!m) return;
-        var idx = parseInt(m[1]) - 1;
-        var url = photoUrls[idx];
-        if (!url) return;
-        try {
-          var l=el.getLeft(), t=el.getTop(), w=el.getWidth(), h=el.getHeight();
-          var img = slide.insertImage(url);
-          img.setLeft(l); img.setTop(t); img.setWidth(w); img.setHeight(h);
-          Logger.log('Photo '+(idx+1)+' inserted at '+l+','+t);
-        } catch(pe) { Logger.log('Photo insert err: '+pe.message); }
-      });
+    // 3c) Insert photos via SlidesApp on the new independent slides
+    Utilities.sleep(500);
+    var presApp = SlidesApp.openById(TEMPLATE_ID);
+    var appSlide1 = null, appSlide2 = null;
+    presApp.getSlides().forEach(function(s) {
+      if (s.getObjectId()===newId1) appSlide1 = s;
+      if (s.getObjectId()===newId2) appSlide2 = s;
     });
 
-    // Logo
-    var logoB64 = data.logo_white_base64 || data.logo_white || '';
-    if (logoB64) {
-      try {
-        var logoUrl = saveBase64ToPublicDrive_(tempFolder,'logo_white.png',logoB64,'image/png');
-        slide1.getPageElements().forEach(function(el) {
-          var d=''; try{d=el.getDescription()||'';}catch(e){}
-          var t=''; try{t=el.getTitle()||'';}catch(e){}
-          if (d==='project_logo'||t==='photo1_placeholder'||t==='logo_white') {
-            try {
-              var l=el.getLeft(),tp=el.getTop(),w=el.getWidth(),h=el.getHeight();
-              var img=slide1.insertImage(logoUrl);
-              img.setLeft(l);img.setTop(tp);img.setWidth(w);img.setHeight(h);
-              Logger.log('Logo inserted');
-            } catch(le){Logger.log('Logo err: '+le.message);}
-          }
+    if (appSlide1 && appSlide2) {
+      [appSlide1, appSlide2].forEach(function(slide) {
+        slide.getPageElements().forEach(function(el) {
+          var alt = '';
+          try { alt = el.getTitle()||''; } catch(e) {}
+          if (!alt) try { alt = el.getDescription()||''; } catch(e) {}
+          var m = alt.match(/^PHOTO([1-8])$/);
+          if (!m) return;
+          var url = photoUrls[parseInt(m[1])-1];
+          if (!url) return;
+          try {
+            var l=el.getLeft(), t=el.getTop(), w=el.getWidth(), h=el.getHeight();
+            var img = slide.insertImage(url);
+            img.setLeft(l); img.setTop(t); img.setWidth(w); img.setHeight(h);
+            Logger.log('PHOTO'+m[1]+' inserted');
+          } catch(pe) { Logger.log('Photo insert err: '+pe.message); }
         });
-      } catch(le){Logger.log('Logo err: '+le.message);}
+      });
+      Logger.log('SESSION 3 photos done');
+
+      // 3d) Logo
+      var logoB64 = data.logo_white_base64||data.logo_white||'';
+      if (logoB64) {
+        try {
+          var logoUrl = saveBase64ToPublicDrive_(tempFolder,'logo_white.png',logoB64,'image/png');
+          appSlide1.getPageElements().forEach(function(el) {
+            var d='';try{d=el.getDescription()||'';}catch(e){}
+            var t='';try{t=el.getTitle()||'';}catch(e){}
+            if (d==='project_logo'||t==='photo1_placeholder'||t==='logo_white') {
+              try {
+                var l=el.getLeft(),tp=el.getTop(),w=el.getWidth(),h=el.getHeight();
+                var img=appSlide1.insertImage(logoUrl);
+                img.setLeft(l);img.setTop(tp);img.setWidth(w);img.setHeight(h);
+                Logger.log('Logo inserted');
+              } catch(le){Logger.log('Logo err: '+le.message);}
+            }
+          });
+        } catch(le){Logger.log('Logo err: '+le.message);}
+      }
+    } else {
+      Logger.log('WARNING: Could not find new slides via SlidesApp');
     }
 
-    // ── STEP 5: Write URL to sheet ───────────────────────────────────────────
+    // Write URL to sheet
     updateSheetWithSlideUrl_(pid, slideUrl);
     if (pid) props.setProperty(pid, slideUrl);
-    Logger.log('Done: '+slideUrl);
+    Logger.log('ALL DONE: '+slideUrl);
     return resp_({status:'success', slide_url:slideUrl});
 
   } finally {
@@ -243,7 +262,7 @@ function updateSheetWithSlideUrl_(projectId,slideUrl) {
   var vals=sheet.getDataRange().getValues();
   for(var i=1;i<vals.length;i++){
     if(String(vals[i][25]).toUpperCase()===String(projectId).toUpperCase()){
-      sheet.getRange(i+1,13).setValue(slideUrl); break;
+      sheet.getRange(i+1,13).setValue(slideUrl);break;
     }
   }
 }
@@ -252,6 +271,7 @@ function testAuth() {
   var r=UrlFetchApp.fetch('https://slides.googleapis.com/v1/presentations/'+TEMPLATE_ID,
     {headers:{'Authorization':'Bearer '+ScriptApp.getOAuthToken()},muteHttpExceptions:true});
   Logger.log('Slides API: '+r.getResponseCode());
+  Logger.log('SlidesApp: '+SlidesApp.openById(TEMPLATE_ID).getSlides().length+' slides');
   Logger.log('Drive: '+getOrCreateTempFolder_().getName());
   Logger.log('Sheet: '+SpreadsheetApp.openById(SHEET_ID).getName());
 }
