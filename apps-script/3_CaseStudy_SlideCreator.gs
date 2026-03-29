@@ -101,7 +101,13 @@ function createCaseStudySlide_(data) {
   var photos = data.photos || data.images || [];
   var heroIndex = parseInt(data.hero_index || 0, 10);
   var photoResults = [];
-  var cropRequests = []; // collected for batch REST call
+  var cropRequests = [];
+
+  // IMPORTANT: Clear ALL existing photo images from both slides before inserting
+  // appendSlide() doesn't preserve alt-text titles, so we can't find by name
+  // Instead: remove everything in the photo grid area (right half, x > 200pt)
+  removeAllPhotoImages_(newSlide1);
+  removeAllPhotoImages_(newSlide2);
 
   for (var i = 0; i < Math.min(photos.length, 8); i++) {
     var photoNum  = i + 1;
@@ -111,13 +117,8 @@ function createCaseStudySlide_(data) {
     try {
       var imgDims   = getBase64ImageDimensions_(photos[i]);
       var blob      = base64ToBlob_(photos[i], 'image/jpeg', 'p'+photoNum+'.jpg');
-      var coords = findAndRemoveImageByAltText_(targetSlide, altText);
-      if (!coords) {
-        // Alt-text placeholder not found — use hardcoded coords
-        // Also remove any existing image at that grid position (gradient placeholder)
-        coords = PHOTO_COORDS[altText];
-        removeImagesAtCoords_(targetSlide, coords[0], coords[1], coords[2], coords[3]);
-      }
+      // Use hardcoded coords (alt-text not preserved after appendSlide)
+      var coords    = PHOTO_COORDS[altText];
 
       var inserted = targetSlide.insertImage(blob, coords[0], coords[1], coords[2], coords[3]);
 
@@ -363,27 +364,25 @@ function getBase64ImageDimensions_(base64Data) {
 // ─── HELPERS — FINDING & REMOVING ───────────────────────────────────────────
 
 /**
- * Remove all images whose bounding box overlaps significantly with the given coords.
- * Used when alt-text lookup fails (template slide was already modified by a previous sync).
- * Tolerance: 20pt — removes any image whose centre falls within the frame.
+ * Remove ALL photo images from the slide's right grid area (left > 200pt).
+ * Called once before inserting new photos to ensure no stacking.
+ * Preserves logo (left < 200pt) and text shapes.
  */
-function removeImagesAtCoords_(slide, left, top, width, height) {
-  var cx = left  + width  / 2;
-  var cy = top   + height / 2;
+function removeAllPhotoImages_(slide) {
   var images = slide.getImages();
-  for (var i = 0; i < images.length; i++) {
+  for (var i = images.length - 1; i >= 0; i--) {
     var img = images[i];
-    var il = img.getLeft();
-    var it = img.getTop();
-    var iw = img.getWidth();
-    var ih = img.getHeight();
-    var icx = il + iw / 2;
-    var icy = it + ih / 2;
-    // If image centre is within 20pt of our frame centre → remove it
-    if (Math.abs(icx - cx) < 20 && Math.abs(icy - cy) < 20) {
+    var title = img.getTitle() || '';
+    // Remove photos (right side, left > 200pt) but keep logo
+    if (img.getLeft() > 200 || title.indexOf('PHOTO') === 0) {
       img.remove();
     }
   }
+}
+
+function removeImagesAtCoords_(slide, left, top, width, height) {
+  // Legacy — now calls removeAllPhotoImages_ instead
+  removeAllPhotoImages_(slide);
 }
 
 function findAndRemoveImageByAltText_(slide, altText) {
