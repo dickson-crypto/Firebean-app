@@ -105,21 +105,28 @@ function createSlide_(data) {
     Logger.log('Could not get lock — another instance running, skip');
     return resp_({status:'error', message:'Another instance running, slide will be created shortly'});
   }
-  // We have the lock — check if already done
+  // We have the lock — check if already done or already running
   if (pid) {
     var state = props.getProperty(pid);
-    if (state && state.indexOf('http') === 0) {
-      lock.releaseLock();
-      Logger.log('SKIP — already done: ' + pid);
-      return resp_({status:'success', slide_url:state, skipped:true});
+    if (state) {
+      // Already done — return the URL
+      if (state.indexOf('http') === 0) {
+        lock.releaseLock();
+        Logger.log('SKIP — done: ' + pid + ' url=' + state);
+        return resp_({status:'success', slide_url:state, skipped:true});
+      }
+      // Was already RUNNING (first instance set this) — skip
+      if (state === 'RUNNING' || state === 'DONE') {
+        lock.releaseLock();
+        Logger.log('SKIP — already running/done: ' + pid);
+        return resp_({status:'error', message:'Already processing'});
+      }
     }
-    if (state && state === 'DONE') {
-      lock.releaseLock();
-      return resp_({status:'success', slide_url:slideUrl, skipped:true});
-    }
+    // First instance — mark as RUNNING before releasing nothing (lock still held)
     props.setProperty(pid, 'RUNNING');
+    Logger.log('Lock acquired, marked RUNNING: ' + pid);
   }
-  // Lock is still held — will be released in finally block
+  // Lock held for entire execution — released only when done
 
   Logger.log('createSlide_ for: ' + pid + ' | Total slides: ' + slides.length);
 
