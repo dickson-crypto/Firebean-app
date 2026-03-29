@@ -1,17 +1,17 @@
 /**
  * ============================================================
- * SCRIPT 3 of 3 — FIREBEAN CASE STUDY SLIDE CREATOR  v9.0 (Pure REST)
+ * SCRIPT 3 of 3 — FIREBEAN CASE STUDY SLIDE CREATOR  v16.0
  * ============================================================
  * Deploy URL:  https://script.google.com/macros/s/AKfycbxKP-8Xrvy6hblPqTmtXn76rO3DFOeU6jYQtLw5QDfDP1-adNDk02bhoKihfvp_Xsvy/exec
  * app.py var:  CASE_STUDY_URL
- * Action:      create_case_study
  *
- * v9.0: Pure REST API approach
- *   - appendSlide (SlidesApp) for duplication — simpler and reliable
- *   - All photo operations via REST batchUpdate:
- *     deleteObject (remove template photos) + createImage (insert new)
- *   - cropProperties + size set in same createImage request
- *   - One batchUpdate call handles everything: delete + create + text replace
+ * v16 approach (back to basics — what worked):
+ *   - doPost returns IMMEDIATELY with {status:'queued'} to stop Google retries
+ *   - Stores payload in PropertiesService
+ *   - Schedules a time trigger to do the real work asynchronously
+ *   - processSlideTrigger_() duplicates last 2 template slides, appends at END
+ *   - Uses SlidesApp only (no REST API mixing) — replaceAllText + image insertion
+ *   - Photos inserted via replaceImage on PHOTO1-PHOTO8 placeholder alt-text shapes
  * ============================================================
  */
 
@@ -19,354 +19,285 @@ var TEMPLATE_ID = '19rmqCzgKD8y2ZiLxkiAqhhkV6_t-8QAumZkSi0Eu9C0';
 var SHEET_ID    = '1aTuqgmmSKMWgNCl2KR0QhK4Cj8G7W5yPsr4t39pi-yc';
 var SHEET_NAME  = 'Basic Info';
 
-// Photo grid positions in EMU (1pt = 12700 EMU)
-var PT = 12700;
-var PHOTO_EMU = {
-  'PHOTO1': {l:210.6*PT, t:0,       w:254.7*PT, h:202.5*PT},
-  'PHOTO2': {l:465.3*PT, t:0,       w:254.7*PT, h:202.5*PT},
-  'PHOTO3': {l:210.6*PT, t:202.5*PT,w:254.7*PT, h:202.5*PT},
-  'PHOTO4': {l:465.3*PT, t:202.5*PT,w:254.7*PT, h:202.5*PT},
-  'PHOTO5': {l:210.5*PT, t:0,       w:254.8*PT, h:202.5*PT},
-  'PHOTO6': {l:465.2*PT, t:0,       w:254.8*PT, h:202.5*PT},
-  'PHOTO7': {l:210.5*PT, t:202.5*PT,w:254.8*PT, h:202.5*PT},
-  'PHOTO8': {l:465.2*PT, t:202.5*PT,w:254.8*PT, h:202.5*PT}
-};
-var LOGO_EMU = {l:24.3*PT, t:25.5*PT, w:166.2*PT, h:71.6*PT};
-
-// ─── ENTRY POINT ─────────────────────────────────────────────────────────────
+// ─── ENTRY POINT — returns immediately to prevent Google retries ──────────────
 
 function doPost(e) {
   try {
     var data = JSON.parse(e.postData.contents);
-    if (data.action === 'create_slide' || data.action === 'create_case_study') {
-      return createCaseStudySlide_(data);
+    if (data.action !== 'create_slide' && data.action !== 'create_case_study') {
+      return resp_({status:'error', message:'Unknown action'});
     }
-    return ContentService
-      .createTextOutput(JSON.stringify({status:'error',message:'Unknown action: '+data.action}))
-      .setMimeType(ContentService.MimeType.JSON);
+
+    var pid   = String(data.project_id || '');
+    var props = PropertiesService.getScriptProperties();
+
+    // Fast dedup check
+    if (pid) {
+      var existing = props.getProperty(pid);
+      if (existing) {
+        if (existing.indexOf('http') === 0) return resp_({status:'success', slide_url:existing, skipped:true});
+        return resp_({status:'queued', message:'Already processing'});
+      }
+      props.setProperty(pid, 'PROCESSING');
+    }
+
+    // Try async trigger first; fall back to sync if no permission
+    try {
+      var key = 'PAYLOAD_' + (pid || String(new Date().getTime()));
+      props.setProperty(key, JSON.stringify(data));
+      ScriptApp.newTrigger('processSlideTrigger_')
+        .timeBased().after(3000).create();
+      return resp_({status:'queued', project_id:pid, message:'Slide creation started'});
+    } catch(triggerErr) {
+      // No trigger permission — run synchronously
+      Logger.log('Trigger failed, running sync: ' + triggerErr.message);
+      return createSlide_(data);
+    }
+
   } catch(err) {
-    return ContentService
-      .createTextOutput(JSON.stringify({status:'error',message:err.toString()}))
-      .setMimeType(ContentService.MimeType.JSON);
+    return resp_({status:'error', message:err.toString()});
   }
 }
 
-// ─── MAIN ────────────────────────────────────────────────────────────────────
+function resp_(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
+}
 
-function createCaseStudySlide_(data) {
-  var token   = ScriptApp.getOAuthToken();
-  var apiBase = 'https://slides.googleapis.com/v1/presentations/' + TEMPLATE_ID;
-  var slideUrl = 'https://docs.google.com/presentation/d/' + TEMPLATE_ID + '/edit';
+// ─── ASYNC TRIGGER — runs 3s after doPost, does the real work ─────────────────
 
-  // 1. Read current presentation to get template slide objectIds + their photo element IDs
-  var getResp = UrlFetchApp.fetch(apiBase, {
-    headers:{'Authorization':'Bearer '+token}, muteHttpExceptions:true
+function processSlideTrigger_() {
+  // Delete all pending triggers of this type
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    if (t.getHandlerFunction() === 'processSlideTrigger_') ScriptApp.deleteTrigger(t);
   });
-  if (getResp.getResponseCode() !== 200) throw new Error('GET pres failed: '+getResp.getResponseCode());
 
-  var pres = JSON.parse(getResp.getContentText());
-  var slides = pres.slides;
-  var tmpl1  = slides[0];
-  var tmpl2  = slides[1];
+  var props = PropertiesService.getScriptProperties();
+  var all   = props.getProperties();
 
-  // Collect objectIds of images to delete from the new slides (photo + logo placeholders)
-  var tmpl1PhotoIds = [];
-  var tmpl2PhotoIds = [];
-  var tmpl1LogoId   = null;
+  Object.keys(all).forEach(function(key) {
+    if (key.indexOf('PAYLOAD_') !== 0) return;
+    try {
+      var data = JSON.parse(all[key]);
+      props.deleteProperty(key); // delete before processing — prevents double-run
+      createSlide_(data);
+    } catch(e) {
+      Logger.log('Trigger error for ' + key + ': ' + e.message);
+    }
+  });
+}
 
-  (tmpl1.pageElements || []).forEach(function(el) {
-    if (el.image) {
-      var t = el.title || ''; var d = el.description || '';
-      if (t === 'PHOTO1'||t==='PHOTO2'||t==='PHOTO3'||t==='PHOTO4') tmpl1PhotoIds.push(el.objectId);
-      else if (d === 'project_logo' || t === 'photo1_placeholder' || t === 'logo_white') {
-        // skip logo placeholder — we'll handle it separately
+// ─── MAIN SLIDE CREATOR ───────────────────────────────────────────────────────
+
+function createSlide_(data) {
+  var pres     = SlidesApp.openById(TEMPLATE_ID);
+  var slides   = pres.getSlides();
+  var slideUrl = 'https://docs.google.com/presentation/d/' + TEMPLATE_ID + '/edit';
+  var props    = PropertiesService.getScriptProperties();
+  var pid      = String(data.project_id || '');
+
+  // ── BULLETPROOF DEDUP: ScriptLock held for FULL execution ─────────────────
+  // LockService is the ONLY truly atomic primitive in Apps Script.
+  // We hold the lock for the entire slide creation — retries wait 30s then give up.
+  var lock = LockService.getScriptLock();
+  var gotLock = lock.tryLock(30000);
+  if (!gotLock) {
+    Logger.log('Could not get lock — another instance running, skip');
+    return resp_({status:'error', message:'Another instance running, slide will be created shortly'});
+  }
+  // We have the lock — check if already done or already running
+  if (pid) {
+    var state = props.getProperty(pid);
+    if (state) {
+      // Already done — return the URL
+      if (state.indexOf('http') === 0) {
+        lock.releaseLock();
+        Logger.log('SKIP — done: ' + pid + ' url=' + state);
+        return resp_({status:'success', slide_url:state, skipped:true});
+      }
+      // Was already RUNNING (first instance set this) — skip
+      if (state === 'RUNNING' || state === 'DONE') {
+        lock.releaseLock();
+        Logger.log('SKIP — already running/done: ' + pid);
+        return resp_({status:'error', message:'Already processing'});
       }
     }
-    if (el.shape && (el.description === 'project_logo' || el.title === 'photo1_placeholder')) {
-      tmpl1LogoId = el.objectId;
-    }
-  });
-  (tmpl2.pageElements || []).forEach(function(el) {
-    if (el.image) {
-      var t = el.title || '';
-      if (t==='PHOTO5'||t==='PHOTO6'||t==='PHOTO7'||t==='PHOTO8') tmpl2PhotoIds.push(el.objectId);
-    }
-  });
+    // First instance — mark as RUNNING before releasing nothing (lock still held)
+    props.setProperty(pid, 'RUNNING');
+    Logger.log('Lock acquired, marked RUNNING: ' + pid);
+  }
+  // Lock held for entire execution — released only when done
 
-  // 2. Duplicate both template slides via REST
-  var dupResp = UrlFetchApp.fetch(apiBase+':batchUpdate', {
-    method:'post', contentType:'application/json',
-    headers:{'Authorization':'Bearer '+token},
-    payload: JSON.stringify({requests:[
-      {duplicateObject:{objectId: tmpl1.objectId}},
-      {duplicateObject:{objectId: tmpl2.objectId}}
-    ]}),
-    muteHttpExceptions:true
-  });
-  if (dupResp.getResponseCode() !== 200) throw new Error('Duplicate failed: '+dupResp.getContentText().substring(0,300));
+  Logger.log('createSlide_ for: ' + pid + ' | Total slides: ' + slides.length);
 
-  var dupResult = JSON.parse(dupResp.getContentText());
-  var newId1 = dupResult.replies[0].duplicateObject.objectId;
-  var newId2 = dupResult.replies[1].duplicateObject.objectId;
-  Logger.log('New slide IDs: ' + newId1 + ', ' + newId2);
+  // ── STEP 1: Duplicate template slides 1 & 2, append at END ───────────────────
+  // Check last 2 slides don't already have this project name (prevents retry duplicates)
+  var allSlidesBefore = pres.getSlides();
+  var lastSlide = allSlidesBefore[allSlidesBefore.length - 1];
+  var lastSlideText = '';
+  try {
+    lastSlide.getPageElements().forEach(function(el) {
+      try { lastSlideText += el.asShape().getText().asString(); } catch(e) {}
+    });
+  } catch(e) {}
+  var projName = String(data.project_name || '');
+  if (projName && lastSlideText.indexOf(projName) >= 0) {
+    Logger.log('SKIP — slides already exist for: ' + projName);
+    if (pid) props.setProperty(pid, slideUrl);
+    updateSheetWithSlideUrl_(pid, slideUrl);
+    return resp_({status:'success', slide_url:slideUrl, skipped:true});
+  }
 
-  // 3. Re-read presentation to get the new slide elements (with new objectIds)
-  Utilities.sleep(1000);
-  getResp = UrlFetchApp.fetch(apiBase, {
-    headers:{'Authorization':'Bearer '+token}, muteHttpExceptions:true
-  });
-  pres = JSON.parse(getResp.getContentText());
-  slides = pres.slides;
+  var newSlide1 = pres.appendSlide(slides[0]);
+  var newSlide2 = pres.appendSlide(slides[1]);
+  Logger.log('Appended 2 slides at end. New total: ' + pres.getSlides().length);
 
-  // Find our new slides by objectId
-  var newSlideData1 = null, newSlideData2 = null;
-  slides.forEach(function(s) {
-    if (s.objectId === newId1) newSlideData1 = s;
-    if (s.objectId === newId2) newSlideData2 = s;
-  });
-  if (!newSlideData1 || !newSlideData2) throw new Error('Could not find new slides: '+newId1+', '+newId2);
+  // ── STEP 2: Replace text placeholders ────────────────────────────────────────
+  var dateStr  = (data.date || ((data.event_month||'') + ' ' + (data.event_year||''))).trim();
+  var scopeStr = Array.isArray(data.scope)
+    ? data.scope.join('\n')
+    : String(data.scope||'').replace(/,\s*/g, '\n');
 
-  // 4. Collect element IDs to delete + logo shape ID on new slide 1
-  var deleteIds  = [];
-  var newLogoId  = null;
-
-  (newSlideData1.pageElements || []).forEach(function(el) {
-    if (el.image) deleteIds.push(el.objectId); // delete ALL images on slide 1
-    if (el.shape && (el.description === 'project_logo' || el.title === 'photo1_placeholder')) {
-      newLogoId = el.objectId;
-    }
-  });
-  (newSlideData2.pageElements || []).forEach(function(el) {
-    if (el.image) deleteIds.push(el.objectId); // delete ALL images on slide 2
-  });
-
-  Logger.log('Deleting ' + deleteIds.length + ' images. Logo shape: ' + newLogoId);
-
-  // 5. Build the mega batchUpdate:
-  //    a) Delete all photos
-  //    b) Delete logo shape
-  //    c) Replace all text
-  //    d) Create new photo images with exact size + crop
-  //    e) Create logo image
-
-  var requests = [];
-
-  // a) Delete old photos
-  deleteIds.forEach(function(id) {
-    requests.push({deleteObject:{objectId:id}});
-  });
-
-  // b) Delete logo shape (we'll replace with image)
-  if (newLogoId) requests.push({deleteObject:{objectId:newLogoId}});
-
-  // c) Replace text placeholders
-  var dateStr = (data.date || ((data.event_month||'')+' '+(data.event_year||''))).trim();
-  var scopeStr = Array.isArray(data.scope) ? data.scope.join('\n') : String(data.scope||'').replace(/,\s*/g,'\n');
-  var textPairs = [
+  var pairs = [
     ['{{CLIENT_NAME}}',  data.client_name  || ''],
     ['{{PROJECT_NAME}}', data.project_name || ''],
     ['{{CATEGORY}}',     data.category     || ''],
     ['{{DATE}}',         dateStr],
     ['{{VENUE}}',        data.venue        || ''],
     ['{{SCOPE}}',        scopeStr],
-    ['{{CHALLENGE}}',    data.challenge    || '(Challenge TBC)'],
-    ['{{SOLUTION}}',     data.solution     || '(Solution TBC)']
+    ['{{CHALLENGE}}',    data.challenge    || ''],
+    ['{{SOLUTION}}',     data.solution     || '']
   ];
-  textPairs.forEach(function(pair) {
-    [newId1, newId2].forEach(function(slideId) {
-      requests.push({replaceAllText:{
-        containsText:{text:pair[0],matchCase:true},
-        replaceText:pair[1],
-        pageObjectIds:[slideId]
-      }});
+
+  [newSlide1, newSlide2].forEach(function(slide) {
+    pairs.forEach(function(pair) {
+      slide.replaceAllText(pair[0], pair[1]);
     });
   });
+  Logger.log('Text replaced');
 
-  // d) Upload photos to Drive as temp files, get URLs, create images
+  // ── STEP 3: Upload photos to Drive temp folder ────────────────────────────────
   var photos    = data.photos || data.images || [];
-  var heroIndex = parseInt(data.hero_index || 0, 10);
-  var photoResults = [];
   var tempFolder = getOrCreateTempFolder_();
+  var photoUrls = [];
 
   for (var i = 0; i < Math.min(photos.length, 8); i++) {
-    var photoNum = i + 1;
-    var altText  = 'PHOTO' + photoNum;
-    var slideId  = photoNum <= 4 ? newId1 : newId2;
-    var pos      = PHOTO_EMU[altText];
-
     try {
-      var imgDims = getBase64ImageDimensions_(photos[i]);
-      var url     = saveBase64ToPublicDrive_(tempFolder, 'ph'+photoNum+'.jpg', photos[i], 'image/jpeg');
-      var crop    = calcCropCentre_(imgDims.w, imgDims.h, pos.w/PT, pos.h/PT);
-
-      requests.push({createImage:{
-        url: url,
-        objectId: 'NEWPHOTO_'+photoNum+'_'+newId1.replace(/[^a-z0-9]/gi,''),
-        elementProperties:{
-          pageObjectId: slideId,
-          size:{
-            width: {magnitude:pos.w, unit:'EMU'},
-            height:{magnitude:pos.h, unit:'EMU'}
-          },
-          transform:{
-            scaleX:1, scaleY:1,
-            translateX:pos.l, translateY:pos.t,
-            unit:'EMU'
-          }
-        }
-      }});
-
-      photoResults.push(altText+':OK');
-    } catch(pe) {
-      Logger.log('Photo '+photoNum+' error: '+pe.message);
-      photoResults.push(altText+':FAIL:'+pe.message);
+      var url = saveBase64ToPublicDrive_(tempFolder, 'ph'+(i+1)+'.jpg', photos[i], 'image/jpeg');
+      photoUrls.push(url);
+      Logger.log('Photo '+(i+1)+' uploaded: ' + url);
+    } catch(e) {
+      Logger.log('Photo '+(i+1)+' failed: ' + e.message);
+      photoUrls.push(null);
     }
   }
 
-  // e) Logo image
-  var logoResult  = 'no_logo';
-  var logoBase64  = data.logo_white_base64 || data.logo_white || '';
-  if (logoBase64) {
-    try {
-      var logoUrl = saveBase64ToPublicDrive_(tempFolder, 'logo_white.png', logoBase64, 'image/png');
-      requests.push({createImage:{
-        url: logoUrl,
-        objectId: 'NEWLOGO_'+newId1.replace(/[^a-z0-9]/gi,''),
-        elementProperties:{
-          pageObjectId: newId1,
-          size:{width:{magnitude:LOGO_EMU.w,unit:'EMU'},height:{magnitude:LOGO_EMU.h,unit:'EMU'}},
-          transform:{scaleX:1,scaleY:1,translateX:LOGO_EMU.l,translateY:LOGO_EMU.t,unit:'EMU'}
-        }
-      }});
-      logoResult = 'OK';
-    } catch(le) {
-      Logger.log('Logo error: '+le.message);
-      logoResult = 'FAIL:'+le.message;
-    }
-  }
+  // ── STEP 4: Insert photos into PHOTO1-PHOTO8 placeholder shapes ───────────────
+  // Find shapes by alt-text title matching PHOTO1..PHOTO8
+  var allSlides = [newSlide1, newSlide2];
+  var photoIndex = 0;
 
-  // 6. Execute the mega batchUpdate
-  Utilities.sleep(500);
-  var batchResp = UrlFetchApp.fetch(apiBase+':batchUpdate', {
-    method:'post', contentType:'application/json',
-    headers:{'Authorization':'Bearer '+token},
-    payload: JSON.stringify({requests:requests}),
-    muteHttpExceptions:true
+  allSlides.forEach(function(slide) {
+    slide.getPageElements().forEach(function(el) {
+      var title = '';
+      try { title = el.getTitle() || ''; } catch(e) {}
+      var desc  = '';
+      try { desc = el.getDescription() || ''; } catch(e) {}
+      var altText = title || desc;
+
+      // Match PHOTO1-PHOTO8
+      if (/^PHOTO[1-8]$/.test(altText)) {
+        var num = parseInt(altText.replace('PHOTO','')) - 1;
+        var url = photoUrls[num];
+        if (!url) return;
+        try {
+          // Get the shape's position and size to place image exactly
+          var pos  = el.getLeft();
+          var top  = el.getTop();
+          var w    = el.getWidth();
+          var h    = el.getHeight();
+          // Delete placeholder shape and insert image at exact same position
+          el.remove();
+          var img = slide.insertImage(url);
+          img.setLeft(pos); img.setTop(top);
+          img.setWidth(w);  img.setHeight(h);
+          Logger.log('Inserted ' + altText + ' at ' + pos + ',' + top);
+        } catch(pe) {
+          Logger.log('Photo insert error for ' + altText + ': ' + pe.message);
+        }
+      }
+    });
   });
 
-  if (batchResp.getResponseCode() !== 200) {
-    Logger.log('batchUpdate FAILED: '+batchResp.getContentText().substring(0,500));
-    throw new Error('batchUpdate failed: '+batchResp.getResponseCode()+': '+batchResp.getContentText().substring(0,200));
-  }
-  Logger.log('batchUpdate OK: '+requests.length+' requests');
-
-  // 7. Apply cropProperties via second batchUpdate (after images are created)
-  Utilities.sleep(1500);
-  var cropRequests = [];
-  for (var j = 0; j < Math.min(photos.length, 8); j++) {
-    var pn   = j + 1;
-    var at   = 'PHOTO' + pn;
-    var pos2 = PHOTO_EMU[at];
-    var dims = getBase64ImageDimensions_(photos[j]);
-    var cr   = calcCropCentre_(dims.w, dims.h, pos2.w/PT, pos2.h/PT);
-    var oid  = 'NEWPHOTO_'+pn+'_'+newId1.replace(/[^a-z0-9]/gi,'');
-    cropRequests.push({updateImageProperties:{
-      objectId:oid,
-      imageProperties:{cropProperties:{
-        leftOffset:cr.leftOffset, rightOffset:cr.rightOffset,
-        topOffset:cr.topOffset,   bottomOffset:cr.bottomOffset
-      }},
-      fields:'cropProperties'
-    }});
-  }
-
-  if (cropRequests.length > 0) {
-    var cropResp = UrlFetchApp.fetch(apiBase+':batchUpdate', {
-      method:'post', contentType:'application/json',
-      headers:{'Authorization':'Bearer '+token},
-      payload:JSON.stringify({requests:cropRequests}),
-      muteHttpExceptions:true
-    });
-    Logger.log('Crop update: '+cropResp.getResponseCode());
-  }
-
-  // 8. Update Master DB col M
-  updateSheetWithSlideUrl_(data.project_id, slideUrl);
-
-  return ContentService.createTextOutput(JSON.stringify({
-    status:'success', slide_url:slideUrl,
-    photos:photoResults, logo:logoResult,
-    requests_sent: requests.length,
-    new_slides:[newId1,newId2]
-  })).setMimeType(ContentService.MimeType.JSON);
-}
-
-// ─── CROP MATH ────────────────────────────────────────────────────────────────
-
-function calcCropCentre_(imgW, imgH, frameW, frameH) {
-  if (!imgW||!imgH) return {leftOffset:0,rightOffset:0,topOffset:0,bottomOffset:0};
-  var ia = imgW/imgH, fa = frameW/frameH;
-  var l=0,r=0,t=0,b=0;
-  if (ia > fa) { var sw=imgW*(frameH/imgH),f=(sw-frameW)/sw; l=f/2; r=f/2; }
-  else if (ia < fa) { var sh=imgH*(frameW/imgW),f=(sh-frameH)/sh; t=f/2; b=f/2; }
-  return {
-    leftOffset:Math.max(0,Math.min(0.49,l)), rightOffset:Math.max(0,Math.min(0.49,r)),
-    topOffset:Math.max(0,Math.min(0.49,t)),  bottomOffset:Math.max(0,Math.min(0.49,b))
-  };
-}
-
-// ─── IMAGE DIMENSIONS ─────────────────────────────────────────────────────────
-
-function getBase64ImageDimensions_(base64Data) {
-  try {
-    var clean=String(base64Data).replace(/^data:[^;]+;base64,/,'').replace(/\s/g,'');
-    var bytes=Utilities.base64Decode(clean.substring(0,32));
-    if (bytes[0]===0xFF&&bytes[1]===0xD8) {
-      var fb=Utilities.base64Decode(clean.substring(0,600));
-      for (var i=2;i<fb.length-9;i++) {
-        if (fb[i]===0xFF&&(fb[i+1]===0xC0||fb[i+1]===0xC1||fb[i+1]===0xC2||fb[i+1]===0xC3))
-          return {w:(fb[i+7]<<8)|fb[i+8],h:(fb[i+5]<<8)|fb[i+6]};
-      }
+  // ── STEP 5: Logo ──────────────────────────────────────────────────────────────
+  var logoB64 = data.logo_white_base64 || data.logo_white || '';
+  if (logoB64) {
+    try {
+      var logoUrl = saveBase64ToPublicDrive_(tempFolder, 'logo_white.png', logoB64, 'image/png');
+      // Find logo placeholder on slide 1
+      newSlide1.getPageElements().forEach(function(el) {
+        var title = ''; try { title = el.getTitle() || ''; } catch(e) {}
+        var desc  = ''; try { desc = el.getDescription() || ''; } catch(e) {}
+        if (desc === 'project_logo' || title === 'photo1_placeholder' || title === 'logo_white') {
+          var pos = el.getLeft(), top = el.getTop(), w = el.getWidth(), h = el.getHeight();
+          el.remove();
+          var img = newSlide1.insertImage(logoUrl);
+          img.setLeft(pos); img.setTop(top);
+          img.setWidth(w);  img.setHeight(h);
+          Logger.log('Logo inserted');
+        }
+      });
+    } catch(le) {
+      Logger.log('Logo error: ' + le.message);
     }
-    if (bytes[0]===0x89&&bytes[1]===0x50) {
-      var pb=Utilities.base64Decode(clean.substring(0,64));
-      return {w:(pb[16]<<24)|(pb[17]<<16)|(pb[18]<<8)|pb[19],h:(pb[20]<<24)|(pb[21]<<16)|(pb[22]<<8)|pb[23]};
-    }
-  } catch(e) { Logger.log('dims err: '+e.message); }
-  return {w:0,h:0};
+  }
+
+  // ── STEP 6: Write URL back to sheet ──────────────────────────────────────────
+  if (pid) {
+    props.setProperty(pid, slideUrl);
+    updateSheetWithSlideUrl_(pid, slideUrl);
+  }
+  Logger.log('Done: ' + slideUrl);
+  if (pid) props.setProperty(pid, slideUrl);
+  lock.releaseLock();
+  return resp_({status:'success', slide_url:slideUrl});
 }
 
-// ─── DRIVE HELPERS ────────────────────────────────────────────────────────────
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
 
 function getOrCreateTempFolder_() {
-  var name='_Firebean_SlideTemp';
-  var it=DriveApp.getFoldersByName(name);
-  var f=it.hasNext()?it.next():DriveApp.createFolder(name);
-  f.setSharing(DriveApp.Access.ANYONE_WITH_LINK,DriveApp.Permission.VIEW);
+  var n = '_Firebean_SlideTemp';
+  var it = DriveApp.getFoldersByName(n);
+  var f  = it.hasNext() ? it.next() : DriveApp.createFolder(n);
+  try { f.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch(e) {}
   return f;
 }
 
-function saveBase64ToPublicDrive_(folder, filename, base64Data, mimeType) {
-  var clean=String(base64Data).replace(/^data:[^;]+;base64,/,'').replace(/\s/g,'');
-  var bytes=Utilities.base64Decode(clean);
-  var blob=Utilities.newBlob(bytes,mimeType,filename);
-  var existing=folder.getFilesByName(filename);
-  while(existing.hasNext()){existing.next().setTrashed(true);}
-  var file=folder.createFile(blob);
-  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK,DriveApp.Permission.VIEW);
-  // Use thumbnail URL — reliable for createImage API (no redirect / consent page)
-  return 'https://drive.google.com/thumbnail?id='+file.getId()+'&sz=s4000';
+function saveBase64ToPublicDrive_(folder, filename, b64, mimeType) {
+  var clean = String(b64).replace(/^data:[^;]+;base64,/, '').replace(/\s/g, '');
+  var bytes = Utilities.base64Decode(clean);
+  var blob  = Utilities.newBlob(bytes, mimeType, filename);
+  var it    = folder.getFilesByName(filename);
+  while (it.hasNext()) { it.next().setTrashed(true); }
+  var file  = folder.createFile(blob);
+  try { file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch(e) {}
+  return 'https://drive.google.com/thumbnail?id=' + file.getId() + '&sz=s4000';
 }
-
-// ─── MASTER DB ────────────────────────────────────────────────────────────────
 
 function updateSheetWithSlideUrl_(projectId, slideUrl) {
   if (!projectId) return;
-  var sheet=SpreadsheetApp.openById(SHEET_ID).getSheetByName(SHEET_NAME);
-  var data=sheet.getDataRange().getValues();
-  for (var i=1;i<data.length;i++) {
-    if (String(data[i][25]).toUpperCase()===String(projectId).toUpperCase()) {
-      sheet.getRange(i+1,13).setValue(slideUrl); break;
+  var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(SHEET_NAME);
+  var vals  = sheet.getDataRange().getValues();
+  for (var i = 1; i < vals.length; i++) {
+    if (String(vals[i][25]).toUpperCase() === String(projectId).toUpperCase()) {
+      sheet.getRange(i+1, 13).setValue(slideUrl);
+      break;
     }
   }
+}
+
+function testAuth() {
+  Logger.log('Slides: ' + SlidesApp.openById(TEMPLATE_ID).getSlides().length);
+  Logger.log('Drive: ' + getOrCreateTempFolder_().getName());
+  Logger.log('Sheet: ' + SpreadsheetApp.openById(SHEET_ID).getName());
 }
