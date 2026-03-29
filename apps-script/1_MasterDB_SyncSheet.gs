@@ -284,10 +284,9 @@ function createMasterSlides_(data) {
   });
   if (!appSlide1||!appSlide2) throw new Error('Cannot find new slides via SlidesApp');
 
-  // 4b. Insert photos: fetch thumbnail via UrlFetchApp (with OAuth) → blob → insertImage
-  //     Thumbnail is ~50-100KB (fast), not the full original file (which causes timeout)
+  // 4b. Insert photos via DriveApp.getFileById() — Apps Script passes the File object directly,
+  //     no blob download, no URL auth issues. Same as how Slides UI handles Drive links.
   var photoFileIds = data.photos || [];
-  var oauthToken = ScriptApp.getOAuthToken();
 
   [appSlide1, appSlide2].forEach(function(slide) {
     slide.getPageElements().forEach(function(el) {
@@ -299,39 +298,32 @@ function createMasterSlides_(data) {
       var fileId = photoFileIds[parseInt(m[1])-1];
       if (!fileId) return;
       try {
-        var thumbUrl = 'https://drive.google.com/thumbnail?id='+fileId+'&sz=s2000';
-        var resp = UrlFetchApp.fetch(thumbUrl, {headers:{'Authorization':'Bearer '+oauthToken}, muteHttpExceptions:true, followRedirects:true});
-        if (resp.getResponseCode()!==200) throw new Error('HTTP '+resp.getResponseCode());
-        var blob = resp.getBlob();
+        var driveFile = DriveApp.getFileById(fileId);
         var l=el.getLeft(),t=el.getTop(),w=el.getWidth(),h=el.getHeight();
-        var img=slide.insertImage(blob);
+        var img=slide.insertImage(driveFile);
         img.setLeft(l);img.setTop(t);img.setWidth(w);img.setHeight(h);
-        Logger.log('PHOTO'+m[1]+' inserted: '+fileId+' ('+blob.getBytes().length+' bytes)');
+        Logger.log('PHOTO'+m[1]+' inserted via DriveApp: '+fileId);
       } catch(ie){Logger.log('Photo'+m[1]+' err: '+ie.message);}
     });
   });
 
-  // 5. Logo: same thumbnail-via-OAuth approach
+  // 5. Logo via DriveApp — same approach
   var logoFileId = data.logo_white_file_id||'';
   if (logoFileId) {
     try {
-      var logoThumbUrl = 'https://drive.google.com/thumbnail?id='+logoFileId+'&sz=s1000';
-      var logoResp = UrlFetchApp.fetch(logoThumbUrl, {headers:{'Authorization':'Bearer '+oauthToken}, muteHttpExceptions:true, followRedirects:true});
-      if (logoResp.getResponseCode()===200) {
-        var logoBlob = logoResp.getBlob();
-        appSlide1.getPageElements().forEach(function(el){
-          var d='';try{d=el.getDescription()||'';}catch(e){}
-          var t='';try{t=el.getTitle()||'';}catch(e){}
-          if (d==='project_logo'||t==='photo1_placeholder'||t==='logo_white') {
-            try{
-              var l=el.getLeft(),tp=el.getTop(),w=el.getWidth(),h=el.getHeight();
-              var img=appSlide1.insertImage(logoBlob);
-              img.setLeft(l);img.setTop(tp);img.setWidth(w);img.setHeight(h);
-              Logger.log('Logo inserted: '+logoFileId);
-            }catch(le){Logger.log('Logo err: '+le.message);}
-          }
-        });
-      }
+      var logoFile = DriveApp.getFileById(logoFileId);
+      appSlide1.getPageElements().forEach(function(el){
+        var d='';try{d=el.getDescription()||'';}catch(e){}
+        var t='';try{t=el.getTitle()||'';}catch(e){}
+        if (d==='project_logo'||t==='photo1_placeholder'||t==='logo_white') {
+          try{
+            var l=el.getLeft(),tp=el.getTop(),w=el.getWidth(),h=el.getHeight();
+            var img=appSlide1.insertImage(logoFile);
+            img.setLeft(l);img.setTop(tp);img.setWidth(w);img.setHeight(h);
+            Logger.log('Logo inserted via DriveApp: '+logoFileId);
+          }catch(le){Logger.log('Logo err: '+le.message);}
+        }
+      });
     } catch(le){Logger.log('Logo err: '+le.message);}
   }
   Logger.log('createMasterSlides_ done');
