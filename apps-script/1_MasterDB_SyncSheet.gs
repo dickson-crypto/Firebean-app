@@ -339,41 +339,25 @@ function createMasterSlides_(data) {
   var photoFileIds = data.photos || [];
   var logoFileId   = data.logo_white_file_id || '';
 
-  // replaceJobs: existing image elements (PHOTO1-8 + logo if image)
-  // createLogoJobs: logo placeholder if still a shape
-  var replaceJobs   = [];
-  var createLogoJob = null; // {objId, size, transform} if logo is still a shape
-
+  // 5a. Replace PHOTO1-8 using replaceImage (image elements in template)
+  var replaceJobs = [];
   function collectJobs(slideId) {
     getSlideElements(slideId).forEach(function(el) {
-      var title = el.title || '';
-      var desc  = el.description || '';
-      var isImg = !!el.image;
-
-      // PHOTO1-8 — always images
-      var m = title.match(/^PHOTO([1-8])$/);
-      if (m && isImg) {
+      if (!el.image) return;
+      var m = (el.title||'').match(/^PHOTO([1-8])$/);
+      if (m) {
         var fid = photoFileIds[parseInt(m[1])-1];
-        if (fid) replaceJobs.push({imageObjId:el.objectId, fileId:fid, label:title});
-        return;
-      }
-
-      // Logo placeholder — delete it (we createImage at fixed coords below)
-      var isLogoEl = (title==='project_logo'||desc==='project_logo'||
-                      title==='photo1_placeholder'||title==='logo_white');
-      if (slideId===nId1 && isLogoEl) {
-        createLogoJob = {objId: el.objectId}; // just need objId to delete it
+        if (fid) replaceJobs.push({imageObjId:el.objectId, fileId:fid, label:'PHOTO'+m[1]});
       }
     });
   }
   collectJobs(nId1);
   collectJobs(nId2);
-  Logger.log('Replace jobs: '+replaceJobs.length+(createLogoJob?' + shape logo':''));
-  replaceJobs.forEach(function(j){Logger.log(' > '+j.label+' objId='+j.imageObjId);});
+  Logger.log('Photo jobs: '+replaceJobs.length);
 
   var driveApiBase = 'https://www.googleapis.com/drive/v3/files/';
 
-  // Helper: make file public → run callback → revoke
+  // Helper: temp-public → callback(url) → revoke
   function withPublic(fileId, callback) {
     var permId = null;
     try {
@@ -386,15 +370,14 @@ function createMasterSlides_(data) {
       if (pr.getResponseCode()===200||pr.getResponseCode()===201)
         permId = JSON.parse(pr.getContentText()).id;
       callback('https://drive.google.com/uc?export=download&id='+fileId);
-    } catch(e) {
-      Logger.log('withPublic error: '+e.message);
-    } finally {
+    } catch(e) { Logger.log('withPublic err: '+e.message); }
+    finally {
       if (permId) UrlFetchApp.fetch(driveApiBase+fileId+'/permissions/'+permId,
-        {method:'delete', headers:{'Authorization':'Bearer '+token}, muteHttpExceptions:true});
+        {method:'delete',headers:{'Authorization':'Bearer '+token},muteHttpExceptions:true});
     }
   }
 
-  // replaceImage for all — keeps position/size/crop from template exactly
+  // Photos: replaceImage
   replaceJobs.forEach(function(job) {
     withPublic(job.fileId, function(imgUrl) {
       var r = UrlFetchApp.fetch(apiBase+':batchUpdate', {
@@ -407,38 +390,33 @@ function createMasterSlides_(data) {
         }}]}),
         muteHttpExceptions:true
       });
-      Logger.log(job.label+' HTTP '+r.getResponseCode()+(r.getResponseCode()!==200?' — '+r.getContentText().substring(0,200):''));
+      Logger.log(job.label+' HTTP '+r.getResponseCode());
     });
   });
 
-  // 5b. Logo — delete placeholder + createImage at fixed template position
-  //     Position from template: translateX=308950, translateY=323650, 166x72pt
+  // 5b. Logo: replaceAllShapesWithImage on {{WHITE_LOGO}} placeholder
+  //     Scoped to nId1 only — fills the shape exactly, respects its size
   if (logoFileId) {
-    var logoRequests = [];
-    if (createLogoJob) logoRequests.push({deleteObject:{objectId:createLogoJob.objId}});
     withPublic(logoFileId, function(imgUrl) {
-      logoRequests.push({createImage:{
-        url: imgUrl,
-        elementProperties:{
-          pageObjectId: nId1,
-          size:{
-            width:  {magnitude:2110200, unit:'EMU'},
-            height: {magnitude:909000,  unit:'EMU'}
-          },
-          transform:{scaleX:1, scaleY:1, translateX:308950, translateY:323650, unit:'EMU'}
-        }
-      }});
       var r = UrlFetchApp.fetch(apiBase+':batchUpdate', {
         method:'post', contentType:'application/json',
         headers:{'Authorization':'Bearer '+token},
-        payload:JSON.stringify({requests:logoRequests}),
+        payload:JSON.stringify({requests:[{
+          replaceAllShapesWithImage: {
+            imageUrl: imgUrl,
+            imageReplaceMethod: 'CENTER_INSIDE',
+            containsText: {text: '{{WHITE_LOGO}}', matchCase: true},
+            pageObjectIds: [nId1]
+          }
+        }]}),
         muteHttpExceptions:true
       });
-      Logger.log('LOGO HTTP '+r.getResponseCode()+(r.getResponseCode()!==200?' — '+r.getContentText().substring(0,200):''));
+      Logger.log('LOGO replaceAllShapesWithImage HTTP '+r.getResponseCode()+
+        (r.getResponseCode()!==200?' — '+r.getContentText().substring(0,300):''));
     });
   }
 
-  Logger.log('createMasterSlides_ done — '+replaceJobs.length+' images replaced');
+  Logger.log('createMasterSlides_ done — '+replaceJobs.length+' photos + logo');
 }
 
 
