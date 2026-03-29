@@ -341,14 +341,21 @@ function removeImagesAtCoords_(slide, left, top, width, height) {
 
 function findAndRemoveImageByAltText_(slide, altText) {
   var images = slide.getImages();
+  // Log all image titles for debugging
+  var titles = images.map(function(im) { return '"' + im.getTitle() + '"'; }).join(', ');
+  Logger.log('findAndRemove looking for ' + altText + ' among ' + images.length + ' images: [' + titles + ']');
   for (var i = 0; i < images.length; i++) {
     var img = images[i];
-    if (img.getTitle() === altText || img.getDescription() === altText) {
+    var t = (img.getTitle() || '').trim();
+    var d = (img.getDescription() || '').trim();
+    if (t === altText || d === altText) {
       var coords = [img.getLeft(), img.getTop(), img.getWidth(), img.getHeight()];
+      Logger.log('Found ' + altText + ' at ' + JSON.stringify(coords));
       img.remove();
       return coords;
     }
   }
+  Logger.log('NOT FOUND: ' + altText + ' — using fallback coords');
   return null;
 }
 
