@@ -19,17 +19,18 @@ var SHEET_ID    = '1aTuqgmmSKMWgNCl2KR0QhK4Cj8G7W5yPsr4t39pi-yc';
 var SHEET_NAME  = 'Basic Info';
 
 // Photo grid positions in EMU (1pt = 12700 EMU)
-// Each cell overlaps by 1pt on all sides to eliminate white gaps at borders
+// Slide right half: x=210pt to x=720pt (510pt wide), y=0 to y=405pt (405pt tall)
+// Each cell bleeds 3pt on every edge to guarantee zero white gaps
 var PT = 12700;
 var PHOTO_EMU = {
-  'PHOTO1': {l:209.6*PT, t:-1*PT,    w:256.7*PT, h:204.5*PT},
-  'PHOTO2': {l:464.3*PT, t:-1*PT,    w:256.7*PT, h:204.5*PT},
-  'PHOTO3': {l:209.6*PT, t:201.5*PT, w:256.7*PT, h:204.5*PT},
-  'PHOTO4': {l:464.3*PT, t:201.5*PT, w:256.7*PT, h:204.5*PT},
-  'PHOTO5': {l:209.5*PT, t:-1*PT,    w:256.8*PT, h:204.5*PT},
-  'PHOTO6': {l:464.2*PT, t:-1*PT,    w:256.8*PT, h:204.5*PT},
-  'PHOTO7': {l:209.5*PT, t:201.5*PT, w:256.8*PT, h:204.5*PT},
-  'PHOTO8': {l:464.2*PT, t:201.5*PT, w:256.8*PT, h:204.5*PT}
+  'PHOTO1': {l:207*PT, t:-3*PT,    w:261*PT, h:206*PT},
+  'PHOTO2': {l:462*PT, t:-3*PT,    w:261*PT, h:206*PT},
+  'PHOTO3': {l:207*PT, t:199*PT,   w:261*PT, h:209*PT},
+  'PHOTO4': {l:462*PT, t:199*PT,   w:261*PT, h:209*PT},
+  'PHOTO5': {l:207*PT, t:-3*PT,    w:261*PT, h:206*PT},
+  'PHOTO6': {l:462*PT, t:-3*PT,    w:261*PT, h:206*PT},
+  'PHOTO7': {l:207*PT, t:199*PT,   w:261*PT, h:209*PT},
+  'PHOTO8': {l:462*PT, t:199*PT,   w:261*PT, h:209*PT}
 };
 var LOGO_EMU = {l:24.3*PT, t:25.5*PT, w:166.2*PT, h:71.6*PT};
 
