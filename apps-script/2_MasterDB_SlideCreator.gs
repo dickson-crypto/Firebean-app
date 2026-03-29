@@ -121,9 +121,15 @@ function createCaseStudySlide_(data) {
         inserted.getBorder().setWeight(2);
       }
 
-      // Queue a crop-centre request for this image
+      // Queue a fill+crop request — pass frame dims + image dims for transform calc
       var crop = calcCropCentre_(imgDims.w, imgDims.h, coords[2], coords[3]);
-      cropRequests.push({objectId: inserted.getObjectId(), crop: crop});
+      cropRequests.push({
+        objectId: inserted.getObjectId(),
+        crop:     crop,
+        left:     coords[0], top:    coords[1],
+        frameW:   coords[2], frameH: coords[3],
+        imgW:     imgDims.w, imgH:   imgDims.h
+      });
 
       photoResults.push(altText + ':OK');
     } catch (photoErr) {
@@ -147,7 +153,13 @@ function createCaseStudySlide_(data) {
       logoInserted.setDescription('project_logo');
 
       var logoCrop = calcCropCentre_(logoDims.w, logoDims.h, logoCoords[2], logoCoords[3]);
-      cropRequests.push({objectId: logoInserted.getObjectId(), crop: logoCrop});
+      cropRequests.push({
+        objectId: logoInserted.getObjectId(),
+        crop:     logoCrop,
+        left:     logoCoords[0], top:    logoCoords[1],
+        frameW:   logoCoords[2], frameH: logoCoords[3],
+        imgW:     logoDims.w,    imgH:   logoDims.h
+      });
       logoResult = 'OK';
     } catch (logoErr) {
       Logger.log('Logo failed: ' + logoErr.message);
@@ -228,9 +240,47 @@ function calcCropCentre_(imgW, imgH, frameW, frameH) {
  * Applies cropProperties to a list of image elements via Slides REST API batchUpdate.
  * Each item in requests: { objectId: string, crop: {leftOffset, rightOffset, topOffset, bottomOffset} }
  */
+/**
+ * For each image:
+ *   1. updatePageElementTransform → force scaleX/scaleY so image EXACTLY fills the frame
+ *      (overrides Slides' auto-proportion-preserving resize)
+ *   2. updateImageProperties → cropProperties to centre-crop
+ *
+ * Both sent in one batchUpdate so the result is: image fills frame exactly,
+ * cropped to centre — identical to CSS object-fit:cover; object-position:center
+ *
+ * Each request item: {
+ *   objectId, frameW, frameH,  ← frame dimensions in points
+ *   imgW, imgH,                ← original image pixel dimensions
+ *   crop: {leftOffset, rightOffset, topOffset, bottomOffset}
+ * }
+ */
 function applyCropCentreFill_(presentationId, requests) {
-  var batchRequests = requests.map(function(r) {
-    return {
+  var PT_TO_EMU = 12700; // 1 point = 12700 EMU
+  var batchRequests = [];
+
+  requests.forEach(function(r) {
+    var frameW_emu = r.frameW * PT_TO_EMU;
+    var frameH_emu = r.frameH * PT_TO_EMU;
+
+    // Step 1 — Force image to fill frame exactly (stretch to frame size)
+    // updatePageElementTransform sets the rendered size in EMU
+    batchRequests.push({
+      updatePageElementTransform: {
+        objectId:  r.objectId,
+        transform: {
+          scaleX:     frameW_emu / (r.imgW  || frameW_emu),  // pts→scale relative to natural size
+          scaleY:     frameH_emu / (r.imgH  || frameH_emu),
+          translateX: r.left * PT_TO_EMU,
+          translateY: r.top  * PT_TO_EMU,
+          unit: 'EMU'
+        },
+        applyMode: 'ABSOLUTE'
+      }
+    });
+
+    // Step 2 — Apply centre-crop mask
+    batchRequests.push({
       updateImageProperties: {
         objectId: r.objectId,
         imageProperties: {
@@ -243,25 +293,25 @@ function applyCropCentreFill_(presentationId, requests) {
         },
         fields: 'cropProperties'
       }
-    };
+    });
   });
 
-  var token   = ScriptApp.getOAuthToken();
-  var url     = 'https://slides.googleapis.com/v1/presentations/' + presentationId + ':batchUpdate';
-  var payload = JSON.stringify({requests: batchRequests});
+  if (batchRequests.length === 0) return;
 
+  var token    = ScriptApp.getOAuthToken();
+  var url      = 'https://slides.googleapis.com/v1/presentations/' + presentationId + ':batchUpdate';
   var response = UrlFetchApp.fetch(url, {
     method: 'post',
     contentType: 'application/json',
     headers: {'Authorization': 'Bearer ' + token},
-    payload: payload,
+    payload: JSON.stringify({requests: batchRequests}),
     muteHttpExceptions: true
   });
 
   if (response.getResponseCode() !== 200) {
-    Logger.log('Crop batchUpdate failed: ' + response.getContentText().substring(0, 500));
+    Logger.log('batchUpdate FAILED: ' + response.getContentText().substring(0, 500));
   } else {
-    Logger.log('Crop batchUpdate OK: ' + requests.length + ' images cropped');
+    Logger.log('batchUpdate OK: ' + requests.length + ' images filled+cropped');
   }
 }
 
