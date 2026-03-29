@@ -226,22 +226,145 @@ function createSlidesForSelectedRow() {
     logo_black:        logoBlackUrl
   };
 
-  // Call Script 2 directly (same project, so no HTTP call needed)
-  // Import the slide creator function by calling the web app
-  var SLIDE_DB_URL = 'https://script.google.com/macros/s/AKfycbwAFo739fMIFwSYWaIZNw9ILiJk96tlnlVWlg8PdbrGYd1SzEGaAc4E_P4aLyNB3tnp/exec';
-  var response = UrlFetchApp.fetch(SLIDE_DB_URL, {
-    method: 'post',
-    contentType: 'application/json',
-    payload: JSON.stringify(data),
-    muteHttpExceptions: true
+  // Create slides directly in same execution — no HTTP, no retries
+  try {
+    createMasterSlides_(data);
+    // Write slide URL back to col M
+    var SLIDE_URL = 'https://docs.google.com/presentation/d/19rmqCzgKD8y2ZiLxkiAqhhkV6_t-8QAumZkSi0Eu9C0/edit';
+    sheet.getRange(row, 13).setValue(SLIDE_URL);
+    ui.alert('✅ Slides created for ' + projectName + '!\n\n🔗 ' + SLIDE_URL);
+  } catch(err) {
+    ui.alert('❌ Error: ' + err.message);
+  }
+}
+
+// ─── SLIDE CREATION (runs in same execution, no HTTP retries) ──────────────────
+function createMasterSlides_(data) {
+  var TEMPLATE_ID  = '19rmqCzgKD8y2ZiLxkiAqhhkV6_t-8QAumZkSi0Eu9C0';
+  var token        = ScriptApp.getOAuthToken();
+  var apiBase      = 'https://slides.googleapis.com/v1/presentations/' + TEMPLATE_ID;
+
+  // 1. Read template
+  var pres = JSON.parse(UrlFetchApp.fetch(apiBase,
+    {headers:{'Authorization':'Bearer '+token},muteHttpExceptions:true}).getContentText());
+  if (!pres.slides || pres.slides.length < 2) throw new Error('Template needs 2 slides');
+  var tmplId1 = pres.slides[0].objectId;
+  var tmplId2 = pres.slides[1].objectId;
+  Logger.log('Templates: '+tmplId1+', '+tmplId2+' | Total: '+pres.slides.length);
+
+  // 2. Duplicate via REST (independent copies, appended at end)
+  var dupR = UrlFetchApp.fetch(apiBase+':batchUpdate', {
+    method:'post', contentType:'application/json',
+    headers:{'Authorization':'Bearer '+token},
+    payload:JSON.stringify({requests:[
+      {duplicateObject:{objectId:tmplId1}},
+      {duplicateObject:{objectId:tmplId2}}
+    ]}), muteHttpExceptions:true
+  });
+  var dup  = JSON.parse(dupR.getContentText());
+  var nId1 = dup.replies[0].duplicateObject.objectId;
+  var nId2 = dup.replies[1].duplicateObject.objectId;
+  Logger.log('New slides: '+nId1+', '+nId2);
+
+  // 3. Replace text (scoped to new slides only)
+  Utilities.sleep(1000);
+  var dateStr  = String(data.date || ((data.event_month||'')+' '+(data.event_year||''))).trim();
+  var scopeArr = Array.isArray(data.scope) ? data.scope : String(data.scope||'').split('\n').filter(function(s){return s.trim();});
+  var scopeStr = scopeArr.join('\n');
+  var textReqs = [];
+  [['{{CLIENT_NAME}}',data.client_name||''],
+   ['{{PROJECT_NAME}}',data.project_name||''],
+   ['{{CATEGORY}}',data.category||''],
+   ['{{DATE}}',dateStr],
+   ['{{VENUE}}',data.venue||''],
+   ['{{SCOPE}}',scopeStr],
+   ['{{CHALLENGE}}',data.challenge||''],
+   ['{{SOLUTION}}',data.solution||'']
+  ].forEach(function(p){
+    textReqs.push({replaceAllText:{containsText:{text:p[0],matchCase:true},replaceText:p[1],pageObjectIds:[nId1,nId2]}});
+  });
+  UrlFetchApp.fetch(apiBase+':batchUpdate',{
+    method:'post',contentType:'application/json',
+    headers:{'Authorization':'Bearer '+token},
+    payload:JSON.stringify({requests:textReqs}),muteHttpExceptions:true
+  });
+  Logger.log('Text replaced');
+
+  // 4. Upload photos + insert via SlidesApp
+  Utilities.sleep(1500);
+  var presApp  = SlidesApp.openById(TEMPLATE_ID);
+  var appSlide1 = null, appSlide2 = null;
+  presApp.getSlides().forEach(function(s){
+    if (s.getObjectId()===nId1) appSlide1=s;
+    if (s.getObjectId()===nId2) appSlide2=s;
+  });
+  if (!appSlide1||!appSlide2) throw new Error('Cannot find new slides via SlidesApp');
+
+  var photos    = data.photos || [];
+  var tempName  = '_Firebean_SlideTemp';
+  var tempIt    = DriveApp.getFoldersByName(tempName);
+  var tempFolder = tempIt.hasNext() ? tempIt.next() : DriveApp.createFolder(tempName);
+  try{tempFolder.setSharing(DriveApp.Access.ANYONE_WITH_LINK,DriveApp.Permission.VIEW);}catch(e){}
+
+  var photoUrls = [];
+  for (var i=0; i<Math.min(photos.length,8); i++) {
+    try {
+      var clean = String(photos[i]).replace(/^data:[^;]+;base64,/,'').replace(/\s/g,'');
+      var bytes = Utilities.base64Decode(clean);
+      var blob  = Utilities.newBlob(bytes,'image/jpeg','ph'+(i+1)+'.jpg');
+      var it2   = tempFolder.getFilesByName('ph'+(i+1)+'.jpg');
+      while(it2.hasNext()){it2.next().setTrashed(true);}
+      var f = tempFolder.createFile(blob);
+      try{f.setSharing(DriveApp.Access.ANYONE_WITH_LINK,DriveApp.Permission.VIEW);}catch(e){}
+      photoUrls.push('https://drive.google.com/thumbnail?id='+f.getId()+'&sz=s4000');
+      Logger.log('Photo '+(i+1)+' uploaded');
+    } catch(pe) { photoUrls.push(null); Logger.log('Photo err: '+pe.message); }
+  }
+
+  [appSlide1, appSlide2].forEach(function(slide) {
+    slide.getPageElements().forEach(function(el) {
+      var alt='';
+      try{alt=el.getTitle()||'';}catch(e){}
+      if (!alt) try{alt=el.getDescription()||'';}catch(e){}
+      var m=alt.match(/^PHOTO([1-8])$/);
+      if (!m) return;
+      var url=photoUrls[parseInt(m[1])-1];
+      if (!url) return;
+      try {
+        var l=el.getLeft(),t=el.getTop(),w=el.getWidth(),h=el.getHeight();
+        var img=slide.insertImage(url);
+        img.setLeft(l);img.setTop(t);img.setWidth(w);img.setHeight(h);
+        Logger.log('PHOTO'+m[1]+' inserted');
+      } catch(ie){Logger.log('Insert err: '+ie.message);}
+    });
   });
 
-  var result = JSON.parse(response.getContentText());
-  if (result.status === 'success' || result.status === 'queued') {
-    ui.alert('✅ Slides created successfully for ' + projectName + '!');
-  } else {
-    ui.alert('⚠️ Result: ' + (result.message || JSON.stringify(result)));
+  // 5. Logo
+  var logoB64 = data.logo_white_base64||'';
+  if (logoB64) {
+    try {
+      var lc=String(logoB64).replace(/^data:[^;]+;base64,/,'').replace(/\s/g,'');
+      var lb=Utilities.newBlob(Utilities.base64Decode(lc),'image/png','logo_white.png');
+      var li=tempFolder.getFilesByName('logo_white.png');
+      while(li.hasNext()){li.next().setTrashed(true);}
+      var lf=tempFolder.createFile(lb);
+      try{lf.setSharing(DriveApp.Access.ANYONE_WITH_LINK,DriveApp.Permission.VIEW);}catch(e){}
+      var logoUrl='https://drive.google.com/thumbnail?id='+lf.getId()+'&sz=s4000';
+      appSlide1.getPageElements().forEach(function(el){
+        var d='';try{d=el.getDescription()||'';}catch(e){}
+        var t='';try{t=el.getTitle()||'';}catch(e){}
+        if (d==='project_logo'||t==='photo1_placeholder'||t==='logo_white') {
+          try{
+            var l=el.getLeft(),tp=el.getTop(),w=el.getWidth(),h=el.getHeight();
+            var img=appSlide1.insertImage(logoUrl);
+            img.setLeft(l);img.setTop(tp);img.setWidth(w);img.setHeight(h);
+            Logger.log('Logo inserted');
+          }catch(le){Logger.log('Logo err: '+le.message);}
+        }
+      });
+    } catch(le){Logger.log('Logo load err: '+le.message);}
   }
+  Logger.log('createMasterSlides_ done');
 }
 
 
