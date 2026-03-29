@@ -116,17 +116,24 @@ function createSlideInner_(data) {
   Logger.log('insertSlide done');
 
   // ── STEP 2: Re-read and find the 2 NEW slides by comparing against snapshot ──
-  Utilities.sleep(2000);
-  var pres = apiGet_(apiBase, token);
+  // Retry up to 5 times with increasing delay — SlidesApp commits may lag REST API
   var newSlides = [];
-  pres.slides.forEach(function(s, i) {
-    if (!existingIds[s.objectId]) {
-      newSlides.push({slide: s, index: i});
-      Logger.log('New slide found at position ' + (i+1) + ': ' + s.objectId);
-    }
-  });
+  var delays = [2000, 3000, 4000, 5000, 6000];
+  for (var attempt = 0; attempt < delays.length; attempt++) {
+    Utilities.sleep(delays[attempt]);
+    var pres = apiGet_(apiBase, token);
+    newSlides = [];
+    pres.slides.forEach(function(s, i) {
+      if (!existingIds[s.objectId]) {
+        newSlides.push({slide: s, index: i});
+        Logger.log('Attempt '+(attempt+1)+': New slide at pos '+(i+1)+': '+s.objectId);
+      }
+    });
+    Logger.log('Attempt '+(attempt+1)+': found '+newSlides.length+' new slides (total '+pres.slides.length+')');
+    if (newSlides.length >= 2) break;
+  }
   if (newSlides.length < 2)
-    throw new Error('Expected 2 new slides, found: ' + newSlides.length);
+    throw new Error('Expected 2 new slides after retries, found: ' + newSlides.length);
 
   // Sort by index so slide1 (lower index = position 3) comes first
   newSlides.sort(function(a,b){ return a.index - b.index; });
