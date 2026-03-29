@@ -119,6 +119,11 @@ function onOpen() {
 // ─── AUTH TEST — run this ONCE from the editor to approve all scopes ──────
 // After it shows "Auth OK" in the logs, you can use the menu normally.
 function testAuthAndConnection() {
+  // Force all scopes to be authorized
+  ScriptApp.getOAuthToken();
+  DriveApp.getRootFolder();
+  SpreadsheetApp.getActiveSpreadsheet();
+  SlidesApp.openById('19rmqCzgKD8y2ZiLxkiAqhhkV6_t-8QAumZkSi0Eu9C0');
   var token = ScriptApp.getOAuthToken();
   var TEMPLATE_ID = '19rmqCzgKD8y2ZiLxkiAqhhkV6_t-8QAumZkSi0Eu9C0';
   var resp = UrlFetchApp.fetch(
