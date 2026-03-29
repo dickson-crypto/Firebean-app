@@ -274,59 +274,109 @@ function createMasterSlides_(data) {
   });
   Logger.log('Text replaced');
 
-  // 4. Upload photos + insert via SlidesApp
-  Utilities.sleep(1500);
-  var presApp  = SlidesApp.openById(TEMPLATE_ID);
-  var appSlide1 = null, appSlide2 = null;
-  presApp.getSlides().forEach(function(s){
-    if (s.getObjectId()===nId1) appSlide1=s;
-    if (s.getObjectId()===nId2) appSlide2=s;
-  });
-  if (!appSlide1||!appSlide2) throw new Error('Cannot find new slides via SlidesApp');
+  // 4. Read new slides via REST to get placeholder positions
+  Utilities.sleep(1000);
+  var presData = JSON.parse(UrlFetchApp.fetch(apiBase,
+    {headers:{'Authorization':'Bearer '+token},muteHttpExceptions:true}).getContentText());
 
-  // 4b. Insert photos via DriveApp.getFileById() — Apps Script passes the File object directly,
-  //     no blob download, no URL auth issues. Same as how Slides UI handles Drive links.
-  var photoFileIds = data.photos || [];
-
-  [appSlide1, appSlide2].forEach(function(slide) {
-    slide.getPageElements().forEach(function(el) {
-      var alt='';
-      try{alt=el.getTitle()||'';}catch(e){}
-      if (!alt) try{alt=el.getDescription()||'';}catch(e){}
-      var m=alt.match(/^PHOTO([1-8])$/);
-      if (!m) return;
-      var fileId = photoFileIds[parseInt(m[1])-1];
-      if (!fileId) return;
-      try {
-        var driveFile = DriveApp.getFileById(fileId);
-        var l=el.getLeft(),t=el.getTop(),w=el.getWidth(),h=el.getHeight();
-        var img=slide.insertImage(driveFile);
-        img.setLeft(l);img.setTop(t);img.setWidth(w);img.setHeight(h);
-        Logger.log('PHOTO'+m[1]+' inserted via DriveApp: '+fileId);
-      } catch(ie){Logger.log('Photo'+m[1]+' err: '+ie.message);}
-    });
-  });
-
-  // 5. Logo via DriveApp — same approach
-  var logoFileId = data.logo_white_file_id||'';
-  if (logoFileId) {
-    try {
-      var logoFile = DriveApp.getFileById(logoFileId);
-      appSlide1.getPageElements().forEach(function(el){
-        var d='';try{d=el.getDescription()||'';}catch(e){}
-        var t='';try{t=el.getTitle()||'';}catch(e){}
-        if (d==='project_logo'||t==='photo1_placeholder'||t==='logo_white') {
-          try{
-            var l=el.getLeft(),tp=el.getTop(),w=el.getWidth(),h=el.getHeight();
-            var img=appSlide1.insertImage(logoFile);
-            img.setLeft(l);img.setTop(tp);img.setWidth(w);img.setHeight(h);
-            Logger.log('Logo inserted via DriveApp: '+logoFileId);
-          }catch(le){Logger.log('Logo err: '+le.message);}
-        }
-      });
-    } catch(le){Logger.log('Logo err: '+le.message);}
+  function getSlideElements(slideId) {
+    for (var si=0; si<presData.slides.length; si++) {
+      if (presData.slides[si].objectId===slideId) return presData.slides[si].pageElements||[];
+    }
+    return [];
   }
-  Logger.log('createMasterSlides_ done');
+
+  var photoFileIds = data.photos || [];
+  var logoFileId   = data.logo_white_file_id || '';
+
+  // Collect all file IDs that need inserting: {fileId, slideId, size, transform, isLogo}
+  var insertJobs = [];
+
+  function collectJobs(slideId) {
+    getSlideElements(slideId).forEach(function(el) {
+      var title = el.title || '';
+      var desc  = el.description || '';
+      var m = title.match(/^PHOTO([1-8])$/);
+      if (m) {
+        var fid = photoFileIds[parseInt(m[1])-1];
+        if (fid && el.size && el.transform)
+          insertJobs.push({fileId:fid, slideId:slideId, size:el.size, transform:el.transform, objId:el.objectId, label:'PHOTO'+m[1]});
+      }
+      if (slideId===nId1 && logoFileId &&
+          (desc==='project_logo'||title==='photo1_placeholder'||title==='logo_white')) {
+        if (el.size && el.transform)
+          insertJobs.push({fileId:logoFileId, slideId:nId1, size:el.size, transform:el.transform, objId:el.objectId, label:'LOGO'});
+      }
+    });
+  }
+  collectJobs(nId1);
+  collectJobs(nId2);
+  Logger.log('Insert jobs: '+insertJobs.length);
+
+  // 5. For each file: temporarily make public → createImage REST → revoke public
+  //    createImage is instant (Google fetches server-side). No blob download = no timeout.
+  var driveApiBase = 'https://www.googleapis.com/drive/v3/files/';
+  var deleteRequests = [];
+
+  insertJobs.forEach(function(job) {
+    var permId = null;
+    try {
+      // Grant anyone=reader temporarily
+      var permResp = UrlFetchApp.fetch(driveApiBase+job.fileId+'/permissions', {
+        method:'post', contentType:'application/json',
+        headers:{'Authorization':'Bearer '+token},
+        payload:JSON.stringify({role:'reader',type:'anyone'}),
+        muteHttpExceptions:true
+      });
+      if (permResp.getResponseCode()===200||permResp.getResponseCode()===201) {
+        permId = JSON.parse(permResp.getContentText()).id;
+      }
+
+      // createImage via REST — Google fetches the public URL server-side
+      var imgUrl = 'https://drive.google.com/uc?export=download&id='+job.fileId;
+      var imgResp = UrlFetchApp.fetch(apiBase+':batchUpdate', {
+        method:'post', contentType:'application/json',
+        headers:{'Authorization':'Bearer '+token},
+        payload:JSON.stringify({requests:[{createImage:{
+          url: imgUrl,
+          elementProperties:{
+            pageObjectId: job.slideId,
+            size: job.size,
+            transform: job.transform
+          }
+        }}]}),
+        muteHttpExceptions:true
+      });
+      var code = imgResp.getResponseCode();
+      Logger.log(job.label+' createImage HTTP '+code+(code!==200?' — '+imgResp.getContentText().substring(0,200):''));
+      if (code===200) deleteRequests.push({deleteObject:{objectId:job.objId}});
+
+    } catch(e) {
+      Logger.log(job.label+' error: '+e.message);
+    } finally {
+      // Always revoke public permission
+      if (permId) {
+        UrlFetchApp.fetch(driveApiBase+job.fileId+'/permissions/'+permId, {
+          method:'delete',
+          headers:{'Authorization':'Bearer '+token},
+          muteHttpExceptions:true
+        });
+      }
+    }
+  });
+
+  // 6. Delete placeholder shapes now that images are in place
+  if (deleteRequests.length > 0) {
+    UrlFetchApp.fetch(apiBase+':batchUpdate', {
+      method:'post', contentType:'application/json',
+      headers:{'Authorization':'Bearer '+token},
+      payload:JSON.stringify({requests:deleteRequests}),
+      muteHttpExceptions:true
+    });
+    Logger.log('Deleted '+deleteRequests.length+' placeholder shapes');
+  }
+
+  Logger.log('createMasterSlides_ done — '+insertJobs.length+' images via REST createImage');
 }
 
 
