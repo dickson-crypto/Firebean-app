@@ -1,17 +1,21 @@
 /**
  * ============================================================
- * SCRIPT 2 of 3 — MASTER DB SLIDE CREATOR  v12.0
+ * SCRIPT 2 of 3 — MASTER DB SLIDE CREATOR  v13.0
  * ============================================================
  * Deploy URL:  https://script.google.com/macros/s/AKfycbx_7Xf8_HERQel93WJB2F_KjFOWHtCXzfvEkP9B_p7Kh4ImRAWRgWSXtLklvdbYsqbI/exec
  * app.py var:  SLIDE_DB_URL
- * Action:      create_slide
  *
- * RULES:
- *   - Slides 1 & 2 are ALWAYS the blank template — never modified
- *   - New project always inserted at position 3 & 4 (index 2)
- *   - Previous projects shift down automatically
- *   - Photos: object-fit:cover — fills cell, centred, no distortion, no white
- *   - Grid calculated in pixels: 960x540px slide, panel starts at 280.8px
+ * LOGIC:
+ *   1. Read template — slides[0] & slides[1] are ALWAYS the 2 template pages
+ *   2. Duplicate both → appended at end of deck
+ *   3. Move BOTH new slides together to insertionIndex:2 (right after templates)
+ *      → new slides land at page 3 & 4, everything else shifts down
+ *   4. Delete copied template images from new slides
+ *   5. Replace text + insert photos (object-fit:cover) + logo
+ *
+ * GRID (from template API, confirmed 720x405pt = 960x540px slide):
+ *   Col1 left=210.6pt, Col2 left=465.3pt, w=254.7pt, h=202.5pt each
+ *   5pt bleed on all edges to eliminate white gaps
  * ============================================================
  */
 
@@ -19,20 +23,19 @@ var TEMPLATE_ID = '19rmqCzgKD8y2ZiLxkiAqhhkV6_t-8QAumZkSi0Eu9C0';
 var SHEET_ID    = '1aTuqgmmSKMWgNCl2KR0QhK4Cj8G7W5yPsr4t39pi-yc';
 var SHEET_NAME  = 'Basic Info';
 
-// Grid positions in EMU — calculated from 960x540px slide
-// 1px = 9525 EMU. Panel starts at 280.8px. Cells: 339.6x270px. 5px bleed all edges.
-var PHOTO_EMU = {
-  'PHOTO1': {l:2626995, t:-47625,  w:3329940, h:2667000},
-  'PHOTO2': {l:5861685, t:-47625,  w:3329940, h:2667000},
-  'PHOTO3': {l:2626995, t:2524125, w:3329940, h:2667000},
-  'PHOTO4': {l:5861685, t:2524125, w:3329940, h:2667000},
-  'PHOTO5': {l:2626995, t:-47625,  w:3329940, h:2667000},
-  'PHOTO6': {l:5861685, t:-47625,  w:3329940, h:2667000},
-  'PHOTO7': {l:2626995, t:2524125, w:3329940, h:2667000},
-  'PHOTO8': {l:5861685, t:2524125, w:3329940, h:2667000}
-};
-
+// EMU positions from template API + 5pt bleed. 1pt = 12700 EMU.
 var PT = 12700;
+var BLEED = 5 * PT;
+var PHOTO_EMU = {
+  'PHOTO1': {l:210.6*PT-BLEED, t:-BLEED,          w:254.7*PT+BLEED*2, h:202.5*PT+BLEED*2},
+  'PHOTO2': {l:465.3*PT-BLEED, t:-BLEED,          w:254.7*PT+BLEED*2, h:202.5*PT+BLEED*2},
+  'PHOTO3': {l:210.6*PT-BLEED, t:202.5*PT-BLEED,  w:254.7*PT+BLEED*2, h:202.5*PT+BLEED*2},
+  'PHOTO4': {l:465.3*PT-BLEED, t:202.5*PT-BLEED,  w:254.7*PT+BLEED*2, h:202.5*PT+BLEED*2},
+  'PHOTO5': {l:210.5*PT-BLEED, t:-BLEED,          w:254.8*PT+BLEED*2, h:202.5*PT+BLEED*2},
+  'PHOTO6': {l:465.2*PT-BLEED, t:-BLEED,          w:254.8*PT+BLEED*2, h:202.5*PT+BLEED*2},
+  'PHOTO7': {l:210.5*PT-BLEED, t:202.5*PT-BLEED,  w:254.8*PT+BLEED*2, h:202.5*PT+BLEED*2},
+  'PHOTO8': {l:465.2*PT-BLEED, t:202.5*PT-BLEED,  w:254.8*PT+BLEED*2, h:202.5*PT+BLEED*2}
+};
 var LOGO_EMU = {l:24.3*PT, t:25.5*PT, w:166.2*PT, h:71.6*PT};
 
 // ─── ENTRY POINT ─────────────────────────────────────────────────────────────
@@ -64,48 +67,39 @@ function createSlide_(data) {
   // ── STEP 1: Read master deck ──────────────────────────────────────────────────
   var pres = apiGet_(apiBase, token);
   if (!pres.slides || pres.slides.length < 2)
-    throw new Error('Master deck must have at least 2 template slides');
-
-  // Slides 0 and 1 are ALWAYS the template
+    throw new Error('Master deck needs at least 2 template slides');
   var tmplId1 = pres.slides[0].objectId;
   var tmplId2 = pres.slides[1].objectId;
-  Logger.log('Template IDs: ' + tmplId1 + ', ' + tmplId2);
-  Logger.log('Total slides before: ' + pres.slides.length);
+  Logger.log('Templates: ' + tmplId1 + ', ' + tmplId2 + ' | Total slides: ' + pres.slides.length);
 
-  // ── STEP 2: Duplicate template slides 1 & 2 (appended at end) ────────────────
+  // ── STEP 2: Duplicate slides 1 & 2 in ONE batch (appended at end) ─────────────
   var dupResult = apiBatch_(apiBase, token, [
     {duplicateObject: {objectId: tmplId1}},
     {duplicateObject: {objectId: tmplId2}}
   ]);
   var newId1 = dupResult.replies[0].duplicateObject.objectId;
   var newId2 = dupResult.replies[1].duplicateObject.objectId;
-  Logger.log('New IDs: ' + newId1 + ', ' + newId2);
+  Logger.log('Duplicated: ' + newId1 + ', ' + newId2);
 
-  // ── STEP 3: Move new slides to index 2 = position 3 & 4 ──────────────────────
-  // insertionIndex:2 means "before the slide currently at index 2"
-  // i.e. right after slides[0] and slides[1] (the 2 templates)
-  Utilities.sleep(800);
+  // ── STEP 3: Move BOTH new slides to position 3 & 4 in one request ─────────────
+  // insertionIndex:2 = insert before current index 2 = right after slides[0] & slides[1]
+  // Both slides moved together so they stay consecutive and templates stay at 1 & 2
+  Utilities.sleep(1000);
   apiBatch_(apiBase, token, [
     {updateSlidesPosition: {slideObjectIds: [newId1, newId2], insertionIndex: 2}}
   ]);
-  Logger.log('Moved to position 3 & 4');
+  Logger.log('Moved both to position 3 & 4');
 
-  // ── STEP 4: Re-read to get element IDs ───────────────────────────────────────
+  // ── STEP 4: Re-read to get element IDs on the 2 new slides ────────────────────
   Utilities.sleep(2000);
   pres = apiGet_(apiBase, token);
   var newSlide1 = null, newSlide2 = null;
-  pres.slides.forEach(function(s) {
-    if (s.objectId === newId1) newSlide1 = s;
-    if (s.objectId === newId2) newSlide2 = s;
+  pres.slides.forEach(function(s, i) {
+    if (s.objectId === newId1) { newSlide1 = s; Logger.log('newSlide1 at position '+(i+1)); }
+    if (s.objectId === newId2) { newSlide2 = s; Logger.log('newSlide2 at position '+(i+1)); }
   });
   if (!newSlide1 || !newSlide2)
     throw new Error('Cannot find new slides: ' + newId1 + ', ' + newId2);
-
-  // Confirm position
-  pres.slides.forEach(function(s, i) {
-    if (s.objectId === newId1) Logger.log('newSlide1 is at position ' + (i+1));
-    if (s.objectId === newId2) Logger.log('newSlide2 is at position ' + (i+1));
-  });
 
   // ── STEP 5: Delete template images from new slides (non-fatal) ───────────────
   var deleteReqs = [];
@@ -119,7 +113,7 @@ function createSlide_(data) {
     if (el.image) deleteReqs.push({deleteObject: {objectId: el.objectId}});
   });
   if (newLogoId) deleteReqs.push({deleteObject: {objectId: newLogoId}});
-  Logger.log('Deleting ' + deleteReqs.length + ' elements, logo: ' + newLogoId);
+  Logger.log('Deleting ' + deleteReqs.length + ' images, logo shape: ' + newLogoId);
 
   if (deleteReqs.length > 0) {
     var delResp = UrlFetchApp.fetch(apiBase + ':batchUpdate', {
@@ -132,10 +126,10 @@ function createSlide_(data) {
   }
   Utilities.sleep(800);
 
-  // ── STEP 6: Build requests — text + photos + logo ─────────────────────────────
+  // ── STEP 6: Text + photos + logo ─────────────────────────────────────────────
   var requests = [];
 
-  // Text replacements — only on new slides, never touches template
+  // Text — scoped to new slides only, template pages never touched
   var dateStr  = (data.date || ((data.event_month||'') + ' ' + (data.event_year||''))).trim();
   var scopeStr = Array.isArray(data.scope)
     ? data.scope.join('\n')
@@ -157,10 +151,10 @@ function createSlide_(data) {
     }});
   });
 
-  // Photos — cover fill using pixel-based positions
-  var photos      = data.photos || data.images || [];
+  // Photos — object-fit:cover using calcCoverTransform_
+  var photos       = data.photos || data.images || [];
   var photoResults = [];
-  var tempFolder  = getOrCreateTempFolder_();
+  var tempFolder   = getOrCreateTempFolder_();
 
   for (var i = 0; i < Math.min(photos.length, 8); i++) {
     var num     = i + 1;
@@ -169,21 +163,21 @@ function createSlide_(data) {
     var pos     = PHOTO_EMU[key];
     try {
       var dims  = getBase64ImageDimensions_(photos[i]);
-      var url   = saveBase64ToPublicDrive_(tempFolder, 'ph' + num + '.jpg', photos[i], 'image/jpeg');
+      var url   = saveBase64ToPublicDrive_(tempFolder, 'ph'+num+'.jpg', photos[i], 'image/jpeg');
       var cover = calcCoverTransform_(dims.w, dims.h, pos.w, pos.h, pos.l, pos.t);
       requests.push({createImage: {
         url: url,
-        objectId: 'PH' + num + '_' + newId1.replace(/[^a-z0-9]/gi,'').substring(0,20),
+        objectId: 'PH'+num+'_'+newId1.replace(/[^a-z0-9]/gi,'').substring(0,20),
         elementProperties: {
           pageObjectId: slideId,
           size:      {width:{magnitude:cover.w,unit:'EMU'}, height:{magnitude:cover.h,unit:'EMU'}},
           transform: {scaleX:1, scaleY:1, translateX:cover.x, translateY:cover.y, unit:'EMU'}
         }
       }});
-      photoResults.push(key + ':OK');
+      photoResults.push(key+':OK');
     } catch(pe) {
-      Logger.log('Photo ' + num + ' err: ' + pe.message);
-      photoResults.push(key + ':FAIL');
+      Logger.log('Photo '+num+': '+pe.message);
+      photoResults.push(key+':FAIL');
     }
   }
 
@@ -195,7 +189,7 @@ function createSlide_(data) {
       var logoUrl = saveBase64ToPublicDrive_(tempFolder, 'logo_white.png', logoB64, 'image/png');
       requests.push({createImage: {
         url: logoUrl,
-        objectId: 'LOGO_' + newId1.replace(/[^a-z0-9]/gi,'').substring(0,20),
+        objectId: 'LOGO_'+newId1.replace(/[^a-z0-9]/gi,'').substring(0,20),
         elementProperties: {
           pageObjectId: newId1,
           size:      {width:{magnitude:LOGO_EMU.w,unit:'EMU'}, height:{magnitude:LOGO_EMU.h,unit:'EMU'}},
@@ -204,26 +198,26 @@ function createSlide_(data) {
       }});
       logoResult = 'OK';
     } catch(le) {
-      Logger.log('Logo err: ' + le.message);
+      Logger.log('Logo: '+le.message);
       logoResult = 'FAIL';
     }
   }
 
   // ── STEP 7: Execute batchUpdate ───────────────────────────────────────────────
   Utilities.sleep(500);
-  var batchResp = UrlFetchApp.fetch(apiBase + ':batchUpdate', {
+  var batchResp = UrlFetchApp.fetch(apiBase+':batchUpdate', {
     method:'post', contentType:'application/json',
-    headers:{'Authorization':'Bearer ' + token},
+    headers:{'Authorization':'Bearer '+token},
     payload: JSON.stringify({requests: requests}),
     muteHttpExceptions: true
   });
   if (batchResp.getResponseCode() !== 200) {
-    Logger.log('FAILED: ' + batchResp.getContentText().substring(0,500));
-    throw new Error('batchUpdate failed ' + batchResp.getResponseCode() + ': ' + batchResp.getContentText().substring(0,200));
+    Logger.log('FAILED: '+batchResp.getContentText().substring(0,500));
+    throw new Error('batchUpdate failed '+batchResp.getResponseCode()+': '+batchResp.getContentText().substring(0,200));
   }
-  Logger.log('batchUpdate OK — ' + requests.length + ' requests');
+  Logger.log('batchUpdate OK — '+requests.length+' requests');
 
-  // ── STEP 8: Write URL to Master DB col M ─────────────────────────────────────
+  // ── STEP 8: Write URL to Master DB ───────────────────────────────────────────
   updateSheetWithSlideUrl_(data.project_id, slideUrl);
 
   return resp_({
@@ -235,30 +229,26 @@ function createSlide_(data) {
 }
 
 // ─── COVER TRANSFORM ─────────────────────────────────────────────────────────
-// Scale image to fully cover the cell — no white, no distortion, centred.
 function calcCoverTransform_(imgW, imgH, cellW, cellH, cellX, cellY) {
   if (!imgW || !imgH) return {w:cellW, h:cellH, x:cellX, y:cellY};
-  var scale = Math.max(cellW / imgW, cellH / imgH);
-  var w = imgW * scale;
-  var h = imgH * scale;
+  var scale = Math.max(cellW/imgW, cellH/imgH);
+  var w = imgW*scale, h = imgH*scale;
   return {w:w, h:h, x:cellX-(w-cellW)/2, y:cellY-(h-cellH)/2};
 }
 
 // ─── IMAGE DIMENSIONS ────────────────────────────────────────────────────────
-
 function getBase64ImageDimensions_(base64Data) {
   try {
-    var clean = String(base64Data).replace(/^data:[^;]+;base64,/,'').replace(/\s/g,'');
-    var bytes = Utilities.base64Decode(clean.substring(0,32));
-    if (bytes[0]===0xFF && bytes[1]===0xD8) {
-      var fb = Utilities.base64Decode(clean.substring(0,600));
-      for (var i=2; i<fb.length-9; i++) {
-        if (fb[i]===0xFF && (fb[i+1]===0xC0||fb[i+1]===0xC1||fb[i+1]===0xC2||fb[i+1]===0xC3))
+    var clean=String(base64Data).replace(/^data:[^;]+;base64,/,'').replace(/\s/g,'');
+    var bytes=Utilities.base64Decode(clean.substring(0,32));
+    if (bytes[0]===0xFF&&bytes[1]===0xD8) {
+      var fb=Utilities.base64Decode(clean.substring(0,600));
+      for (var i=2;i<fb.length-9;i++)
+        if (fb[i]===0xFF&&(fb[i+1]===0xC0||fb[i+1]===0xC1||fb[i+1]===0xC2||fb[i+1]===0xC3))
           return {w:(fb[i+7]<<8)|fb[i+8], h:(fb[i+5]<<8)|fb[i+6]};
-      }
     }
-    if (bytes[0]===0x89 && bytes[1]===0x50) {
-      var pb = Utilities.base64Decode(clean.substring(0,64));
+    if (bytes[0]===0x89&&bytes[1]===0x50) {
+      var pb=Utilities.base64Decode(clean.substring(0,64));
       return {w:(pb[16]<<24)|(pb[17]<<16)|(pb[18]<<8)|pb[19],
               h:(pb[20]<<24)|(pb[21]<<16)|(pb[22]<<8)|pb[23]};
     }
@@ -267,7 +257,6 @@ function getBase64ImageDimensions_(base64Data) {
 }
 
 // ─── DRIVE HELPERS ───────────────────────────────────────────────────────────
-
 function getOrCreateTempFolder_() {
   var name='_Firebean_SlideTemp';
   var it=DriveApp.getFoldersByName(name);
@@ -288,7 +277,6 @@ function saveBase64ToPublicDrive_(folder,filename,base64Data,mimeType) {
 }
 
 // ─── API HELPERS ─────────────────────────────────────────────────────────────
-
 function apiGet_(url,token) {
   var r=UrlFetchApp.fetch(url,{headers:{'Authorization':'Bearer '+token},muteHttpExceptions:true});
   if(r.getResponseCode()!==200) throw new Error('GET failed '+r.getResponseCode()+': '+r.getContentText().substring(0,200));
@@ -307,7 +295,6 @@ function apiBatch_(apiBase,token,requests) {
 }
 
 // ─── MASTER DB ───────────────────────────────────────────────────────────────
-
 function updateSheetWithSlideUrl_(projectId,slideUrl) {
   if(!projectId) return;
   var sheet=SpreadsheetApp.openById(SHEET_ID).getSheetByName(SHEET_NAME);
