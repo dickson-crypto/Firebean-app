@@ -19,19 +19,20 @@ var SHEET_ID    = '1aTuqgmmSKMWgNCl2KR0QhK4Cj8G7W5yPsr4t39pi-yc';
 var SHEET_NAME  = 'Basic Info';
 
 // Photo grid positions in EMU (1pt = 12700 EMU)
-// Right panel: x=210.6pt, y=0, w=509.4pt, h=405pt (confirmed from template API)
-// 2 cols x 2 rows. Each cell: ~254.7pt wide x 202.5pt tall
-// Bleed 5pt on every edge so images always overlap borders — zero white gaps
+// Slide: 720pt x 405pt (960x540px). Right panel starts at x=210.6pt
+// Panel: 509.4pt wide x 405pt tall. Each cell: 254.7pt x 202.5pt
+// Col1 left=210.6, Col2 left=465.3. Row1 top=0, Row2 top=202.5
+// 5pt bleed on all edges — eliminates white gaps completely
 var PT = 12700;
 var PHOTO_EMU = {
-  'PHOTO1': {l:205*PT, t:-5*PT,    w:265*PT, h:213*PT},
-  'PHOTO2': {l:460*PT, t:-5*PT,    w:265*PT, h:213*PT},
-  'PHOTO3': {l:205*PT, t:197*PT,   w:265*PT, h:213*PT},
-  'PHOTO4': {l:460*PT, t:197*PT,   w:265*PT, h:213*PT},
-  'PHOTO5': {l:205*PT, t:-5*PT,    w:265*PT, h:213*PT},
-  'PHOTO6': {l:460*PT, t:-5*PT,    w:265*PT, h:213*PT},
-  'PHOTO7': {l:205*PT, t:197*PT,   w:265*PT, h:213*PT},
-  'PHOTO8': {l:460*PT, t:197*PT,   w:265*PT, h:213*PT}
+  'PHOTO1': {l:205.6*PT, t:-5*PT,    w:264.7*PT, h:212.5*PT},
+  'PHOTO2': {l:460.3*PT, t:-5*PT,    w:264.7*PT, h:212.5*PT},
+  'PHOTO3': {l:205.6*PT, t:197.5*PT, w:264.7*PT, h:212.5*PT},
+  'PHOTO4': {l:460.3*PT, t:197.5*PT, w:264.7*PT, h:212.5*PT},
+  'PHOTO5': {l:205.5*PT, t:-5*PT,    w:264.8*PT, h:212.5*PT},
+  'PHOTO6': {l:460.2*PT, t:-5*PT,    w:264.8*PT, h:212.5*PT},
+  'PHOTO7': {l:205.5*PT, t:197.5*PT, w:264.8*PT, h:212.5*PT},
+  'PHOTO8': {l:460.2*PT, t:197.5*PT, w:264.8*PT, h:212.5*PT}
 };
 var LOGO_EMU = {l:24.3*PT, t:25.5*PT, w:166.2*PT, h:71.6*PT};
 
