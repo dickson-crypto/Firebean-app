@@ -399,6 +399,9 @@ function createMasterSlides_(data) {
   });
 
   // 5b. Logo — createImage at shape position + delete the shape
+  //     Fixed size: 800x400pt (no distortion). Only use translateX/Y from the shape.
+  var LOGO_W_EMU = 10160000; // 800pt * 12700
+  var LOGO_H_EMU = 5080000;  // 400pt * 12700
   logoJobs.forEach(function(job) {
     withPublic(job.fileId, function(imgUrl) {
       var r = UrlFetchApp.fetch(apiBase+':batchUpdate', {
@@ -409,8 +412,16 @@ function createMasterSlides_(data) {
             url: imgUrl,
             elementProperties:{
               pageObjectId: nId1,
-              size: job.size,
-              transform: job.transform
+              size: {
+                width:  {magnitude: LOGO_W_EMU, unit: 'EMU'},
+                height: {magnitude: LOGO_H_EMU, unit: 'EMU'}
+              },
+              transform: {
+                scaleX: 1, scaleY: 1,
+                translateX: job.transform.translateX || 0,
+                translateY: job.transform.translateY || 0,
+                unit: 'EMU'
+              }
             }
           }},
           {deleteObject:{objectId: job.objId}}
