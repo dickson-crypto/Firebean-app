@@ -156,8 +156,8 @@ def fill_dummy_data():
     for s in SOW_OPTIONS: st.session_state[f"s_{s}"] = (s in st.session_state.scope)
 
     st.session_state.open_question_ans = "將 15 個通用診斷問題轉化為一套連貫且可操作的跨平台策略。"
-    st.session_state.challenge = "The core challenge was transforming 15 generic diagnostic indicators into a coherent, actionable cross-platform PR strategy that resonated with diverse stakeholders across INTERACTIVE & TECH and PR & MEDIA domains."
-    st.session_state.solution = "Firebean deployed an integrated synchronisation framework combining real-time data diagnostics with multi-channel content deployment, delivering a flagship 2026 experience at 香港會議展覽中心 that unified brand messaging across all six platforms simultaneously."
+    st.session_state.challenge = "The core challenge was unifying 15 diagnostic indicators into one actionable cross-platform PR strategy across INTERACTIVE & TECH and PR & MEDIA."
+    st.session_state.solution = "Firebean deployed a synchronisation framework combining data diagnostics with multi-channel content, delivering a flagship 2026 experience at 香港會議展覽中心."
 
     colors = ["#FF5733", "#33FF57", "#3357FF", "#F333FF", "#33FFF3", "#F3FF33", "#999999", "#222222"]
     st.session_state.project_photos = [create_dummy_image(c, f"P{i+1}") for i, c in enumerate(colors)]
@@ -256,8 +256,8 @@ JSON format (fill every field, no empty strings):
   "solution": ""
 }}
 
-challenge: 2-3 sentences describing the core PR/event challenge faced.
-solution: 2-3 sentences describing how Firebean solved it creatively."""
+challenge: MAXIMUM 40 WORDS. One concise sentence describing the core PR/event challenge.
+solution: MAXIMUM 40 WORDS. One concise sentence describing how Firebean solved it creatively."""
 
 def build_web_faq_prompt():
     """Prompt 2 — 3 web articles + 3-language FAQ only."""
@@ -565,19 +565,29 @@ def main():
 
             # col K — Boring Challenge
             with st.expander("🔴 Boring Challenge — col K", expanded=False):
+                ch_words = len(st.session_state.challenge.split()) if st.session_state.challenge else 0
+                ch_color = "red" if ch_words > 40 else "green"
+                st.markdown(f"<small style='color:{ch_color}'>字數：{ch_words} / 40 words max</small>", unsafe_allow_html=True)
                 st.session_state.challenge = st.text_area(
                     "Boring Challenge", st.session_state.challenge,
-                    height=120, key="challenge_area2",
-                    placeholder="What was the core PR/event challenge?"
+                    height=100, key="challenge_area2",
+                    placeholder="Max 40 words — core PR/event challenge"
                 )
+                if ch_words > 40:
+                    st.warning(f"⚠️ 超過 40 字 ({ch_words} words) — 請縮短")
 
             # col L — Creative Solution
             with st.expander("🟢 Creative Solution — col L", expanded=False):
+                so_words = len(st.session_state.solution.split()) if st.session_state.solution else 0
+                so_color = "red" if so_words > 40 else "green"
+                st.markdown(f"<small style='color:{so_color}'>字數：{so_words} / 40 words max</small>", unsafe_allow_html=True)
                 st.session_state.solution = st.text_area(
                     "Creative Solution", st.session_state.solution,
-                    height=120, key="solution_area2",
-                    placeholder="How did Firebean solve it creatively?"
+                    height=100, key="solution_area2",
+                    placeholder="Max 40 words — how Firebean solved it"
                 )
+                if so_words > 40:
+                    st.warning(f"⚠️ 超過 40 字 ({so_words} words) — 請縮短")
 
             # col N — LinkedIn Post
             with st.expander("🔵 LinkedIn Post — col N", expanded=False):
