@@ -211,17 +211,17 @@ function createSlide_(data) {
         var url = photoUrls[num];
         if (!url) return;
         try {
-          // Get the shape's position and size to place image exactly
-          var pos  = el.getLeft();
-          var top  = el.getTop();
-          var w    = el.getWidth();
-          var h    = el.getHeight();
-          // Delete placeholder shape and insert image at exact same position
-          el.remove();
+          var pos = el.getLeft();
+          var top = el.getTop();
+          var w   = el.getWidth();
+          var h   = el.getHeight();
+          // Insert image at exact same position — don't remove shape (linked copy restores it)
           var img = slide.insertImage(url);
           img.setLeft(pos); img.setTop(top);
           img.setWidth(w);  img.setHeight(h);
-          Logger.log('Inserted ' + altText + ' at ' + pos + ',' + top);
+          // Send to back so it appears behind any text but covers the placeholder
+          img.sendToBack();
+          Logger.log('Inserted ' + altText + ' at ' + pos + ',' + top + ' size:' + w + 'x' + h);
         } catch(pe) {
           Logger.log('Photo insert error for ' + altText + ': ' + pe.message);
         }
@@ -240,10 +240,10 @@ function createSlide_(data) {
         var desc  = ''; try { desc = el.getDescription() || ''; } catch(e) {}
         if (desc === 'project_logo' || title === 'photo1_placeholder' || title === 'logo_white') {
           var pos = el.getLeft(), top = el.getTop(), w = el.getWidth(), h = el.getHeight();
-          el.remove();
           var img = newSlide1.insertImage(logoUrl);
           img.setLeft(pos); img.setTop(top);
           img.setWidth(w);  img.setHeight(h);
+          img.sendToBack();
           Logger.log('Logo inserted');
         }
       });
