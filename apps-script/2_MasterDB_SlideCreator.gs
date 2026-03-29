@@ -354,7 +354,8 @@ function saveBase64ToPublicDrive_(folder, filename, base64Data, mimeType) {
   while(existing.hasNext()){existing.next().setTrashed(true);}
   var file=folder.createFile(blob);
   file.setSharing(DriveApp.Access.ANYONE_WITH_LINK,DriveApp.Permission.VIEW);
-  return 'https://drive.google.com/uc?export=download&id='+file.getId();
+  // Use thumbnail URL — reliable for createImage API (no redirect / consent page)
+  return 'https://drive.google.com/thumbnail?id='+file.getId()+'&sz=s4000';
 }
 
 // ─── MASTER DB ────────────────────────────────────────────────────────────────
