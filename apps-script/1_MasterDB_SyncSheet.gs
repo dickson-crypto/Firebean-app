@@ -184,33 +184,44 @@ function createSlidesForSelectedRow() {
   );
   if (res !== ui.Button.YES) return;
 
-  // Load photo file IDs from Drive folder (no base64 needed)
+  // Load photo file IDs + logo from Drive folder
   var photos = [];
+  var logoWhiteFileId = '';
   if (driveFolderUrl) {
     try {
       var folderId = driveFolderUrl.match(/[-\w]{25,}/);
       if (folderId) {
         var folder = DriveApp.getFolderById(folderId[0]);
         var files  = folder.getFiles();
-        while (files.hasNext() && photos.length < 8) {
+        while (files.hasNext()) {
           var file = files.next();
           var mime = file.getMimeType();
-          if (mime === 'image/jpeg' || mime === 'image/png' || mime === 'image/webp') {
-            photos.push(file.getId()); // just the file ID
+          var name = file.getName().toLowerCase();
+          if (mime.indexOf('image/') !== 0) continue;
+          // Logo_White file — pick this for logo
+          if (name.indexOf('logo_white') === 0 || name.indexOf('logo white') === 0) {
+            logoWhiteFileId = file.getId();
+            Logger.log('Logo: ' + file.getName());
+            continue;
+          }
+          // Skip other logos
+          if (name.indexOf('logo') === 0) continue;
+          // Photos — up to 8
+          if (photos.length < 8) {
+            photos.push(file.getId());
             Logger.log('Photo: ' + file.getName());
           }
         }
       }
-    } catch(e) { Logger.log('Photo load err: ' + e.message); }
+    } catch(e) { Logger.log('Folder load err: ' + e.message); }
   }
 
-  // Get logo white file ID
-  var logoWhiteFileId = '';
-  if (logoWhiteUrl) {
+  // Fallback: get logo from col Y if not found in folder
+  if (!logoWhiteFileId && logoWhiteUrl) {
     try {
       var logoIdMatch = logoWhiteUrl.match(/[-\w]{25,}/);
       if (logoIdMatch) logoWhiteFileId = logoIdMatch[0];
-    } catch(e) { Logger.log('Logo ID err: ' + e.message); }
+    } catch(e) {}
   }
 
   // Format date — col D may be a Date object or already a "MMM YYYY" string
@@ -326,41 +337,39 @@ function createMasterSlides_(data) {
   var photoFileIds = data.photos || [];
   var logoFileId   = data.logo_white_file_id || '';
 
-  // Two job types:
-  //   replaceJobs — PHOTO1-8 are existing image elements → use replaceImage
-  //   logoJobs    — logo is a SHAPE (rectangle) → use createImage + deleteObject
+  // All images (PHOTO1-8 + logo) are now real image elements in the template
+  // → use replaceImage for everything. No size calculation, no distortion.
   var replaceJobs = [];
-  var logoJobs    = [];
 
   function collectJobs(slideId) {
     getSlideElements(slideId).forEach(function(el) {
+      if (!el.image) return; // skip shapes
       var title = el.title || '';
       var desc  = el.description || '';
-      var isImg = !!el.image;
 
-      // PHOTO1-8: image elements → replaceImage
+      // PHOTO1-8
       var m = title.match(/^PHOTO([1-8])$/);
-      if (m && isImg) {
+      if (m) {
         var fid = photoFileIds[parseInt(m[1])-1];
         if (fid) replaceJobs.push({imageObjId:el.objectId, fileId:fid, label:title});
         return;
       }
 
-      // Logo: shape (rectangle) on slide 1 → createImage + deleteObject
+      // Logo — title or description = 'project_logo'
       if (slideId===nId1 && logoFileId &&
-          (desc==='project_logo'||title==='photo1_placeholder'||title==='logo_white')) {
-        if (el.size && el.transform)
-          logoJobs.push({objId:el.objectId, fileId:logoFileId, size:el.size, transform:el.transform});
+          (title==='project_logo'||desc==='project_logo'||
+           title==='photo1_placeholder'||title==='logo_white')) {
+        replaceJobs.push({imageObjId:el.objectId, fileId:logoFileId, label:'LOGO'});
       }
     });
   }
   collectJobs(nId1);
   collectJobs(nId2);
-  Logger.log('Photo replace jobs: '+replaceJobs.length+' | Logo jobs: '+logoJobs.length);
+  Logger.log('Replace jobs: '+replaceJobs.length);
 
   var driveApiBase = 'https://www.googleapis.com/drive/v3/files/';
 
-  // Helper: make file public, run callback, revoke
+  // Helper: make file public → run callback → revoke
   function withPublic(fileId, callback) {
     var permId = null;
     try {
@@ -381,7 +390,7 @@ function createMasterSlides_(data) {
     }
   }
 
-  // 5a. Photos — replaceImage (image element already exists, just swap content)
+  // replaceImage for all — keeps position/size/crop from template exactly
   replaceJobs.forEach(function(job) {
     withPublic(job.fileId, function(imgUrl) {
       var r = UrlFetchApp.fetch(apiBase+':batchUpdate', {
@@ -398,41 +407,7 @@ function createMasterSlides_(data) {
     });
   });
 
-  // 5b. Logo — createImage at shape position + delete the shape
-  //     Fixed size: 800x400pt (no distortion). Only use translateX/Y from the shape.
-  var LOGO_W_EMU = 10160000; // 800pt * 12700
-  var LOGO_H_EMU = 5080000;  // 400pt * 12700
-  logoJobs.forEach(function(job) {
-    withPublic(job.fileId, function(imgUrl) {
-      var r = UrlFetchApp.fetch(apiBase+':batchUpdate', {
-        method:'post', contentType:'application/json',
-        headers:{'Authorization':'Bearer '+token},
-        payload:JSON.stringify({requests:[
-          {createImage:{
-            url: imgUrl,
-            elementProperties:{
-              pageObjectId: nId1,
-              size: {
-                width:  {magnitude: LOGO_W_EMU, unit: 'EMU'},
-                height: {magnitude: LOGO_H_EMU, unit: 'EMU'}
-              },
-              transform: {
-                scaleX: 1, scaleY: 1,
-                translateX: job.transform.translateX || 0,
-                translateY: job.transform.translateY || 0,
-                unit: 'EMU'
-              }
-            }
-          }},
-          {deleteObject:{objectId: job.objId}}
-        ]}),
-        muteHttpExceptions:true
-      });
-      Logger.log('LOGO HTTP '+r.getResponseCode()+(r.getResponseCode()!==200?' — '+r.getContentText().substring(0,200):''));
-    });
-  });
-
-  Logger.log('createMasterSlides_ done — '+replaceJobs.length+' photos + '+logoJobs.length+' logo');
+  Logger.log('createMasterSlides_ done — '+replaceJobs.length+' images replaced');
 }
 
 
