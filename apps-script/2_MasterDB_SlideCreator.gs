@@ -39,10 +39,37 @@ var LOGO_EMU = {l:24.3*PT, t:25.5*PT, w:166.2*PT, h:71.6*PT};
 function doPost(e) {
   try {
     var data = JSON.parse(e.postData.contents);
-    if (data.action === 'create_slide' || data.action === 'create_case_study') {
-      return createSlide_(data);
+    if (data.action !== 'create_slide' && data.action !== 'create_case_study') {
+      return resp_({status:'error', message:'Unknown action: '+data.action});
     }
-    return resp_({status:'error', message:'Unknown action: '+data.action});
+
+    var pid = String(data.project_id || '');
+
+    // ── FAST dedup check (< 100ms) ──────────────────────────────────────────
+    var props = PropertiesService.getScriptProperties();
+    if (pid) {
+      var existing = props.getProperty(pid);
+      if (existing) {
+        if (existing.indexOf('http') === 0) return resp_({status:'success', slide_url:existing, skipped:true});
+        return resp_({status:'queued', message:'Already processing, check back shortly'});
+      }
+      // Claim immediately — this is fast so retries will see it
+      props.setProperty(pid, 'PROCESSING');
+    }
+
+    // ── Store payload for async processing ──────────────────────────────────
+    var payloadKey = 'PAYLOAD_' + (pid || new Date().getTime());
+    props.setProperty(payloadKey, JSON.stringify(data));
+
+    // ── Schedule trigger to run in 5 seconds ────────────────────────────────
+    ScriptApp.newTrigger('processSlideTrigger_')
+      .timeBased()
+      .after(5000)
+      .create();
+
+    // ── Return immediately — no retries triggered ────────────────────────────
+    return resp_({status:'queued', message:'Slide creation queued', project_id: pid});
+
   } catch(err) {
     return resp_({status:'error', message:err.toString()});
   }
@@ -51,6 +78,32 @@ function doPost(e) {
 function resp_(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+// ── TRIGGER HANDLER — runs async, processes all pending payloads ─────────────
+function processSlideTrigger_() {
+  // Delete this trigger first so it doesn't run again
+  var triggers = ScriptApp.getProjectTriggers();
+  triggers.forEach(function(t) {
+    if (t.getHandlerFunction() === 'processSlideTrigger_') {
+      ScriptApp.deleteTrigger(t);
+    }
+  });
+
+  // Find pending payloads
+  var props = PropertiesService.getScriptProperties();
+  var all = props.getProperties();
+  Object.keys(all).forEach(function(key) {
+    if (key.indexOf('PAYLOAD_') === 0) {
+      try {
+        var data = JSON.parse(all[key]);
+        props.deleteProperty(key); // remove before processing so no double-run
+        createSlide_(data);
+      } catch(e) {
+        Logger.log('Error processing ' + key + ': ' + e.message);
+      }
+    }
+  });
 }
 
 // ─── MAIN ────────────────────────────────────────────────────────────────────
