@@ -113,7 +113,9 @@ function createSlideInner_(data) {
   // Insert slide2-copy at index 2, then slide1-copy at index 2 (pushes slide2-copy to 3)
   deck.insertSlide(2, slides[1]);
   deck.insertSlide(2, slides[0]);
-  Logger.log('insertSlide done');
+  // Force commit by reading slide count — ensures changes are flushed before REST re-read
+  var countAfter = deck.getSlides().length;
+  Logger.log('insertSlide done. Slide count now: ' + countAfter);
 
   // ── STEP 2: Re-read and find the 2 NEW slides by comparing against snapshot ──
   // Retry up to 5 times with increasing delay — SlidesApp commits may lag REST API
