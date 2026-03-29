@@ -112,7 +112,23 @@ function createSlide_(data) {
   Logger.log('createSlide_ for: ' + pid + ' | Total slides: ' + slides.length);
 
   // ── STEP 1: Duplicate template slides 1 & 2, append at END ───────────────────
-  // appendSlide creates a linked copy — we need to duplicate via index
+  // Check last 2 slides don't already have this project name (prevents retry duplicates)
+  var allSlidesBefore = pres.getSlides();
+  var lastSlide = allSlidesBefore[allSlidesBefore.length - 1];
+  var lastSlideText = '';
+  try {
+    lastSlide.getPageElements().forEach(function(el) {
+      try { lastSlideText += el.asShape().getText().asString(); } catch(e) {}
+    });
+  } catch(e) {}
+  var projName = String(data.project_name || '');
+  if (projName && lastSlideText.indexOf(projName) >= 0) {
+    Logger.log('SKIP — slides already exist for: ' + projName);
+    if (pid) props.setProperty(pid, slideUrl);
+    updateSheetWithSlideUrl_(pid, slideUrl);
+    return resp_({status:'success', slide_url:slideUrl, skipped:true});
+  }
+
   var newSlide1 = pres.appendSlide(slides[0]);
   var newSlide2 = pres.appendSlide(slides[1]);
   Logger.log('Appended 2 slides at end. New total: ' + pres.getSlides().length);
