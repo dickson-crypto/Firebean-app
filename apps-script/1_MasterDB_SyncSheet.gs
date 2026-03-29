@@ -185,6 +185,9 @@ function syncProjectFromStreamlit(data) {
     sheet.getRange(targetRow, CONFIG.COL.PROJECT_ID).setValue((data.project_id || '').toUpperCase());
   }
 
+  // ── Timestamp — always update on every sync ──────────────
+  sheet.getRange(targetRow, CONFIG.COL.TIMESTAMP).setValue(new Date());
+
   // ── Basic fields ──────────────────────────────────────────
   sheet.getRange(targetRow, CONFIG.COL.CLIENT).setValue(cleanSheetValue_(data.client_name || ''));
   sheet.getRange(targetRow, CONFIG.COL.PROJECT).setValue(cleanSheetValue_(data.project_name || ''));
