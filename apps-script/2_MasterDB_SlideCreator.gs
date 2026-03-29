@@ -242,44 +242,52 @@ function calcCropCentre_(imgW, imgH, frameW, frameH) {
  */
 /**
  * For each image:
- *   1. updatePageElementTransform → force scaleX/scaleY so image EXACTLY fills the frame
- *      (overrides Slides' auto-proportion-preserving resize)
- *   2. updateImageProperties → cropProperties to centre-crop
+ *   Step 1 — updatePageElementSize: set exact frame width+height in EMU
+ *             (avoids broken scaleX/Y calculation — directly sets rendered size)
+ *   Step 2 — updatePageElementTransform: set exact position (translateX/Y)
+ *             with scaleX=scaleY=1 (size is already correct from step 1)
+ *   Step 3 — updateImageProperties: cropProperties for centre-crop mask
  *
- * Both sent in one batchUpdate so the result is: image fills frame exactly,
- * cropped to centre — identical to CSS object-fit:cover; object-position:center
- *
- * Each request item: {
- *   objectId, frameW, frameH,  ← frame dimensions in points
- *   imgW, imgH,                ← original image pixel dimensions
- *   crop: {leftOffset, rightOffset, topOffset, bottomOffset}
- * }
+ * Result: image fills frame edge-to-edge, cropped to centre.
+ * Works for any source photo aspect ratio (portrait, landscape, square).
  */
 function applyCropCentreFill_(presentationId, requests) {
-  var PT_TO_EMU = 12700; // 1 point = 12700 EMU
+  var PT_TO_EMU = 12700;
   var batchRequests = [];
 
   requests.forEach(function(r) {
-    var frameW_emu = r.frameW * PT_TO_EMU;
-    var frameH_emu = r.frameH * PT_TO_EMU;
+    var fw = Math.round(r.frameW * PT_TO_EMU);
+    var fh = Math.round(r.frameH * PT_TO_EMU);
+    var tx = Math.round(r.left   * PT_TO_EMU);
+    var ty = Math.round(r.top    * PT_TO_EMU);
 
-    // Step 1 — Force image to fill frame exactly (stretch to frame size)
-    // updatePageElementTransform sets the rendered size in EMU
+    // Step 1 — Set exact rendered size (width × height) in EMU
     batchRequests.push({
       updatePageElementTransform: {
-        objectId:  r.objectId,
+        objectId: r.objectId,
         transform: {
-          scaleX:     frameW_emu / (r.imgW  || frameW_emu),  // pts→scale relative to natural size
-          scaleY:     frameH_emu / (r.imgH  || frameH_emu),
-          translateX: r.left * PT_TO_EMU,
-          translateY: r.top  * PT_TO_EMU,
+          scaleX:     1,
+          scaleY:     1,
+          translateX: tx,
+          translateY: ty,
           unit: 'EMU'
         },
         applyMode: 'ABSOLUTE'
       }
     });
 
-    // Step 2 — Apply centre-crop mask
+    // Step 2 — Resize to exact frame dimensions
+    batchRequests.push({
+      updatePageElementSize: {
+        objectId: r.objectId,
+        size: {
+          width:  { magnitude: fw, unit: 'EMU' },
+          height: { magnitude: fh, unit: 'EMU' }
+        }
+      }
+    });
+
+    // Step 3 — Centre-crop mask (trim excess from whichever dimension is larger)
     batchRequests.push({
       updateImageProperties: {
         objectId: r.objectId,
@@ -309,9 +317,9 @@ function applyCropCentreFill_(presentationId, requests) {
   });
 
   if (response.getResponseCode() !== 200) {
-    Logger.log('batchUpdate FAILED: ' + response.getContentText().substring(0, 500));
+    Logger.log('batchUpdate FAILED [' + response.getResponseCode() + ']: ' + response.getContentText().substring(0, 500));
   } else {
-    Logger.log('batchUpdate OK: ' + requests.length + ' images filled+cropped');
+    Logger.log('batchUpdate OK: ' + requests.length + ' images — size+position+crop applied');
   }
 }
 
