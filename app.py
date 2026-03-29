@@ -725,8 +725,12 @@ def main():
                     # 2️⃣ Create Slide in Master DB Slide Creator
                     slide_payload = {**payload, "action": "create_slide", "photos": processed_imgs, "logo_white_base64": st.session_state.logo_white}
                     try:
-                        r2 = requests.post(SLIDE_DB_URL, json=slide_payload, timeout=120)
-                        if r2.status_code == 200:
+                        # POST without redirects to prevent Google from triggering multiple doPost calls
+                        r2 = requests.post(SLIDE_DB_URL, json=slide_payload, timeout=120, allow_redirects=False)
+                        if r2.status_code in [200, 302]:
+                            # Follow redirect with GET to get the actual response
+                            if r2.status_code == 302:
+                                r2 = requests.get(r2.headers.get('Location',''), timeout=30)
                             j2 = r2.json()
                             if j2.get('status') in ['success', 'queued'] or 'running' in j2.get('message','').lower():
                                 log_debug(f"✅ Slide DB OK: slide creation in progress", "success")
@@ -742,9 +746,11 @@ def main():
                     # 3️⃣ Create Firebean Case Study Slide
                     case_payload = {**slide_payload, "action": "create_case_study"}
                     try:
-                        r3 = requests.post(CASE_STUDY_URL, json=case_payload, timeout=120)
-                        if r3.status_code == 200:
-                            log_debug(f"✅ Case Study Slide OK: {r3.text[:100]}", "success")
+                        r3 = requests.post(CASE_STUDY_URL, json=case_payload, timeout=120, allow_redirects=False)
+                        if r3.status_code in [200, 302]:
+                            if r3.status_code == 302:
+                                r3 = requests.get(r3.headers.get('Location',''), timeout=30)
+                            log_debug(f"✅ Case Study Slide OK", "success")
                         else:
                             log_debug(f"⚠️ Case Study status {r3.status_code}: {r3.text[:100]}", "warning")
                             errors.append(f"Case Study: {r3.status_code}")
