@@ -41,16 +41,18 @@ function doPost(e) {
       props.setProperty(pid, 'PROCESSING');
     }
 
-    // Store payload for async trigger
-    var key = 'PAYLOAD_' + (pid || String(new Date().getTime()));
-    props.setProperty(key, JSON.stringify(data));
-
-    // Schedule trigger to run in 3 seconds
-    ScriptApp.newTrigger('processSlideTrigger_')
-      .timeBased().after(3000).create();
-
-    // Return immediately — Google won't retry
-    return resp_({status:'queued', project_id:pid, message:'Slide creation started'});
+    // Try async trigger first; fall back to sync if no permission
+    try {
+      var key = 'PAYLOAD_' + (pid || String(new Date().getTime()));
+      props.setProperty(key, JSON.stringify(data));
+      ScriptApp.newTrigger('processSlideTrigger_')
+        .timeBased().after(3000).create();
+      return resp_({status:'queued', project_id:pid, message:'Slide creation started'});
+    } catch(triggerErr) {
+      // No trigger permission — run synchronously
+      Logger.log('Trigger failed, running sync: ' + triggerErr.message);
+      return createSlide_(data);
+    }
 
   } catch(err) {
     return resp_({status:'error', message:err.toString()});
@@ -208,6 +210,7 @@ function createSlide_(data) {
     updateSheetWithSlideUrl_(pid, slideUrl);
   }
   Logger.log('Done: ' + slideUrl);
+  return resp_({status:'success', slide_url:slideUrl});
 }
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
