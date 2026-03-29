@@ -85,35 +85,42 @@ function createSlideInner_(data) {
     }
   }
 
-  // ── STEP 1: Use SlidesApp to insert copies of slide 1 & 2 at position 3 & 4 ──
-  // insertSlide(insertionIndex, slide) inserts a copy at that index (0-based)
-  // insertionIndex 2 = position 3, insertionIndex 3 = position 4
-  var deck    = SlidesApp.openById(TEMPLATE_ID);
-  var slides  = deck.getSlides();
+  // ── STEP 1: Snapshot existing slide IDs, then insert 2 new slides ────────────
+  // We snapshot BEFORE insert so we can identify new slides by diff afterwards
+  var presSnap = apiGet_(apiBase, token);
+  var existingIds = {};
+  presSnap.slides.forEach(function(s) { existingIds[s.objectId] = true; });
+  Logger.log('Existing slides: ' + presSnap.slides.length);
+
+  // Use SlidesApp to insert copies of template slides 1 & 2 at position 3 & 4
+  var deck   = SlidesApp.openById(TEMPLATE_ID);
+  var slides = deck.getSlides();
   if (slides.length < 2) throw new Error('Need at least 2 template slides');
+  // Insert slide2-copy at index 2, then slide1-copy at index 2 (pushes slide2-copy to 3)
+  deck.insertSlide(2, slides[1]);
+  deck.insertSlide(2, slides[0]);
+  Logger.log('insertSlide done');
 
-  // Insert copy of template slide 2 first at index 2, then template slide 1 at index 2
-  // (inserting slide1 at 2 pushes slide2-copy to index 3)
-  var newSlide2 = deck.insertSlide(2, slides[1]);  // position 3 temporarily
-  var newSlide1 = deck.insertSlide(2, slides[0]);  // position 3, pushes newSlide2 to 4
-
-  var newId1 = newSlide1.getObjectId();
-  var newId2 = newSlide2.getObjectId();
-  Logger.log('Inserted at 3&4: ' + newId1 + ', ' + newId2);
-
-  // STEP 2: Re-read via REST — new slides are always at index 2 & 3
-  // SlidesApp.insertSlide may assign different objectIds than getObjectId() returns
-  // So we read positions 2 & 3 directly from REST instead of searching by ID
+  // ── STEP 2: Re-read and find the 2 NEW slides by comparing against snapshot ──
   Utilities.sleep(2000);
   var pres = apiGet_(apiBase, token);
-  var newSlideData1 = pres.slides[2];
-  var newSlideData2 = pres.slides[3];
-  if (!newSlideData1 || !newSlideData2)
-    throw new Error('Slides at index 2&3 not found. Total: ' + pres.slides.length);
-  // Override with REST-confirmed objectIds
-  newId1 = newSlideData1.objectId;
-  newId2 = newSlideData2.objectId;
-  Logger.log('REST-confirmed pos 3&4: ' + newId1 + ', ' + newId2);
+  var newSlides = [];
+  pres.slides.forEach(function(s, i) {
+    if (!existingIds[s.objectId]) {
+      newSlides.push({slide: s, index: i});
+      Logger.log('New slide found at position ' + (i+1) + ': ' + s.objectId);
+    }
+  });
+  if (newSlides.length < 2)
+    throw new Error('Expected 2 new slides, found: ' + newSlides.length);
+
+  // Sort by index so slide1 (lower index = position 3) comes first
+  newSlides.sort(function(a,b){ return a.index - b.index; });
+  var newSlideData1 = newSlides[0].slide;
+  var newSlideData2 = newSlides[1].slide;
+  var newId1 = newSlideData1.objectId;
+  var newId2 = newSlideData2.objectId;
+  Logger.log('New slides confirmed: pos '+(newSlides[0].index+1)+' & '+(newSlides[1].index+1));
 
   // ── STEP 3: Delete template images from new slides (non-fatal) ───────────────
   var deleteReqs = [];
