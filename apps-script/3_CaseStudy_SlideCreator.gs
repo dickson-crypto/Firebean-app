@@ -110,10 +110,15 @@ function createCaseStudySlide_(data) {
     try {
       var imgDims   = getBase64ImageDimensions_(photos[i]);
       var blob      = base64ToBlob_(photos[i], 'image/jpeg', 'p'+photoNum+'.jpg');
-      var coords    = findAndRemoveImageByAltText_(targetSlide, altText);
-      if (!coords) coords = PHOTO_COORDS[altText];
+      var coords = findAndRemoveImageByAltText_(targetSlide, altText);
+      if (!coords) {
+        // Alt-text placeholder not found — use hardcoded coords
+        // Also remove any existing image at that grid position (gradient placeholder)
+        coords = PHOTO_COORDS[altText];
+        removeImagesAtCoords_(targetSlide, coords[0], coords[1], coords[2], coords[3]);
+      }
 
-      var inserted  = targetSlide.insertImage(blob, coords[0], coords[1], coords[2], coords[3]);
+      var inserted = targetSlide.insertImage(blob, coords[0], coords[1], coords[2], coords[3]);
 
       // Hero gets red border
       if (i === heroIndex) {
@@ -309,6 +314,30 @@ function applyCropCentreFill_(presentationId, requests) {
 }
 
 // ─── HELPERS — FINDING & REMOVING ───────────────────────────────────────────
+
+/**
+ * Remove all images whose bounding box overlaps significantly with the given coords.
+ * Used when alt-text lookup fails (template slide was already modified by a previous sync).
+ * Tolerance: 20pt — removes any image whose centre falls within the frame.
+ */
+function removeImagesAtCoords_(slide, left, top, width, height) {
+  var cx = left  + width  / 2;
+  var cy = top   + height / 2;
+  var images = slide.getImages();
+  for (var i = 0; i < images.length; i++) {
+    var img = images[i];
+    var il = img.getLeft();
+    var it = img.getTop();
+    var iw = img.getWidth();
+    var ih = img.getHeight();
+    var icx = il + iw / 2;
+    var icy = it + ih / 2;
+    // If image centre is within 20pt of our frame centre → remove it
+    if (Math.abs(icx - cx) < 20 && Math.abs(icy - cy) < 20) {
+      img.remove();
+    }
+  }
+}
 
 function findAndRemoveImageByAltText_(slide, altText) {
   var images = slide.getImages();
