@@ -973,33 +973,28 @@ function categoryToSlugs_(cat) {
 function fixAllHeroPhotoPickers() {
   var sheet = SpreadsheetApp.getActive().getSheetByName(CONFIG.SHEET_NAME);
   var data  = sheet.getDataRange().getValues();
-  var fixed = 0, skipped = 0, noFolder = 0;
+  var rebuilt = 0, noFolder = 0, errors = 0;
 
   for (var i = 1; i < data.length; i++) {
     var row         = data[i];
     var rowNum      = i + 1;
-    var projectName = String(row[CONFIG.COL.PROJECT - 1]     || '').trim();
-    var folderUrl   = String(row[CONFIG.COL.DRIVE_FOLDER - 1]|| '').trim();
-    var heroVal     = String(row[CONFIG.COL.HERO_PHOTO - 1]  || '').trim();
+    var projectName = String(row[CONFIG.COL.PROJECT      - 1] || '').trim();
+    var folderUrl   = String(row[CONFIG.COL.DRIVE_FOLDER - 1] || '').trim();
+    var heroVal     = String(row[CONFIG.COL.HERO_PHOTO   - 1] || '').trim();
 
     if (!projectName) continue; // skip empty rows
 
-    // Already a proper URL → skip
-    if (heroVal.indexOf('https://') === 0) { skipped++; continue; }
-
-    // No Drive folder → can't fix
+    // No Drive folder → cannot build picker
     if (!folderUrl || folderUrl.indexOf('https://') !== 0) { noFolder++; continue; }
 
-    // Get folder ID from URL
     var folderId = extractDriveFolderId_(folderUrl);
     if (!folderId) { noFolder++; continue; }
 
     try {
-      // List all Photo_*.jpg files in the folder
-      var folder     = DriveApp.getFolderById(folderId);
-      var allFiles   = folder.getFiles();
-      var photoUrls  = [];
-      var photoMap   = {}; // "Photo_1" → url, "Photo_2" → url, etc.
+      var folder    = DriveApp.getFolderById(folderId);
+      var allFiles  = folder.getFiles();
+      var photoUrls = [];
+      var photoMap  = {}; // filename stem → url
 
       while (allFiles.hasNext()) {
         var file     = allFiles.next();
@@ -1011,38 +1006,53 @@ function fixAllHeroPhotoPickers() {
         var url = 'https://drive.google.com/file/d/' + file.getId() + '/view?usp=drivesdk';
         photoUrls.push(url);
 
-        // Map "Photo_N" → url for number-based selection
+        // Map Photo_N → url
         var numMatch = fileName.match(/Photo_(\d+)/i);
         if (numMatch) photoMap['Photo_' + numMatch[1]] = url;
       }
 
-      // Sort by filename order (Photo_1, Photo_2...)
-      photoUrls.sort();
+      // Sort alphabetically so Photo_1 comes before Photo_10
+      photoUrls.sort(function(a, b) {
+        var na = parseInt((a.match(/Photo_(\d+)/i)||[0,999])[1]);
+        var nb = parseInt((b.match(/Photo_(\d+)/i)||[0,999])[1]);
+        return na - nb;
+      });
 
       if (photoUrls.length === 0) { noFolder++; continue; }
 
-      // Determine which photo to pre-select
-      var selectedUrl = photoUrls[0]; // default = first photo
-      if (heroVal.match(/^\d+$/)) {
-        // Number like "4" → Photo_4.jpg
+      // Determine selected photo:
+      // 1. If current value is already a Drive URL → keep it selected
+      // 2. If current value is a number N → Photo_N.jpg
+      // 3. Otherwise → Photo_1.jpg (first)
+      var selectedUrl = photoUrls[0];
+      if (heroVal.indexOf('https://') === 0 && photoUrls.indexOf(heroVal) !== -1) {
+        selectedUrl = heroVal; // keep existing selection
+      } else if (/^\d+$/.test(heroVal)) {
         var key = 'Photo_' + heroVal;
         if (photoMap[key]) selectedUrl = photoMap[key];
+      } else if (heroVal.indexOf('https://') === 0) {
+        // existing URL but not in list (old format) → keep as selected, add to list
+        photoUrls.unshift(heroVal);
+        selectedUrl = heroVal;
       }
 
-      // Rebuild dropdown with all photo URLs, pre-select the right one
+      // Rebuild dropdown + set selected value
       rebuildHeroPhotoPicker_(sheet, rowNum, photoUrls, selectedUrl);
-      fixed++;
-      Logger.log('Fixed row ' + rowNum + ': ' + projectName + ' → ' + selectedUrl.substring(0,60));
+      rebuilt++;
+      Logger.log('Row ' + rowNum + ' [' + projectName + ']: ' + photoUrls.length + ' photos, selected=' + selectedUrl.split('/')[5]);
 
     } catch (e) {
-      Logger.log('Error fixing row ' + rowNum + ' (' + projectName + '): ' + e.message);
+      errors++;
+      Logger.log('Error row ' + rowNum + ' (' + projectName + '): ' + e.message);
     }
   }
 
-  var msg = '✅ Hero Photo Picker fix complete!\n\n' +
-    '• Fixed: ' + fixed + ' rows\n' +
-    '• Already correct: ' + skipped + ' rows\n' +
-    '• No folder (skipped): ' + noFolder + ' rows';
+  var msg = '✅ Hero Photo Picker rebuild complete!\n\n' +
+    '• Rebuilt: ' + rebuilt + ' rows (all now have dropdown)\n' +
+    '• No Drive folder: ' + noFolder + ' rows (skipped)\n' +
+    '• Errors: ' + errors + '\n\n' +
+    'All rows with a Drive folder now have a photo dropdown in col W.\n' +
+    'Click any cell in col W → use the dropdown ▼ to pick a different hero photo.';
   Logger.log(msg);
   try { SpreadsheetApp.getUi().alert(msg); } catch(e) {}
 }
