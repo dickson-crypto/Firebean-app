@@ -70,18 +70,32 @@ function createSlideInner_(data) {
   var apiBase  = 'https://slides.googleapis.com/v1/presentations/' + TEMPLATE_ID;
   var slideUrl = 'https://docs.google.com/presentation/d/' + TEMPLATE_ID + '/edit';
 
-  // ── IDEMPOTENCY: if this project_id already has a slide, return immediately ──
+  // ── DOUBLE-CHECK IDEMPOTENCY (prevents wait-chain duplicates) ───────────────
   if (data.project_id) {
     var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(SHEET_NAME);
     var vals  = sheet.getDataRange().getValues();
+    var targetRow = -1;
     for (var r = 1; r < vals.length; r++) {
       if (String(vals[r][25]).toUpperCase() === String(data.project_id).toUpperCase()) {
-        if (vals[r][12]) { // col M already has slide URL
-          Logger.log('Already exists, skipping: ' + data.project_id);
+        targetRow = r + 1; // 1-based row number
+        // Already done — return existing URL
+        if (vals[r][12] && String(vals[r][12]).indexOf('http') === 0) {
+          Logger.log('Already exists: ' + data.project_id);
           return resp_({status:'success', slide_url:vals[r][12], skipped:true});
+        }
+        // Already processing — another instance is working on it
+        if (vals[r][12] === 'PROCESSING') {
+          Logger.log('Already processing: ' + data.project_id);
+          return resp_({status:'error', message:'Already processing, please wait'});
         }
         break;
       }
+    }
+    // Mark as PROCESSING immediately and flush so other instances see it
+    if (targetRow > 0) {
+      sheet.getRange(targetRow, 13).setValue('PROCESSING');
+      SpreadsheetApp.flush(); // force immediate write
+      Logger.log('Marked PROCESSING: ' + data.project_id);
     }
   }
 
