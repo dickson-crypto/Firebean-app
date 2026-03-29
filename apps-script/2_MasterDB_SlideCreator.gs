@@ -20,16 +20,17 @@ var SHEET_ID    = '1aTuqgmmSKMWgNCl2KR0QhK4Cj8G7W5yPsr4t39pi-yc';
 var SHEET_NAME  = 'Basic Info';
 
 // Photo grid positions in EMU (1pt = 12700 EMU)
+// Each cell overlaps by 1pt on all sides to eliminate white gaps at borders
 var PT = 12700;
 var PHOTO_EMU = {
-  'PHOTO1': {l:210.6*PT, t:0,       w:254.7*PT, h:202.5*PT},
-  'PHOTO2': {l:465.3*PT, t:0,       w:254.7*PT, h:202.5*PT},
-  'PHOTO3': {l:210.6*PT, t:202.5*PT,w:254.7*PT, h:202.5*PT},
-  'PHOTO4': {l:465.3*PT, t:202.5*PT,w:254.7*PT, h:202.5*PT},
-  'PHOTO5': {l:210.5*PT, t:0,       w:254.8*PT, h:202.5*PT},
-  'PHOTO6': {l:465.2*PT, t:0,       w:254.8*PT, h:202.5*PT},
-  'PHOTO7': {l:210.5*PT, t:202.5*PT,w:254.8*PT, h:202.5*PT},
-  'PHOTO8': {l:465.2*PT, t:202.5*PT,w:254.8*PT, h:202.5*PT}
+  'PHOTO1': {l:209.6*PT, t:-1*PT,    w:256.7*PT, h:204.5*PT},
+  'PHOTO2': {l:464.3*PT, t:-1*PT,    w:256.7*PT, h:204.5*PT},
+  'PHOTO3': {l:209.6*PT, t:201.5*PT, w:256.7*PT, h:204.5*PT},
+  'PHOTO4': {l:464.3*PT, t:201.5*PT, w:256.7*PT, h:204.5*PT},
+  'PHOTO5': {l:209.5*PT, t:-1*PT,    w:256.8*PT, h:204.5*PT},
+  'PHOTO6': {l:464.2*PT, t:-1*PT,    w:256.8*PT, h:204.5*PT},
+  'PHOTO7': {l:209.5*PT, t:201.5*PT, w:256.8*PT, h:204.5*PT},
+  'PHOTO8': {l:464.2*PT, t:201.5*PT, w:256.8*PT, h:204.5*PT}
 };
 var LOGO_EMU = {l:24.3*PT, t:25.5*PT, w:166.2*PT, h:71.6*PT};
 
@@ -56,111 +57,72 @@ function doPost(e) {
 function createCaseStudySlide_(data) {
   var token   = ScriptApp.getOAuthToken();
   var apiBase = 'https://slides.googleapis.com/v1/presentations/' + TEMPLATE_ID;
+  // The master deck IS the template — new project slides are appended to it each time
   var slideUrl = 'https://docs.google.com/presentation/d/' + TEMPLATE_ID + '/edit';
 
-  // 1. Read current presentation to get template slide objectIds + their photo element IDs
+  // ── STEP 1: Read template — get slide 1 & 2 objectIds ──────────────────────
   var getResp = UrlFetchApp.fetch(apiBase, {
     headers:{'Authorization':'Bearer '+token}, muteHttpExceptions:true
   });
-  if (getResp.getResponseCode() !== 200) throw new Error('GET pres failed: '+getResp.getResponseCode());
-
+  if (getResp.getResponseCode() !== 200) throw new Error('GET template failed: '+getResp.getResponseCode());
   var pres = JSON.parse(getResp.getContentText());
-  var slides = pres.slides;
-  var tmpl1  = slides[0];
-  var tmpl2  = slides[1];
+  if (!pres.slides[0] || !pres.slides[1]) throw new Error('Template must have at least 2 slides');
+  var tmplId1 = pres.slides[0].objectId;
+  var tmplId2 = pres.slides[1].objectId;
 
-  // Collect objectIds of images to delete from the new slides (photo + logo placeholders)
-  var tmpl1PhotoIds = [];
-  var tmpl2PhotoIds = [];
-  var tmpl1LogoId   = null;
-
-  (tmpl1.pageElements || []).forEach(function(el) {
-    if (el.image) {
-      var t = el.title || ''; var d = el.description || '';
-      if (t === 'PHOTO1'||t==='PHOTO2'||t==='PHOTO3'||t==='PHOTO4') tmpl1PhotoIds.push(el.objectId);
-      else if (d === 'project_logo' || t === 'photo1_placeholder' || t === 'logo_white') {
-        // skip logo placeholder — we'll handle it separately
-      }
-    }
-    if (el.shape && (el.description === 'project_logo' || el.title === 'photo1_placeholder')) {
-      tmpl1LogoId = el.objectId;
-    }
-  });
-  (tmpl2.pageElements || []).forEach(function(el) {
-    if (el.image) {
-      var t = el.title || '';
-      if (t==='PHOTO5'||t==='PHOTO6'||t==='PHOTO7'||t==='PHOTO8') tmpl2PhotoIds.push(el.objectId);
-    }
-  });
-
-  // 2. Duplicate both template slides via REST
+  // ── STEP 2: Duplicate slides 1 & 2 — appended to end of master deck ──────────
   var dupResp = UrlFetchApp.fetch(apiBase+':batchUpdate', {
     method:'post', contentType:'application/json',
     headers:{'Authorization':'Bearer '+token},
     payload: JSON.stringify({requests:[
-      {duplicateObject:{objectId: tmpl1.objectId}},
-      {duplicateObject:{objectId: tmpl2.objectId}}
+      {duplicateObject:{objectId:tmplId1}},
+      {duplicateObject:{objectId:tmplId2}}
     ]}),
     muteHttpExceptions:true
   });
   if (dupResp.getResponseCode() !== 200) throw new Error('Duplicate failed: '+dupResp.getContentText().substring(0,300));
-
   var dupResult = JSON.parse(dupResp.getContentText());
   var newId1 = dupResult.replies[0].duplicateObject.objectId;
   var newId2 = dupResult.replies[1].duplicateObject.objectId;
-  Logger.log('New slide IDs: ' + newId1 + ', ' + newId2);
+  Logger.log('New slide IDs: '+newId1+', '+newId2);
 
-  // 3. Re-read presentation to get the new slide elements (with new objectIds)
+  // ── STEP 3: Re-read to get element IDs of the new slides ─────────────────────
   Utilities.sleep(1000);
   getResp = UrlFetchApp.fetch(apiBase, {
     headers:{'Authorization':'Bearer '+token}, muteHttpExceptions:true
   });
   pres = JSON.parse(getResp.getContentText());
-  slides = pres.slides;
-
-  // Find our new slides by objectId
-  var newSlideData1 = null, newSlideData2 = null;
-  slides.forEach(function(s) {
-    if (s.objectId === newId1) newSlideData1 = s;
-    if (s.objectId === newId2) newSlideData2 = s;
+  var newSlide1 = null, newSlide2 = null;
+  pres.slides.forEach(function(s) {
+    if (s.objectId === newId1) newSlide1 = s;
+    if (s.objectId === newId2) newSlide2 = s;
   });
-  if (!newSlideData1 || !newSlideData2) throw new Error('Could not find new slides: '+newId1+', '+newId2);
+  if (!newSlide1 || !newSlide2) throw new Error('Could not find new slides: '+newId1+', '+newId2);
 
-  // 4. Collect element IDs to delete + logo shape ID on new slide 1
-  var deleteIds  = [];
-  var newLogoId  = null;
-
-  (newSlideData1.pageElements || []).forEach(function(el) {
-    if (el.image) deleteIds.push(el.objectId); // delete ALL images on slide 1
+  // ── STEP 4: Collect all image IDs + logo shape ID on the new slides ─────────
+  var deleteIds = [], newLogoId = null;
+  (newSlide1.pageElements || []).forEach(function(el) {
+    if (el.image) deleteIds.push(el.objectId);
     if (el.shape && (el.description === 'project_logo' || el.title === 'photo1_placeholder')) {
       newLogoId = el.objectId;
     }
   });
-  (newSlideData2.pageElements || []).forEach(function(el) {
-    if (el.image) deleteIds.push(el.objectId); // delete ALL images on slide 2
+  (newSlide2.pageElements || []).forEach(function(el) {
+    if (el.image) deleteIds.push(el.objectId);
   });
+  Logger.log('Images to delete: '+deleteIds.length+', Logo shape: '+newLogoId);
 
-  Logger.log('Deleting ' + deleteIds.length + ' images. Logo shape: ' + newLogoId);
-
-  // 5. Build the mega batchUpdate:
-  //    a) Delete all photos
-  //    b) Delete logo shape
-  //    c) Replace all text
-  //    d) Create new photo images with exact size + crop
-  //    e) Create logo image
-
+  // ── STEP 5: Build batchUpdate — delete old images, replace text, insert new photos
   var requests = [];
 
-  // a) Delete old photos
-  deleteIds.forEach(function(id) {
-    requests.push({deleteObject:{objectId:id}});
-  });
+  // a) Delete all copied template images from new slides
+  deleteIds.forEach(function(id) { requests.push({deleteObject:{objectId:id}}); });
 
-  // b) Delete logo shape (we'll replace with image)
+  // b) Delete logo placeholder shape (will be replaced with actual logo image)
   if (newLogoId) requests.push({deleteObject:{objectId:newLogoId}});
 
-  // c) Replace text placeholders
-  var dateStr = (data.date || ((data.event_month||'')+' '+(data.event_year||''))).trim();
+  // c) Replace text placeholders — scoped to new slides only
+  var dateStr  = (data.date || ((data.event_month||'')+' '+(data.event_year||''))).trim();
   var scopeStr = Array.isArray(data.scope) ? data.scope.join('\n') : String(data.scope||'').replace(/,\s*/g,'\n');
   var textPairs = [
     ['{{CLIENT_NAME}}',  data.client_name  || ''],
@@ -173,79 +135,65 @@ function createCaseStudySlide_(data) {
     ['{{SOLUTION}}',     data.solution     || '(Solution TBC)']
   ];
   textPairs.forEach(function(pair) {
-    [newId1, newId2].forEach(function(slideId) {
-      requests.push({replaceAllText:{
-        containsText:{text:pair[0],matchCase:true},
-        replaceText:pair[1],
-        pageObjectIds:[slideId]
-      }});
-    });
+    requests.push({replaceAllText:{
+      containsText:{text:pair[0], matchCase:true},
+      replaceText:pair[1],
+      pageObjectIds:[newId1, newId2]   // ← only touch the new slides, not the template originals
+    }});
   });
 
-  // d) Upload photos to Drive as temp files, get URLs, create images
-  var photos    = data.photos || data.images || [];
-  var heroIndex = parseInt(data.hero_index || 0, 10);
+  // d) Upload photos & create images on new slides
+  var photos = data.photos || data.images || [];
   var photoResults = [];
   var tempFolder = getOrCreateTempFolder_();
 
   for (var i = 0; i < Math.min(photos.length, 8); i++) {
     var photoNum = i + 1;
-    var altText  = 'PHOTO' + photoNum;
+    var key      = 'PHOTO' + photoNum;
     var slideId  = photoNum <= 4 ? newId1 : newId2;
-    var pos      = PHOTO_EMU[altText];
-
+    var pos      = PHOTO_EMU[key];
     try {
       var imgDims = getBase64ImageDimensions_(photos[i]);
-      var url     = saveBase64ToPublicDrive_(tempFolder, 'ph'+photoNum+'.jpg', photos[i], 'image/jpeg');
-      var crop    = calcCropCentre_(imgDims.w, imgDims.h, pos.w/PT, pos.h/PT);
-
+      var imgUrl  = saveBase64ToPublicDrive_(tempFolder, 'ph'+photoNum+'.jpg', photos[i], 'image/jpeg');
       requests.push({createImage:{
-        url: url,
-        objectId: 'NEWPHOTO_'+photoNum+'_'+newId1.replace(/[^a-z0-9]/gi,''),
+        url: imgUrl,
+        objectId: 'PH'+photoNum+'_'+newId1.replace(/[^a-z0-9]/gi,'').substring(0,20),
         elementProperties:{
           pageObjectId: slideId,
-          size:{
-            width: {magnitude:pos.w, unit:'EMU'},
-            height:{magnitude:pos.h, unit:'EMU'}
-          },
-          transform:{
-            scaleX:1, scaleY:1,
-            translateX:pos.l, translateY:pos.t,
-            unit:'EMU'
-          }
+          size:{width:{magnitude:pos.w,unit:'EMU'}, height:{magnitude:pos.h,unit:'EMU'}},
+          transform:{scaleX:1, scaleY:1, translateX:pos.l, translateY:pos.t, unit:'EMU'}
         }
       }});
-
-      photoResults.push(altText+':OK');
+      photoResults.push(key+':OK');
     } catch(pe) {
-      Logger.log('Photo '+photoNum+' error: '+pe.message);
-      photoResults.push(altText+':FAIL:'+pe.message);
+      Logger.log('Photo '+photoNum+' err: '+pe.message);
+      photoResults.push(key+':FAIL:'+pe.message);
     }
   }
 
   // e) Logo image
-  var logoResult  = 'no_logo';
-  var logoBase64  = data.logo_white_base64 || data.logo_white || '';
+  var logoResult = 'no_logo';
+  var logoBase64 = data.logo_white_base64 || data.logo_white || '';
   if (logoBase64) {
     try {
       var logoUrl = saveBase64ToPublicDrive_(tempFolder, 'logo_white.png', logoBase64, 'image/png');
       requests.push({createImage:{
         url: logoUrl,
-        objectId: 'NEWLOGO_'+newId1.replace(/[^a-z0-9]/gi,''),
+        objectId: 'LOGO_'+newId1.replace(/[^a-z0-9]/gi,'').substring(0,20),
         elementProperties:{
           pageObjectId: newId1,
-          size:{width:{magnitude:LOGO_EMU.w,unit:'EMU'},height:{magnitude:LOGO_EMU.h,unit:'EMU'}},
-          transform:{scaleX:1,scaleY:1,translateX:LOGO_EMU.l,translateY:LOGO_EMU.t,unit:'EMU'}
+          size:{width:{magnitude:LOGO_EMU.w,unit:'EMU'}, height:{magnitude:LOGO_EMU.h,unit:'EMU'}},
+          transform:{scaleX:1, scaleY:1, translateX:LOGO_EMU.l, translateY:LOGO_EMU.t, unit:'EMU'}
         }
       }});
       logoResult = 'OK';
     } catch(le) {
-      Logger.log('Logo error: '+le.message);
+      Logger.log('Logo err: '+le.message);
       logoResult = 'FAIL:'+le.message;
     }
   }
 
-  // 6. Execute the mega batchUpdate
+  // ── STEP 6: Execute batchUpdate ─────────────────────────────────────────────────
   Utilities.sleep(500);
   var batchResp = UrlFetchApp.fetch(apiBase+':batchUpdate', {
     method:'post', contentType:'application/json',
@@ -253,25 +201,22 @@ function createCaseStudySlide_(data) {
     payload: JSON.stringify({requests:requests}),
     muteHttpExceptions:true
   });
-
   if (batchResp.getResponseCode() !== 200) {
     Logger.log('batchUpdate FAILED: '+batchResp.getContentText().substring(0,500));
-    throw new Error('batchUpdate failed: '+batchResp.getResponseCode()+': '+batchResp.getContentText().substring(0,200));
+    throw new Error('batchUpdate failed '+batchResp.getResponseCode()+': '+batchResp.getContentText().substring(0,200));
   }
-  Logger.log('batchUpdate OK: '+requests.length+' requests');
+  Logger.log('batchUpdate OK — '+requests.length+' requests');
 
-  // 7. Apply cropProperties via second batchUpdate (after images are created)
+  // ── STEP 7: Apply crop properties ─────────────────────────────────────────────────
   Utilities.sleep(1500);
   var cropRequests = [];
   for (var j = 0; j < Math.min(photos.length, 8); j++) {
     var pn   = j + 1;
-    var at   = 'PHOTO' + pn;
-    var pos2 = PHOTO_EMU[at];
+    var pos2 = PHOTO_EMU['PHOTO'+pn];
     var dims = getBase64ImageDimensions_(photos[j]);
     var cr   = calcCropCentre_(dims.w, dims.h, pos2.w/PT, pos2.h/PT);
-    var oid  = 'NEWPHOTO_'+pn+'_'+newId1.replace(/[^a-z0-9]/gi,'');
     cropRequests.push({updateImageProperties:{
-      objectId:oid,
+      objectId: 'PH'+pn+'_'+newId1.replace(/[^a-z0-9]/gi,'').substring(0,20),
       imageProperties:{cropProperties:{
         leftOffset:cr.leftOffset, rightOffset:cr.rightOffset,
         topOffset:cr.topOffset,   bottomOffset:cr.bottomOffset
@@ -279,25 +224,23 @@ function createCaseStudySlide_(data) {
       fields:'cropProperties'
     }});
   }
-
   if (cropRequests.length > 0) {
     var cropResp = UrlFetchApp.fetch(apiBase+':batchUpdate', {
       method:'post', contentType:'application/json',
       headers:{'Authorization':'Bearer '+token},
-      payload:JSON.stringify({requests:cropRequests}),
+      payload: JSON.stringify({requests:cropRequests}),
       muteHttpExceptions:true
     });
-    Logger.log('Crop update: '+cropResp.getResponseCode());
+    Logger.log('Crop: '+cropResp.getResponseCode()+' '+cropResp.getContentText().substring(0,100));
   }
 
-  // 8. Update Master DB col M
+  // ── STEP 8: Write slide URL to Master DB col M ───────────────────────────────
   updateSheetWithSlideUrl_(data.project_id, slideUrl);
 
   return ContentService.createTextOutput(JSON.stringify({
     status:'success', slide_url:slideUrl,
-    photos:photoResults, logo:logoResult,
-    requests_sent: requests.length,
-    new_slides:[newId1,newId2]
+    new_slides:[newId1, newId2],
+    photos:photoResults, logo:logoResult, requests_sent:requests.length
   })).setMimeType(ContentService.MimeType.JSON);
 }
 
