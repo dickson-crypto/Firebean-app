@@ -1,21 +1,14 @@
 /**
  * ============================================================
- * SCRIPT 2 of 3 — MASTER DB SLIDE CREATOR  v13.0
+ * SCRIPT 2 of 3 — MASTER DB SLIDE CREATOR  v14.0
  * ============================================================
  * Deploy URL:  https://script.google.com/macros/s/AKfycbx_7Xf8_HERQel93WJB2F_KjFOWHtCXzfvEkP9B_p7Kh4ImRAWRgWSXtLklvdbYsqbI/exec
  * app.py var:  SLIDE_DB_URL
  *
- * LOGIC:
- *   1. Read template — slides[0] & slides[1] are ALWAYS the 2 template pages
- *   2. Duplicate both → appended at end of deck
- *   3. Move BOTH new slides together to insertionIndex:2 (right after templates)
- *      → new slides land at page 3 & 4, everything else shifts down
- *   4. Delete copied template images from new slides
- *   5. Replace text + insert photos (object-fit:cover) + logo
- *
- * GRID (from template API, confirmed 720x405pt = 960x540px slide):
- *   Col1 left=210.6pt, Col2 left=465.3pt, w=254.7pt, h=202.5pt each
- *   5pt bleed on all edges to eliminate white gaps
+ * APPROACH (v14):
+ *   - Use SlidesApp.insertSlide() to copy slides 1 & 2 directly at index 2 & 3
+ *   - No REST position shuffling — atomic insert, no page number flicker
+ *   - Then switch to REST API only for image/text operations on new slides
  * ============================================================
  */
 
@@ -23,18 +16,18 @@ var TEMPLATE_ID = '19rmqCzgKD8y2ZiLxkiAqhhkV6_t-8QAumZkSi0Eu9C0';
 var SHEET_ID    = '1aTuqgmmSKMWgNCl2KR0QhK4Cj8G7W5yPsr4t39pi-yc';
 var SHEET_NAME  = 'Basic Info';
 
-// EMU positions from template API + 5pt bleed. 1pt = 12700 EMU.
+// EMU from template API + 5pt bleed
 var PT = 12700;
-var BLEED = 5 * PT;
+var B  = 5 * PT; // bleed
 var PHOTO_EMU = {
-  'PHOTO1': {l:210.6*PT-BLEED, t:-BLEED,          w:254.7*PT+BLEED*2, h:202.5*PT+BLEED*2},
-  'PHOTO2': {l:465.3*PT-BLEED, t:-BLEED,          w:254.7*PT+BLEED*2, h:202.5*PT+BLEED*2},
-  'PHOTO3': {l:210.6*PT-BLEED, t:202.5*PT-BLEED,  w:254.7*PT+BLEED*2, h:202.5*PT+BLEED*2},
-  'PHOTO4': {l:465.3*PT-BLEED, t:202.5*PT-BLEED,  w:254.7*PT+BLEED*2, h:202.5*PT+BLEED*2},
-  'PHOTO5': {l:210.5*PT-BLEED, t:-BLEED,          w:254.8*PT+BLEED*2, h:202.5*PT+BLEED*2},
-  'PHOTO6': {l:465.2*PT-BLEED, t:-BLEED,          w:254.8*PT+BLEED*2, h:202.5*PT+BLEED*2},
-  'PHOTO7': {l:210.5*PT-BLEED, t:202.5*PT-BLEED,  w:254.8*PT+BLEED*2, h:202.5*PT+BLEED*2},
-  'PHOTO8': {l:465.2*PT-BLEED, t:202.5*PT-BLEED,  w:254.8*PT+BLEED*2, h:202.5*PT+BLEED*2}
+  'PHOTO1': {l:210.6*PT-B, t:0-B,       w:254.7*PT+B*2, h:202.5*PT+B*2},
+  'PHOTO2': {l:465.3*PT-B, t:0-B,       w:254.7*PT+B*2, h:202.5*PT+B*2},
+  'PHOTO3': {l:210.6*PT-B, t:202.5*PT-B,w:254.7*PT+B*2, h:202.5*PT+B*2},
+  'PHOTO4': {l:465.3*PT-B, t:202.5*PT-B,w:254.7*PT+B*2, h:202.5*PT+B*2},
+  'PHOTO5': {l:210.5*PT-B, t:0-B,       w:254.8*PT+B*2, h:202.5*PT+B*2},
+  'PHOTO6': {l:465.2*PT-B, t:0-B,       w:254.8*PT+B*2, h:202.5*PT+B*2},
+  'PHOTO7': {l:210.5*PT-B, t:202.5*PT-B,w:254.8*PT+B*2, h:202.5*PT+B*2},
+  'PHOTO8': {l:465.2*PT-B, t:202.5*PT-B,w:254.8*PT+B*2, h:202.5*PT+B*2}
 };
 var LOGO_EMU = {l:24.3*PT, t:25.5*PT, w:166.2*PT, h:71.6*PT};
 
@@ -64,56 +57,46 @@ function createSlide_(data) {
   var apiBase  = 'https://slides.googleapis.com/v1/presentations/' + TEMPLATE_ID;
   var slideUrl = 'https://docs.google.com/presentation/d/' + TEMPLATE_ID + '/edit';
 
-  // ── STEP 1: Read master deck ──────────────────────────────────────────────────
-  var pres = apiGet_(apiBase, token);
-  if (!pres.slides || pres.slides.length < 2)
-    throw new Error('Master deck needs at least 2 template slides');
-  var tmplId1 = pres.slides[0].objectId;
-  var tmplId2 = pres.slides[1].objectId;
-  Logger.log('Templates: ' + tmplId1 + ', ' + tmplId2 + ' | Total slides: ' + pres.slides.length);
+  // ── STEP 1: Use SlidesApp to insert copies of slide 1 & 2 at position 3 & 4 ──
+  // insertSlide(insertionIndex, slide) inserts a copy at that index (0-based)
+  // insertionIndex 2 = position 3, insertionIndex 3 = position 4
+  var deck    = SlidesApp.openById(TEMPLATE_ID);
+  var slides  = deck.getSlides();
+  if (slides.length < 2) throw new Error('Need at least 2 template slides');
 
-  // ── STEP 2: Duplicate slides 1 & 2 in ONE batch (appended at end) ─────────────
-  var dupResult = apiBatch_(apiBase, token, [
-    {duplicateObject: {objectId: tmplId1}},
-    {duplicateObject: {objectId: tmplId2}}
-  ]);
-  var newId1 = dupResult.replies[0].duplicateObject.objectId;
-  var newId2 = dupResult.replies[1].duplicateObject.objectId;
-  Logger.log('Duplicated: ' + newId1 + ', ' + newId2);
+  // Insert copy of template slide 2 first at index 2, then template slide 1 at index 2
+  // (inserting slide1 at 2 pushes slide2-copy to index 3)
+  var newSlide2 = deck.insertSlide(2, slides[1]);  // position 3 temporarily
+  var newSlide1 = deck.insertSlide(2, slides[0]);  // position 3, pushes newSlide2 to 4
 
-  // ── STEP 3: Move BOTH new slides to position 3 & 4 in one request ─────────────
-  // insertionIndex:2 = insert before current index 2 = right after slides[0] & slides[1]
-  // Both slides moved together so they stay consecutive and templates stay at 1 & 2
-  Utilities.sleep(1000);
-  apiBatch_(apiBase, token, [
-    {updateSlidesPosition: {slideObjectIds: [newId1, newId2], insertionIndex: 2}}
-  ]);
-  Logger.log('Moved both to position 3 & 4');
+  var newId1 = newSlide1.getObjectId();
+  var newId2 = newSlide2.getObjectId();
+  Logger.log('Inserted at 3&4: ' + newId1 + ', ' + newId2);
 
-  // ── STEP 4: Re-read to get element IDs on the 2 new slides ────────────────────
+  // ── STEP 2: Re-read via REST to get element IDs ────────────────────────────
   Utilities.sleep(2000);
-  pres = apiGet_(apiBase, token);
-  var newSlide1 = null, newSlide2 = null;
+  var pres = apiGet_(apiBase, token);
+  var newSlideData1 = null, newSlideData2 = null;
   pres.slides.forEach(function(s, i) {
-    if (s.objectId === newId1) { newSlide1 = s; Logger.log('newSlide1 at position '+(i+1)); }
-    if (s.objectId === newId2) { newSlide2 = s; Logger.log('newSlide2 at position '+(i+1)); }
+    if (s.objectId === newId1) { newSlideData1 = s; Logger.log('Slide1 at pos '+(i+1)); }
+    if (s.objectId === newId2) { newSlideData2 = s; Logger.log('Slide2 at pos '+(i+1)); }
   });
-  if (!newSlide1 || !newSlide2)
+  if (!newSlideData1 || !newSlideData2)
     throw new Error('Cannot find new slides: ' + newId1 + ', ' + newId2);
 
-  // ── STEP 5: Delete template images from new slides (non-fatal) ───────────────
+  // ── STEP 3: Delete template images from new slides (non-fatal) ───────────────
   var deleteReqs = [];
   var newLogoId  = null;
-  (newSlide1.pageElements || []).forEach(function(el) {
+  (newSlideData1.pageElements || []).forEach(function(el) {
     if (el.image) deleteReqs.push({deleteObject: {objectId: el.objectId}});
     if (el.shape && (el.description === 'project_logo' || el.title === 'photo1_placeholder'))
       newLogoId = el.objectId;
   });
-  (newSlide2.pageElements || []).forEach(function(el) {
+  (newSlideData2.pageElements || []).forEach(function(el) {
     if (el.image) deleteReqs.push({deleteObject: {objectId: el.objectId}});
   });
   if (newLogoId) deleteReqs.push({deleteObject: {objectId: newLogoId}});
-  Logger.log('Deleting ' + deleteReqs.length + ' images, logo shape: ' + newLogoId);
+  Logger.log('Deleting ' + deleteReqs.length + ' images, logo: ' + newLogoId);
 
   if (deleteReqs.length > 0) {
     var delResp = UrlFetchApp.fetch(apiBase + ':batchUpdate', {
@@ -126,10 +109,10 @@ function createSlide_(data) {
   }
   Utilities.sleep(800);
 
-  // ── STEP 6: Text + photos + logo ─────────────────────────────────────────────
+  // ── STEP 4: Build requests — text + photos + logo ─────────────────────────
   var requests = [];
 
-  // Text — scoped to new slides only, template pages never touched
+  // Text — scoped to new slides only
   var dateStr  = (data.date || ((data.event_month||'') + ' ' + (data.event_year||''))).trim();
   var scopeStr = Array.isArray(data.scope)
     ? data.scope.join('\n')
@@ -151,7 +134,7 @@ function createSlide_(data) {
     }});
   });
 
-  // Photos — object-fit:cover using calcCoverTransform_
+  // Photos — object-fit:cover
   var photos       = data.photos || data.images || [];
   var photoResults = [];
   var tempFolder   = getOrCreateTempFolder_();
@@ -203,7 +186,7 @@ function createSlide_(data) {
     }
   }
 
-  // ── STEP 7: Execute batchUpdate ───────────────────────────────────────────────
+  // ── STEP 5: Execute batchUpdate ──────────────────────────────────────────────
   Utilities.sleep(500);
   var batchResp = UrlFetchApp.fetch(apiBase+':batchUpdate', {
     method:'post', contentType:'application/json',
@@ -217,7 +200,7 @@ function createSlide_(data) {
   }
   Logger.log('batchUpdate OK — '+requests.length+' requests');
 
-  // ── STEP 8: Write URL to Master DB ───────────────────────────────────────────
+  // ── STEP 6: Write URL to Master DB ──────────────────────────────────────────
   updateSheetWithSlideUrl_(data.project_id, slideUrl);
 
   return resp_({
@@ -280,17 +263,6 @@ function saveBase64ToPublicDrive_(folder,filename,base64Data,mimeType) {
 function apiGet_(url,token) {
   var r=UrlFetchApp.fetch(url,{headers:{'Authorization':'Bearer '+token},muteHttpExceptions:true});
   if(r.getResponseCode()!==200) throw new Error('GET failed '+r.getResponseCode()+': '+r.getContentText().substring(0,200));
-  return JSON.parse(r.getContentText());
-}
-
-function apiBatch_(apiBase,token,requests) {
-  var r=UrlFetchApp.fetch(apiBase+':batchUpdate',{
-    method:'post',contentType:'application/json',
-    headers:{'Authorization':'Bearer '+token},
-    payload:JSON.stringify({requests:requests}),
-    muteHttpExceptions:true
-  });
-  if(r.getResponseCode()!==200) throw new Error('batch failed '+r.getResponseCode()+': '+r.getContentText().substring(0,200));
   return JSON.parse(r.getContentText());
 }
 
