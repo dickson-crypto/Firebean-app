@@ -263,9 +263,7 @@ function getBase64ImageDimensions_(b64) {
 
 function getOrCreateTempFolder_() {
   var n='_Firebean_SlideTemp', it=DriveApp.getFoldersByName(n);
-  var f=it.hasNext()?it.next():DriveApp.createFolder(n);
-  f.setSharing(DriveApp.Access.ANYONE_WITH_LINK,DriveApp.Permission.VIEW);
-  return f;
+  return it.hasNext()?it.next():DriveApp.createFolder(n);
 }
 
 function saveBase64ToPublicDrive_(folder,filename,b64,mimeType) {
@@ -274,8 +272,8 @@ function saveBase64ToPublicDrive_(folder,filename,b64,mimeType) {
   var it=folder.getFilesByName(filename);
   while(it.hasNext()){it.next().setTrashed(true);}
   var file=folder.createFile(blob);
-  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK,DriveApp.Permission.VIEW);
-  return 'https://drive.google.com/thumbnail?id='+file.getId()+'&sz=s4000';
+  // No setSharing needed — Slides API uses script OAuth token to fetch the image
+  return 'https://drive.google.com/uc?export=view&id='+file.getId();
 }
 
 function apiGet_(url,token) {
