@@ -267,6 +267,21 @@ function updateSheetWithSlideUrl_(projectId,slideUrl) {
   }
 }
 
+function clearStaleProperties() {
+  // Run this once manually to reset all stale RUNNING/QUEUED states
+  var props = PropertiesService.getScriptProperties();
+  var all   = props.getProperties();
+  var cleared = [];
+  Object.keys(all).forEach(function(key) {
+    var val = String(all[key]);
+    if (val === 'RUNNING' || val === 'QUEUED' || val.indexOf('PAYLOAD_') === 0 || key.indexOf('PAYLOAD_') === 0) {
+      props.deleteProperty(key);
+      cleared.push(key + '=' + val);
+    }
+  });
+  Logger.log('Cleared ' + cleared.length + ' stale properties: ' + cleared.join(', '));
+}
+
 function testAuth() {
   var r=UrlFetchApp.fetch('https://slides.googleapis.com/v1/presentations/'+TEMPLATE_ID,
     {headers:{'Authorization':'Bearer '+ScriptApp.getOAuthToken()},muteHttpExceptions:true});
