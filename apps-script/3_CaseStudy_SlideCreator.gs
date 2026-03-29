@@ -247,70 +247,81 @@ function calcCropCentre_(imgW, imgH, frameW, frameH) {
   };
 }
 
+/**
+ * Apply fill + crop using Apps Script Slides Service only (no UrlFetchApp).
+ * Uses image.setLeft/Top/Width/Height for position+size,
+ * then Slides REST API via ScriptApp.getOAuthToken for crop.
+ * Falls back to no-crop (still fills frame) if REST API unavailable.
+ */
 function applyFillAndCrop_(presentationId, requests) {
   if (!requests.length) return;
-  var PT = 12700; // 1 point = 12700 EMU
-  var batch = [];
+
+  // Step 1 & 2: Set exact size + position using Slides Service
+  // (works without external_request scope)
+  var pres = SlidesApp.openById(presentationId);
+  var slides = pres.getSlides();
 
   requests.forEach(function(r) {
-    var fw = Math.round(r.frameW * PT);
-    var fh = Math.round(r.frameH * PT);
-    var tx = Math.round(r.left   * PT);
-    var ty = Math.round(r.top    * PT);
-
-    // 1. Position (scaleX/Y = 1, just translate)
-    batch.push({
-      updatePageElementTransform: {
-        objectId:  r.objectId,
-        transform: { scaleX:1, scaleY:1, translateX:tx, translateY:ty, unit:'EMU' },
-        applyMode: 'ABSOLUTE'
-      }
-    });
-
-    // 2. Set exact frame size → image stretches to fill
-    batch.push({
-      updatePageElementSize: {
-        objectId: r.objectId,
-        size: {
-          width:  { magnitude: fw, unit:'EMU' },
-          height: { magnitude: fh, unit:'EMU' }
+    // Find the image across all slides
+    for (var si = 0; si < slides.length; si++) {
+      var imgs = slides[si].getImages();
+      for (var ii = 0; ii < imgs.length; ii++) {
+        if (imgs[ii].getObjectId() === r.objectId) {
+          var img = imgs[ii];
+          img.setLeft(r.left);
+          img.setTop(r.top);
+          img.setWidth(r.frameW);
+          img.setHeight(r.frameH);
+          Logger.log('Positioned ' + r.objectId + ' at ' + r.left + ',' + r.top + ' ' + r.frameW + 'x' + r.frameH);
+          break;
         }
       }
-    });
-
-    // 3. Centre-crop based on original aspect ratio
-    batch.push({
-      updateImageProperties: {
-        objectId: r.objectId,
-        imageProperties: {
-          cropProperties: {
-            leftOffset:   r.crop.leftOffset,
-            rightOffset:  r.crop.rightOffset,
-            topOffset:    r.crop.topOffset,
-            bottomOffset: r.crop.bottomOffset
-          }
-        },
-        fields: 'cropProperties'
-      }
-    });
+    }
   });
 
-  var token    = ScriptApp.getOAuthToken();
-  var url      = 'https://slides.googleapis.com/v1/presentations/' + presentationId + ':batchUpdate';
-  var resp     = UrlFetchApp.fetch(url, {
-    method: 'post', contentType: 'application/json',
-    headers: {'Authorization': 'Bearer ' + token},
-    payload: JSON.stringify({requests: batch}),
-    muteHttpExceptions: true
-  });
-  if (resp.getResponseCode() !== 200) {
-    Logger.log('Fill+crop FAILED: ' + resp.getContentText().substring(0, 300));
-  } else {
-    Logger.log('Fill+crop OK: ' + requests.length + ' images');
+  pres.saveAndClose();
+  Utilities.sleep(2000);
+
+  // Step 3: Apply crop via REST API (requires external_request scope)
+  try {
+    var PT = 12700;
+    var batch = requests.map(function(r) {
+      return {
+        updateImageProperties: {
+          objectId: r.objectId,
+          imageProperties: {
+            cropProperties: {
+              leftOffset:   r.crop.leftOffset,
+              rightOffset:  r.crop.rightOffset,
+              topOffset:    r.crop.topOffset,
+              bottomOffset: r.crop.bottomOffset
+            }
+          },
+          fields: 'cropProperties'
+        }
+      };
+    });
+
+    var token = ScriptApp.getOAuthToken();
+    var url   = 'https://slides.googleapis.com/v1/presentations/' + presentationId + ':batchUpdate';
+    var resp  = UrlFetchApp.fetch(url, {
+      method: 'post', contentType: 'application/json',
+      headers: {'Authorization': 'Bearer ' + token},
+      payload: JSON.stringify({requests: batch}),
+      muteHttpExceptions: true
+    });
+    if (resp.getResponseCode() === 200) {
+      Logger.log('Crop OK: ' + requests.length + ' images centre-cropped');
+    } else {
+      Logger.log('Crop REST failed (images still fill frame, just not cropped): ' + resp.getResponseCode());
+    }
+  } catch(e) {
+    Logger.log('Crop skipped (no external_request scope): ' + e.message);
+    // Images still fill frame correctly via setWidth/Height — just no centre crop
   }
 }
 
-// Keep old name as alias for compatibility
+// Alias for compatibility
 function applyCropCentreFill_(presentationId, requests) {
   applyFillAndCrop_(presentationId, requests);
 }
