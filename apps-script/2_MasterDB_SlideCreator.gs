@@ -60,26 +60,42 @@ function createSlide_(data) {
   var apiBase = 'https://slides.googleapis.com/v1/presentations/' + TEMPLATE_ID;
   var slideUrl = 'https://docs.google.com/presentation/d/' + TEMPLATE_ID + '/edit';
 
-  // ── IDEMPOTENCY: use PropertiesService as fast lock (works even without sheet row) ──
-  var pid = String(data.project_id || ('tmp_'+new Date().getTime()));
-  var props = PropertiesService.getScriptProperties();
-  var existing = props.getProperty(pid);
-  if (existing) {
-    Logger.log('SKIP — already running/done: ' + pid + ' = ' + existing);
-    if (existing.indexOf('http') === 0) return resp_({status:'success', slide_url:existing, skipped:true});
-    return resp_({status:'error', message:'Already processing, please wait 60s'});
-  }
-  // Claim immediately — expires after 120 seconds automatically via cleanup
-  props.setProperty(pid, 'PROCESSING');
-  Logger.log('Claimed: ' + pid);
+  // ── IDEMPOTENCY: ScriptLock + PropertiesService + Sheet flag ────────────────
+  // Triple-layer protection against Google Apps Script auto-retries
+  var lock = LockService.getScriptLock();
+  var gotLock = lock.tryLock(25000);  // wait up to 25s for lock
 
-  // Also update sheet col M if row exists
+  var pid = String(data.project_id || '');
+  var props = PropertiesService.getScriptProperties();
+
+  if (gotLock) {
+    // We have the lock — check if another instance already started
+    var existing = pid ? props.getProperty(pid) : null;
+    if (existing) {
+      lock.releaseLock();
+      Logger.log('SKIP (lock) — already running/done: ' + pid);
+      if (existing.indexOf('http') === 0) return resp_({status:'success', slide_url:existing, skipped:true});
+      return resp_({status:'error', message:'Already processing'});
+    }
+    // Claim it while we hold the lock
+    if (pid) {
+      props.setProperty(pid, 'PROCESSING');
+      Logger.log('Claimed with lock: ' + pid);
+    }
+    lock.releaseLock();
+  } else {
+    // Couldn't get lock — another instance is running
+    Logger.log('Could not get lock — skipping: ' + pid);
+    return resp_({status:'error', message:'Script busy, retry in 60s'});
+  }
+
+  // Also mark sheet col M as PROCESSING
   var targetRow = -1;
-  if (data.project_id) {
+  if (pid) {
     var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(SHEET_NAME);
     var vals  = sheet.getDataRange().getValues();
     for (var r = 1; r < vals.length; r++) {
-      if (String(vals[r][25]).toUpperCase() === String(data.project_id).toUpperCase()) {
+      if (String(vals[r][25]).toUpperCase() === pid.toUpperCase()) {
         targetRow = r + 1;
         var colM = String(vals[r][12] || '');
         if (colM.indexOf('http') === 0) {
