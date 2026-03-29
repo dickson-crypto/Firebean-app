@@ -221,8 +221,11 @@ function createSlidesForSelectedRow() {
     try {
       var logoIdMatch = logoWhiteUrl.match(/[-\w]{25,}/);
       if (logoIdMatch) logoWhiteFileId = logoIdMatch[0];
+      Logger.log('Logo from col Y fallback: '+logoWhiteFileId);
     } catch(e) {}
   }
+  Logger.log('Photos found: '+photos.length+' | Logo file ID: '+(logoWhiteFileId||'NONE'));
+  SpreadsheetApp.getActive().toast('Photos: '+photos.length+' | Logo: '+(logoWhiteFileId?'found':'MISSING'), '🎬 Slides', 8);
 
   // Format date — col D may be a Date object or already a "MMM YYYY" string
   if (eventDate && eventDate instanceof Date) {
@@ -366,6 +369,7 @@ function createMasterSlides_(data) {
   collectJobs(nId1);
   collectJobs(nId2);
   Logger.log('Replace jobs: '+replaceJobs.length);
+  replaceJobs.forEach(function(j){Logger.log(' > '+j.label+' fileId='+j.fileId+' objId='+j.imageObjId);});
 
   var driveApiBase = 'https://www.googleapis.com/drive/v3/files/';
 
