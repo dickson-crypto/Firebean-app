@@ -60,8 +60,20 @@ function createSlide_(data) {
   var apiBase = 'https://slides.googleapis.com/v1/presentations/' + TEMPLATE_ID;
   var slideUrl = 'https://docs.google.com/presentation/d/' + TEMPLATE_ID + '/edit';
 
-  // ── IDEMPOTENCY: write PROCESSING as the VERY FIRST THING ────────────────────
-  // This must happen before any slow API calls so retries see it immediately
+  // ── IDEMPOTENCY: use PropertiesService as fast lock (works even without sheet row) ──
+  var pid = String(data.project_id || ('tmp_'+new Date().getTime()));
+  var props = PropertiesService.getScriptProperties();
+  var existing = props.getProperty(pid);
+  if (existing) {
+    Logger.log('SKIP — already running/done: ' + pid + ' = ' + existing);
+    if (existing.indexOf('http') === 0) return resp_({status:'success', slide_url:existing, skipped:true});
+    return resp_({status:'error', message:'Already processing, please wait 60s'});
+  }
+  // Claim immediately — expires after 120 seconds automatically via cleanup
+  props.setProperty(pid, 'PROCESSING');
+  Logger.log('Claimed: ' + pid);
+
+  // Also update sheet col M if row exists
   var targetRow = -1;
   if (data.project_id) {
     var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(SHEET_NAME);
@@ -70,20 +82,12 @@ function createSlide_(data) {
       if (String(vals[r][25]).toUpperCase() === String(data.project_id).toUpperCase()) {
         targetRow = r + 1;
         var colM = String(vals[r][12] || '');
-        // Already done — return immediately
         if (colM.indexOf('http') === 0) {
-          Logger.log('SKIP — already done: ' + data.project_id);
+          props.setProperty(pid, colM);
           return resp_({status:'success', slide_url:colM, skipped:true});
         }
-        // Another instance already claimed it
-        if (colM === 'PROCESSING') {
-          Logger.log('SKIP — already processing: ' + data.project_id);
-          return resp_({status:'error', message:'Already processing'});
-        }
-        // Claim it immediately before ANY other work
         sheet.getRange(targetRow, 13).setValue('PROCESSING');
-        SpreadsheetApp.flush(); // force write NOW so other instances see it
-        Logger.log('Claimed PROCESSING: ' + data.project_id);
+        SpreadsheetApp.flush();
         break;
       }
     }
@@ -295,6 +299,10 @@ function apiBatch_(base,token,reqs) {
 }
 
 function updateSheetWithSlideUrl_(projectId,slideUrl) {
+  // Save to PropertiesService so retries know we're done
+  if (projectId) {
+    try { PropertiesService.getScriptProperties().setProperty(String(projectId), slideUrl); } catch(e) {}
+  }
   if(!projectId) return;
   var sheet=SpreadsheetApp.openById(SHEET_ID).getSheetByName(SHEET_NAME);
   var vals=sheet.getDataRange().getValues();
