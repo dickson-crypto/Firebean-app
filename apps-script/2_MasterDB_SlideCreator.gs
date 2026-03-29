@@ -60,36 +60,23 @@ function createSlide_(data) {
   var apiBase = 'https://slides.googleapis.com/v1/presentations/' + TEMPLATE_ID;
   var slideUrl = 'https://docs.google.com/presentation/d/' + TEMPLATE_ID + '/edit';
 
-  // ── IDEMPOTENCY: ScriptLock + PropertiesService + Sheet flag ────────────────
-  // Triple-layer protection against Google Apps Script auto-retries
-  var lock = LockService.getScriptLock();
-  var gotLock = lock.tryLock(25000);  // wait up to 25s for lock
-
-  var pid = String(data.project_id || '');
+  // ── IDEMPOTENCY: PropertiesService per-project dedup ────────────────────────
+  var pid   = String(data.project_id || '');
   var props = PropertiesService.getScriptProperties();
 
-  if (gotLock) {
-    // We have the lock — check if another instance already started
-    var existing = pid ? props.getProperty(pid) : null;
+  if (pid) {
+    var existing = props.getProperty(pid);
     if (existing) {
-      lock.releaseLock();
-      Logger.log('SKIP (lock) — already running/done: ' + pid);
+      Logger.log('SKIP — already running/done: ' + pid + ' = ' + existing);
       if (existing.indexOf('http') === 0) return resp_({status:'success', slide_url:existing, skipped:true});
       return resp_({status:'error', message:'Already processing'});
     }
-    // Claim it while we hold the lock
-    if (pid) {
-      props.setProperty(pid, 'PROCESSING');
-      Logger.log('Claimed with lock: ' + pid);
-    }
-    lock.releaseLock();
-  } else {
-    // Couldn't get lock — another instance is running
-    Logger.log('Could not get lock — skipping: ' + pid);
-    return resp_({status:'error', message:'Script busy, retry in 60s'});
+    // Claim this project_id immediately
+    props.setProperty(pid, 'PROCESSING');
+    Logger.log('Claimed: ' + pid);
   }
 
-  // Also mark sheet col M as PROCESSING
+  // Also mark sheet col M as PROCESSING (for UI feedback)
   var targetRow = -1;
   if (pid) {
     var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(SHEET_NAME);
