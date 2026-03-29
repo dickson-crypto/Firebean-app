@@ -96,6 +96,19 @@ function createSlide_(data) {
   var props    = PropertiesService.getScriptProperties();
   var pid      = String(data.project_id || '');
 
+  // Double-check dedup — in sync mode, retries may reach here concurrently
+  if (pid) {
+    var state = props.getProperty(pid);
+    if (state && state !== 'PROCESSING') {
+      // Already done or in progress by another instance
+      Logger.log('SKIP in createSlide_: ' + pid + ' = ' + state);
+      if (state.indexOf('http') === 0) return resp_({status:'success', slide_url:state, skipped:true});
+      return resp_({status:'error', message:'Already processing'});
+    }
+    // Mark as IN_PROGRESS so concurrent retries skip
+    props.setProperty(pid, 'IN_PROGRESS_' + new Date().getTime());
+  }
+
   Logger.log('createSlide_ for: ' + pid + ' | Total slides: ' + slides.length);
 
   // ── STEP 1: Duplicate template slides 1 & 2, append at END ───────────────────
