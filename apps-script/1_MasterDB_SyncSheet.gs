@@ -216,15 +216,14 @@ function createSlidesForSelectedRow() {
     } catch(e) { Logger.log('Folder load err: ' + e.message); }
   }
 
-  // Fallback: get logo from col Y if not found in folder
+  // Logo: prefer Logo_White from folder, fallback to col Y URL
   if (!logoWhiteFileId && logoWhiteUrl) {
     try {
       var logoIdMatch = logoWhiteUrl.match(/[-\w]{25,}/);
-      if (logoIdMatch) logoWhiteFileId = logoIdMatch[0];
-      Logger.log('Logo from col Y fallback: '+logoWhiteFileId);
+      if (logoIdMatch) { logoWhiteFileId = logoIdMatch[0]; Logger.log('Logo from col Y: '+logoWhiteFileId); }
     } catch(e) {}
   }
-  Logger.log('Photos found: '+photos.length+' | Logo file ID: '+(logoWhiteFileId||'NONE'));
+  Logger.log('Photos: '+photos.length+' | Logo: '+(logoWhiteFileId||'NONE'));
   SpreadsheetApp.getActive().toast('Photos: '+photos.length+' | Logo: '+(logoWhiteFileId?'found':'MISSING'), '🎬 Slides', 8);
 
   // Format date — col D may be a Date object or already a "MMM YYYY" string
@@ -340,36 +339,43 @@ function createMasterSlides_(data) {
   var photoFileIds = data.photos || [];
   var logoFileId   = data.logo_white_file_id || '';
 
-  // All images (PHOTO1-8 + logo) are now real image elements in the template
-  // → use replaceImage for everything. No size calculation, no distortion.
-  var replaceJobs = [];
+  // replaceJobs: existing image elements (PHOTO1-8 + logo if image)
+  // createLogoJobs: logo placeholder if still a shape
+  var replaceJobs   = [];
+  var createLogoJob = null; // {objId, size, transform} if logo is still a shape
 
   function collectJobs(slideId) {
     getSlideElements(slideId).forEach(function(el) {
-      if (!el.image) return; // skip shapes
       var title = el.title || '';
       var desc  = el.description || '';
+      var isImg = !!el.image;
 
-      // PHOTO1-8
+      // PHOTO1-8 — always images
       var m = title.match(/^PHOTO([1-8])$/);
-      if (m) {
+      if (m && isImg) {
         var fid = photoFileIds[parseInt(m[1])-1];
         if (fid) replaceJobs.push({imageObjId:el.objectId, fileId:fid, label:title});
         return;
       }
 
-      // Logo — title or description = 'project_logo'
-      if (slideId===nId1 && logoFileId &&
-          (title==='project_logo'||desc==='project_logo'||
-           title==='photo1_placeholder'||title==='logo_white')) {
-        replaceJobs.push({imageObjId:el.objectId, fileId:logoFileId, label:'LOGO'});
+      // Logo placeholder (image or shape) on slide 1
+      var isLogoEl = (title==='project_logo'||desc==='project_logo'||
+                      title==='photo1_placeholder'||title==='logo_white');
+      if (slideId===nId1 && logoFileId && isLogoEl) {
+        if (isImg) {
+          // Image element — use replaceImage
+          replaceJobs.push({imageObjId:el.objectId, fileId:logoFileId, label:'LOGO'});
+        } else {
+          // Still a shape — use createImage + deleteObject
+          if (el.size && el.transform) createLogoJob = {objId:el.objectId, size:el.size, transform:el.transform};
+        }
       }
     });
   }
   collectJobs(nId1);
   collectJobs(nId2);
-  Logger.log('Replace jobs: '+replaceJobs.length);
-  replaceJobs.forEach(function(j){Logger.log(' > '+j.label+' fileId='+j.fileId+' objId='+j.imageObjId);});
+  Logger.log('Replace jobs: '+replaceJobs.length+(createLogoJob?' + shape logo':''));
+  replaceJobs.forEach(function(j){Logger.log(' > '+j.label+' objId='+j.imageObjId);});
 
   var driveApiBase = 'https://www.googleapis.com/drive/v3/files/';
 
@@ -410,6 +416,37 @@ function createMasterSlides_(data) {
       Logger.log(job.label+' HTTP '+r.getResponseCode()+(r.getResponseCode()!==200?' — '+r.getContentText().substring(0,200):''));
     });
   });
+
+  // 5b. Logo as shape — createImage at exact position + delete shape
+  if (createLogoJob && logoFileId) {
+    withPublic(logoFileId, function(imgUrl) {
+      var t = createLogoJob.transform;
+      var s = createLogoJob.size;
+      // Rendered size = size * scale
+      var wEmu = s.width.magnitude  * (t.scaleX||1);
+      var hEmu = s.height.magnitude * (t.scaleY||1);
+      var r = UrlFetchApp.fetch(apiBase+':batchUpdate', {
+        method:'post', contentType:'application/json',
+        headers:{'Authorization':'Bearer '+token},
+        payload:JSON.stringify({requests:[
+          {createImage:{
+            url: imgUrl,
+            elementProperties:{
+              pageObjectId: nId1,
+              size:{
+                width: {magnitude:wEmu,unit:'EMU'},
+                height:{magnitude:hEmu,unit:'EMU'}
+              },
+              transform:{scaleX:1,scaleY:1,translateX:t.translateX||0,translateY:t.translateY||0,unit:'EMU'}
+            }
+          }},
+          {deleteObject:{objectId:createLogoJob.objId}}
+        ]}),
+        muteHttpExceptions:true
+      });
+      Logger.log('LOGO(shape) HTTP '+r.getResponseCode()+(r.getResponseCode()!==200?' — '+r.getContentText().substring(0,200):''));
+    });
+  }
 
   Logger.log('createMasterSlides_ done — '+replaceJobs.length+' images replaced');
 }
