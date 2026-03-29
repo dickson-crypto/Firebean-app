@@ -55,23 +55,62 @@ function doPost(e) {
 // ─── MAIN ────────────────────────────────────────────────────────────────────
 
 function createCaseStudySlide_(data) {
-  var presentation = SlidesApp.openById(TEMPLATE_ID);
   var slideUrl = 'https://docs.google.com/presentation/d/' + TEMPLATE_ID + '/edit';
 
-  var templateSlides = presentation.getSlides();
+  // 1. Get template slide objectIds (slides 0 and 1)
+  var pres0 = SlidesApp.openById(TEMPLATE_ID);
+  var templateSlides = pres0.getSlides();
   if (templateSlides.length < 2) throw new Error('Template needs at least 2 slides.');
+  var templateId1 = templateSlides[0].getObjectId();
+  var templateId2 = templateSlides[1].getObjectId();
+  var totalSlides  = templateSlides.length;
+  pres0.saveAndClose();
 
-  // 1. Append copies of template slides 1 & 2 to end
-  var newSlide1 = presentation.appendSlide(templateSlides[0]);
-  var newSlide2 = presentation.appendSlide(templateSlides[1]);
+  // 2. Duplicate template slides via REST API (creates truly independent copies)
+  //    duplicateObject appends the copy to the end of the presentation
+  var token   = ScriptApp.getOAuthToken();
+  var apiBase = 'https://slides.googleapis.com/v1/presentations/' + TEMPLATE_ID + ':batchUpdate';
 
-  // 2. Build strings
+  var dupResp = UrlFetchApp.fetch(apiBase, {
+    method: 'post', contentType: 'application/json',
+    headers: {'Authorization': 'Bearer ' + token},
+    payload: JSON.stringify({requests: [
+      {duplicateObject: {objectId: templateId1}},
+      {duplicateObject: {objectId: templateId2}}
+    ]}),
+    muteHttpExceptions: true
+  });
+
+  if (dupResp.getResponseCode() !== 200) {
+    // Fallback to appendSlide if REST not available
+    Logger.log('duplicateObject failed, falling back to appendSlide: ' + dupResp.getContentText().substring(0,200));
+    var pres1 = SlidesApp.openById(TEMPLATE_ID);
+    var ts    = pres1.getSlides();
+    pres1.appendSlide(ts[0]);
+    pres1.appendSlide(ts[1]);
+    pres1.saveAndClose();
+  }
+
+  Utilities.sleep(1500);
+
+  // 3. Re-open — new slides are the last 2
+  var presentation = SlidesApp.openById(TEMPLATE_ID);
+  var allSlides    = presentation.getSlides();
+  var newSlide1    = allSlides[allSlides.length - 2];
+  var newSlide2    = allSlides[allSlides.length - 1];
+
+  // 4. Clear ALL photo images from BOTH new slides immediately
+  //    (duplicateObject gives independent copies we can freely modify)
+  removeAllPhotoImages_(newSlide1);
+  removeAllPhotoImages_(newSlide2);
+
+  // 5. Build strings
   var dateStr = (data.date || ((data.event_month||'') + ' ' + (data.event_year||''))).trim();
   var scopeStr = Array.isArray(data.scope)
     ? data.scope.join('\n')
     : String(data.scope || '').replace(/,\s*/g, '\n');
 
-  // 3. Replace all text placeholders
+  // 6. Replace all text placeholders
   var replacements = [
     ['{{CLIENT_NAME}}',  data.client_name  || ''],
     ['{{PROJECT_NAME}}', data.project_name || ''],
@@ -86,21 +125,6 @@ function createCaseStudySlide_(data) {
     newSlide1.replaceAllText(pair[0], pair[1]);
     newSlide2.replaceAllText(pair[0], pair[1]);
   });
-
-  // 4. Clear ALL existing photo images from BOTH new slides BEFORE saving
-  // Must happen in the same session as appendSlide to take effect
-  removeAllPhotoImages_(newSlide1);
-  removeAllPhotoImages_(newSlide2);
-
-  // Save so REST API can see the new slides
-  presentation.saveAndClose();
-  Utilities.sleep(1500); // give Slides time to commit
-
-  // 5. Re-open to get updated objectIds
-  presentation = SlidesApp.openById(TEMPLATE_ID);
-  var allSlides = presentation.getSlides();
-  newSlide1 = allSlides[allSlides.length - 2];
-  newSlide2 = allSlides[allSlides.length - 1];
 
   // 6. Insert photos with crop-centre fill
   var photos = data.photos || data.images || [];
