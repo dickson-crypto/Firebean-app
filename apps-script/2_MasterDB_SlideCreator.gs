@@ -96,17 +96,31 @@ function createSlide_(data) {
   var props    = PropertiesService.getScriptProperties();
   var pid      = String(data.project_id || '');
 
-  // Double-check dedup — in sync mode, retries may reach here concurrently
+  // Atomic dedup: read-then-write in one operation using a unique run key
   if (pid) {
     var state = props.getProperty(pid);
-    if (state && state !== 'PROCESSING') {
-      // Already done or in progress by another instance
-      Logger.log('SKIP in createSlide_: ' + pid + ' = ' + state);
-      if (state.indexOf('http') === 0) return resp_({status:'success', slide_url:state, skipped:true});
-      return resp_({status:'error', message:'Already processing'});
+    // If already has a URL, return it
+    if (state && state.indexOf('http') === 0) {
+      Logger.log('SKIP — done: ' + pid);
+      return resp_({status:'success', slide_url:state, skipped:true});
     }
-    // Mark as IN_PROGRESS so concurrent retries skip
-    props.setProperty(pid, 'IN_PROGRESS_' + new Date().getTime());
+    // If PROCESSING was set less than 90 seconds ago, skip
+    if (state && state.indexOf('RUN_') === 0) {
+      var runTime = parseInt(state.replace('RUN_','')) || 0;
+      if (new Date().getTime() - runTime < 90000) {
+        Logger.log('SKIP — running since ' + runTime + ': ' + pid);
+        return resp_({status:'error', message:'Already running'});
+      }
+    }
+    // Claim with timestamp — any retry in next 90s will see this and skip
+    props.setProperty(pid, 'RUN_' + new Date().getTime());
+    Utilities.sleep(200); // tiny pause to let the write propagate
+    // Verify we're still the owner (another instance may have just written)
+    var verify = props.getProperty(pid);
+    if (!verify || verify.indexOf('RUN_') !== 0) {
+      Logger.log('Lost race condition for: ' + pid);
+      return resp_({status:'error', message:'Lost race, retry'});
+    }
   }
 
   Logger.log('createSlide_ for: ' + pid + ' | Total slides: ' + slides.length);
