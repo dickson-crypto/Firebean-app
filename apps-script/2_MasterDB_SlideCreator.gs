@@ -56,22 +56,12 @@ function resp_(obj) {
 // ─── MAIN ────────────────────────────────────────────────────────────────────
 
 function createSlide_(data) {
-  // Lock prevents concurrent execution
-  var lock = LockService.getScriptLock();
-  if (!lock.tryLock(30000)) return resp_({status:'error', message:'Busy, retry'});
-  try {
-    return createSlideInner_(data);
-  } finally {
-    lock.releaseLock();
-  }
-}
-
-function createSlideInner_(data) {
   var token   = ScriptApp.getOAuthToken();
   var apiBase = 'https://slides.googleapis.com/v1/presentations/' + TEMPLATE_ID;
   var slideUrl = 'https://docs.google.com/presentation/d/' + TEMPLATE_ID + '/edit';
 
-  // ── IDEMPOTENCY: mark PROCESSING immediately, skip if already done ────────────
+  // ── IDEMPOTENCY: write PROCESSING as the VERY FIRST THING ────────────────────
+  // This must happen before any slow API calls so retries see it immediately
   var targetRow = -1;
   if (data.project_id) {
     var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(SHEET_NAME);
@@ -80,14 +70,22 @@ function createSlideInner_(data) {
       if (String(vals[r][25]).toUpperCase() === String(data.project_id).toUpperCase()) {
         targetRow = r + 1;
         var colM = String(vals[r][12] || '');
-        if (colM.indexOf('http') === 0) return resp_({status:'success', slide_url:colM, skipped:true});
-        if (colM === 'PROCESSING') return resp_({status:'error', message:'Already processing'});
+        // Already done — return immediately
+        if (colM.indexOf('http') === 0) {
+          Logger.log('SKIP — already done: ' + data.project_id);
+          return resp_({status:'success', slide_url:colM, skipped:true});
+        }
+        // Another instance already claimed it
+        if (colM === 'PROCESSING') {
+          Logger.log('SKIP — already processing: ' + data.project_id);
+          return resp_({status:'error', message:'Already processing'});
+        }
+        // Claim it immediately before ANY other work
+        sheet.getRange(targetRow, 13).setValue('PROCESSING');
+        SpreadsheetApp.flush(); // force write NOW so other instances see it
+        Logger.log('Claimed PROCESSING: ' + data.project_id);
         break;
       }
-    }
-    if (targetRow > 0) {
-      sheet.getRange(targetRow, 13).setValue('PROCESSING');
-      SpreadsheetApp.flush();
     }
   }
 
