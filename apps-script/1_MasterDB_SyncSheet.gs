@@ -358,17 +358,11 @@ function createMasterSlides_(data) {
         return;
       }
 
-      // Logo placeholder (image or shape) on slide 1
+      // Logo placeholder — delete it (we createImage at fixed coords below)
       var isLogoEl = (title==='project_logo'||desc==='project_logo'||
                       title==='photo1_placeholder'||title==='logo_white');
-      if (slideId===nId1 && logoFileId && isLogoEl) {
-        if (isImg) {
-          // Image element — use replaceImage
-          replaceJobs.push({imageObjId:el.objectId, fileId:logoFileId, label:'LOGO'});
-        } else {
-          // Still a shape — use createImage + deleteObject
-          if (el.size && el.transform) createLogoJob = {objId:el.objectId, size:el.size, transform:el.transform};
-        }
+      if (slideId===nId1 && isLogoEl) {
+        createLogoJob = {objId: el.objectId}; // just need objId to delete it
       }
     });
   }
@@ -417,34 +411,30 @@ function createMasterSlides_(data) {
     });
   });
 
-  // 5b. Logo as shape — createImage at exact position + delete shape
-  if (createLogoJob && logoFileId) {
+  // 5b. Logo — delete placeholder + createImage at fixed template position
+  //     Position from template: translateX=308950, translateY=323650, 166x72pt
+  if (logoFileId) {
+    var logoRequests = [];
+    if (createLogoJob) logoRequests.push({deleteObject:{objectId:createLogoJob.objId}});
     withPublic(logoFileId, function(imgUrl) {
-      var t = createLogoJob.transform;
-      var s = createLogoJob.size;
-      // Rendered size = size * scale
-      var wEmu = s.width.magnitude  * (t.scaleX||1);
-      var hEmu = s.height.magnitude * (t.scaleY||1);
+      logoRequests.push({createImage:{
+        url: imgUrl,
+        elementProperties:{
+          pageObjectId: nId1,
+          size:{
+            width:  {magnitude:2110200, unit:'EMU'},
+            height: {magnitude:909000,  unit:'EMU'}
+          },
+          transform:{scaleX:1, scaleY:1, translateX:308950, translateY:323650, unit:'EMU'}
+        }
+      }});
       var r = UrlFetchApp.fetch(apiBase+':batchUpdate', {
         method:'post', contentType:'application/json',
         headers:{'Authorization':'Bearer '+token},
-        payload:JSON.stringify({requests:[
-          {createImage:{
-            url: imgUrl,
-            elementProperties:{
-              pageObjectId: nId1,
-              size:{
-                width: {magnitude:wEmu,unit:'EMU'},
-                height:{magnitude:hEmu,unit:'EMU'}
-              },
-              transform:{scaleX:1,scaleY:1,translateX:t.translateX||0,translateY:t.translateY||0,unit:'EMU'}
-            }
-          }},
-          {deleteObject:{objectId:createLogoJob.objId}}
-        ]}),
+        payload:JSON.stringify({requests:logoRequests}),
         muteHttpExceptions:true
       });
-      Logger.log('LOGO(shape) HTTP '+r.getResponseCode()+(r.getResponseCode()!==200?' — '+r.getContentText().substring(0,200):''));
+      Logger.log('LOGO HTTP '+r.getResponseCode()+(r.getResponseCode()!==200?' — '+r.getContentText().substring(0,200):''));
     });
   }
 
