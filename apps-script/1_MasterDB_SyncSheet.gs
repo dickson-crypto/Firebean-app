@@ -273,61 +273,19 @@ function createMasterSlides_(data) {
   var TEMPLATE_ID  = '1HGHk5mlW7pXX5xWoaEq_N4m8udrWZG_TsKo1xE6xgHc'; // 2-slide template file
   var MASTER_ID    = '19rmqCzgKD8y2ZiLxkiAqhhkV6_t-8QAumZkSi0Eu9C0';  // master deck to append to
   var token        = ScriptApp.getOAuthToken();
-  var tmplBase     = 'https://slides.googleapis.com/v1/presentations/' + TEMPLATE_ID;
   var apiBase      = 'https://slides.googleapis.com/v1/presentations/' + MASTER_ID;
 
-  // 1. Read template file to get slide objectIds
-  var tmplResp = UrlFetchApp.fetch(tmplBase+'?fields=slides.objectId',
-    {headers:{'Authorization':'Bearer '+token},muteHttpExceptions:true});
-  Logger.log('GET template HTTP: '+tmplResp.getResponseCode());
-  var tmpl = JSON.parse(tmplResp.getContentText());
-  if (tmpl.error) throw new Error('Template API error: '+tmpl.error.code+' '+tmpl.error.message);
-  if (!tmpl.slides || tmpl.slides.length < 2) throw new Error('Template needs 2 slides, got: '+(tmpl.slides?tmpl.slides.length:0));
-  var tmplId1 = tmpl.slides[0].objectId;
-  var tmplId2 = tmpl.slides[1].objectId;
-  Logger.log('Template slide IDs: '+tmplId1+', '+tmplId2);
+  // 2. Append template slides to master — NOT_LINKED = independent copy, text replacements work
+  var templatePres = SlidesApp.openById(TEMPLATE_ID);
+  var masterPres   = SlidesApp.openById(MASTER_ID);
+  var tmplSlides   = templatePres.getSlides();
+  if (tmplSlides.length < 2) throw new Error('Template needs 2 slides');
 
-  // 2. Cross-file slide copy — the only way without linking:
-  //    Drive copy template → appendSlide NOT_LINKED → delete temp copy
-
-  // Make a temporary copy of the template
-  var copyResp = UrlFetchApp.fetch('https://www.googleapis.com/drive/v3/files/'+TEMPLATE_ID+'/copy', {
-    method:'post', contentType:'application/json',
-    headers:{'Authorization':'Bearer '+token},
-    payload:JSON.stringify({name:'_tmp_slide_copy'}),
-    muteHttpExceptions:true
-  });
-  Logger.log('Drive copy HTTP: '+copyResp.getResponseCode());
-  var copyData = JSON.parse(copyResp.getContentText());
-  if (!copyData.id) throw new Error('Could not copy template: '+copyResp.getContentText().substring(0,200));
-  var tmpFileId = copyData.id;
-  Logger.log('Temp copy ID: '+tmpFileId);
-
-  try {
-    // Read slide IDs from the temp copy
-    var tmpBase = 'https://slides.googleapis.com/v1/presentations/'+tmpFileId;
-    var tmpPres = JSON.parse(UrlFetchApp.fetch(tmpBase+'?fields=slides.objectId',
-      {headers:{'Authorization':'Bearer '+token},muteHttpExceptions:true}).getContentText());
-    var tmpId1 = tmpPres.slides[0].objectId;
-    var tmpId2 = tmpPres.slides[1].objectId;
-
-    // Move both slides from temp copy into master deck
-    // Use SlidesApp to appendSlide — then immediately unlink via REST replaceAllText trick
-    var tmpPresApp    = SlidesApp.openById(tmpFileId);
-    var masterPresApp = SlidesApp.openById(MASTER_ID);
-    var newSlide1 = masterPresApp.appendSlide(tmpPresApp.getSlides()[0], SlidesApp.SlideLinkingMode.NOT_LINKED);
-    var newSlide2 = masterPresApp.appendSlide(tmpPresApp.getSlides()[1], SlidesApp.SlideLinkingMode.NOT_LINKED);
-    var nId1 = newSlide1.getObjectId();
-    var nId2 = newSlide2.getObjectId();
-    Logger.log('Appended slides to master: '+nId1+', '+nId2);
-
-  } finally {
-    // Always delete temp copy
-    UrlFetchApp.fetch('https://www.googleapis.com/drive/v3/files/'+tmpFileId, {
-      method:'delete', headers:{'Authorization':'Bearer '+token}, muteHttpExceptions:true
-    });
-    Logger.log('Temp copy deleted');
-  }
+  var newSlide1 = masterPres.appendSlide(tmplSlides[0], SlidesApp.SlideLinkingMode.NOT_LINKED);
+  var newSlide2 = masterPres.appendSlide(tmplSlides[1], SlidesApp.SlideLinkingMode.NOT_LINKED);
+  var nId1 = newSlide1.getObjectId();
+  var nId2 = newSlide2.getObjectId();
+  Logger.log('Appended to master END: '+nId1+', '+nId2);
 
   // 3. Replace text (scoped to new slides only)
   Utilities.sleep(1000);
