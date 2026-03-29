@@ -119,6 +119,7 @@ function onOpen() {
 // ─── CREATE SLIDES FROM SHEET ROW ─────────────────────────────────────────
 // Called directly from sheet menu — no HTTP, no retries, no Streamlit
 function createSlidesForSelectedRow() {
+  SpreadsheetApp.getActive().toast('v5 — starting...', '🎬 Slides', 5);
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Basic Info');
   var row   = sheet.getActiveRange().getRow();
   if (row < 2) {
