@@ -284,7 +284,7 @@ function createMasterSlides_(data) {
   });
   if (!appSlide1||!appSlide2) throw new Error('Cannot find new slides via SlidesApp');
 
-  // 4b. Insert photos directly from Drive using file IDs (no base64, no temp folder)
+  // 4b. Insert photos using Drive thumbnail URLs (fast — no blob download)
   var photoFileIds = data.photos || [];
 
   [appSlide1, appSlide2].forEach(function(slide) {
@@ -297,33 +297,33 @@ function createMasterSlides_(data) {
       var fileId = photoFileIds[parseInt(m[1])-1];
       if (!fileId) return;
       try {
-        var blob = DriveApp.getFileById(fileId).getBlob();
+        var url = 'https://drive.google.com/thumbnail?id='+fileId+'&sz=s2000';
         var l=el.getLeft(),t=el.getTop(),w=el.getWidth(),h=el.getHeight();
-        var img=slide.insertImage(blob);
+        var img=slide.insertImage(url);
         img.setLeft(l);img.setTop(t);img.setWidth(w);img.setHeight(h);
-        Logger.log('PHOTO'+m[1]+' inserted from Drive');
-      } catch(ie){Logger.log('Insert err: '+ie.message);}
+        Logger.log('PHOTO'+m[1]+' inserted: '+fileId);
+      } catch(ie){Logger.log('Photo'+m[1]+' err: '+ie.message);}
     });
   });
 
-  // 5. Logo from Drive
+  // 5. Logo via URL
   var logoFileId = data.logo_white_file_id||'';
   if (logoFileId) {
     try {
-      var logoBlob = DriveApp.getFileById(logoFileId).getBlob();
+      var logoUrl = 'https://drive.google.com/thumbnail?id='+logoFileId+'&sz=s1000';
       appSlide1.getPageElements().forEach(function(el){
         var d='';try{d=el.getDescription()||'';}catch(e){}
         var t='';try{t=el.getTitle()||'';}catch(e){}
         if (d==='project_logo'||t==='photo1_placeholder'||t==='logo_white') {
           try{
             var l=el.getLeft(),tp=el.getTop(),w=el.getWidth(),h=el.getHeight();
-            var img=appSlide1.insertImage(logoBlob);
+            var img=appSlide1.insertImage(logoUrl);
             img.setLeft(l);img.setTop(tp);img.setWidth(w);img.setHeight(h);
-            Logger.log('Logo inserted from Drive');
+            Logger.log('Logo inserted: '+logoFileId);
           }catch(le){Logger.log('Logo err: '+le.message);}
         }
       });
-    } catch(le){Logger.log('Logo load err: '+le.message);}
+    } catch(le){Logger.log('Logo err: '+le.message);}
   }
   Logger.log('createMasterSlides_ done');
 }
