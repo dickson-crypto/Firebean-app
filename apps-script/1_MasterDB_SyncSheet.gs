@@ -109,6 +109,8 @@ function onOpen() {
   SpreadsheetApp.getUi().createMenu('🔥 Firebean CMS')
     .addItem('Sync Changed Only', 'syncChangedToGitHub')
     .addItem('⚡ Sync Selected Project', 'syncSelectedProjectToGitHub')
+    .addSeparator()
+    .addItem('🖼️ Fix Hero Photo Pickers (all rows)', 'fixAllHeroPhotoPickers')
     .addToUi();
 }
 
@@ -952,4 +954,95 @@ function categoryToSlugs_(cat) {
     if (cat.indexOf(key) !== -1) slugs = slugs.concat(map[key]);
   }
   return slugs;
+}
+
+
+
+// ─── FIX HERO PHOTO PICKERS ──────────────────────────────────────────────────
+/**
+ * Scans every row in Basic Info sheet.
+ * For rows where col W (Hero Photo) is a plain number or empty string,
+ * but col V (Drive Folder) contains a valid folder URL:
+ *   1. Lists all Photo_*.jpg files in the folder
+ *   2. Builds a dropdown of all photo Drive URLs
+ *   3. Pre-selects:
+ *        - If hero value is a number N → Photo_N.jpg URL
+ *        - If hero value is empty → Photo_1.jpg (first photo)
+ * For rows already containing a proper https:// URL → skip (already correct)
+ */
+function fixAllHeroPhotoPickers() {
+  var sheet = SpreadsheetApp.getActive().getSheetByName(CONFIG.SHEET_NAME);
+  var data  = sheet.getDataRange().getValues();
+  var fixed = 0, skipped = 0, noFolder = 0;
+
+  for (var i = 1; i < data.length; i++) {
+    var row         = data[i];
+    var rowNum      = i + 1;
+    var projectName = String(row[CONFIG.COL.PROJECT - 1]     || '').trim();
+    var folderUrl   = String(row[CONFIG.COL.DRIVE_FOLDER - 1]|| '').trim();
+    var heroVal     = String(row[CONFIG.COL.HERO_PHOTO - 1]  || '').trim();
+
+    if (!projectName) continue; // skip empty rows
+
+    // Already a proper URL → skip
+    if (heroVal.indexOf('https://') === 0) { skipped++; continue; }
+
+    // No Drive folder → can't fix
+    if (!folderUrl || folderUrl.indexOf('https://') !== 0) { noFolder++; continue; }
+
+    // Get folder ID from URL
+    var folderId = extractDriveFolderId_(folderUrl);
+    if (!folderId) { noFolder++; continue; }
+
+    try {
+      // List all Photo_*.jpg files in the folder
+      var folder     = DriveApp.getFolderById(folderId);
+      var allFiles   = folder.getFiles();
+      var photoUrls  = [];
+      var photoMap   = {}; // "Photo_1" → url, "Photo_2" → url, etc.
+
+      while (allFiles.hasNext()) {
+        var file     = allFiles.next();
+        var fileName = file.getName();
+        var mime     = file.getMimeType();
+        if (mime.indexOf('image/') !== 0) continue;
+        if (fileName.match(/^Logo_/i))    continue; // skip logos
+
+        var url = 'https://drive.google.com/file/d/' + file.getId() + '/view?usp=drivesdk';
+        photoUrls.push(url);
+
+        // Map "Photo_N" → url for number-based selection
+        var numMatch = fileName.match(/Photo_(\d+)/i);
+        if (numMatch) photoMap['Photo_' + numMatch[1]] = url;
+      }
+
+      // Sort by filename order (Photo_1, Photo_2...)
+      photoUrls.sort();
+
+      if (photoUrls.length === 0) { noFolder++; continue; }
+
+      // Determine which photo to pre-select
+      var selectedUrl = photoUrls[0]; // default = first photo
+      if (heroVal.match(/^\d+$/)) {
+        // Number like "4" → Photo_4.jpg
+        var key = 'Photo_' + heroVal;
+        if (photoMap[key]) selectedUrl = photoMap[key];
+      }
+
+      // Rebuild dropdown with all photo URLs, pre-select the right one
+      rebuildHeroPhotoPicker_(sheet, rowNum, photoUrls, selectedUrl);
+      fixed++;
+      Logger.log('Fixed row ' + rowNum + ': ' + projectName + ' → ' + selectedUrl.substring(0,60));
+
+    } catch (e) {
+      Logger.log('Error fixing row ' + rowNum + ' (' + projectName + '): ' + e.message);
+    }
+  }
+
+  var msg = '✅ Hero Photo Picker fix complete!\n\n' +
+    '• Fixed: ' + fixed + ' rows\n' +
+    '• Already correct: ' + skipped + ' rows\n' +
+    '• No folder (skipped): ' + noFolder + ' rows';
+  Logger.log(msg);
+  try { SpreadsheetApp.getUi().alert(msg); } catch(e) {}
 }
