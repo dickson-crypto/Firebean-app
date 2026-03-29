@@ -274,7 +274,8 @@ function createMasterSlides_(data) {
   });
   Logger.log('Text replaced');
 
-  // 4. Read new slides via REST to get placeholder positions
+  // 4. Read new slides via REST to find PHOTO1-8 image objectIds
+  //    Template already has real images for PHOTO1-8 — we use replaceImage to swap them.
   Utilities.sleep(1000);
   var presData = JSON.parse(UrlFetchApp.fetch(apiBase,
     {headers:{'Authorization':'Bearer '+token},muteHttpExceptions:true}).getContentText());
@@ -289,39 +290,39 @@ function createMasterSlides_(data) {
   var photoFileIds = data.photos || [];
   var logoFileId   = data.logo_white_file_id || '';
 
-  // Collect all file IDs that need inserting: {fileId, slideId, size, transform, isLogo}
-  var insertJobs = [];
+  // Build replace jobs: {imageObjId, fileId, label}
+  var replaceJobs = [];
 
   function collectJobs(slideId) {
     getSlideElements(slideId).forEach(function(el) {
       var title = el.title || '';
       var desc  = el.description || '';
+      // PHOTO1-8: already image elements in template
       var m = title.match(/^PHOTO([1-8])$/);
       if (m) {
         var fid = photoFileIds[parseInt(m[1])-1];
-        if (fid && el.size && el.transform)
-          insertJobs.push({fileId:fid, slideId:slideId, size:el.size, transform:el.transform, objId:el.objectId, label:'PHOTO'+m[1]});
+        if (fid) replaceJobs.push({imageObjId:el.objectId, fileId:fid, label:title});
       }
+      // Logo placeholder on slide 1
       if (slideId===nId1 && logoFileId &&
           (desc==='project_logo'||title==='photo1_placeholder'||title==='logo_white')) {
-        if (el.size && el.transform)
-          insertJobs.push({fileId:logoFileId, slideId:nId1, size:el.size, transform:el.transform, objId:el.objectId, label:'LOGO'});
+        replaceJobs.push({imageObjId:el.objectId, fileId:logoFileId, label:'LOGO'});
       }
     });
   }
   collectJobs(nId1);
   collectJobs(nId2);
-  Logger.log('Insert jobs: '+insertJobs.length);
+  Logger.log('Replace jobs: '+replaceJobs.length);
 
-  // 5. For each file: temporarily make public → createImage REST → revoke public
-  //    createImage is instant (Google fetches server-side). No blob download = no timeout.
+  // 5. For each image: temp-public → replaceImage REST → revoke public
+  //    replaceImage swaps the image content in-place — keeps position/size/crop exact.
+  //    No blob download on our side — Google fetches the URL server-side.
   var driveApiBase = 'https://www.googleapis.com/drive/v3/files/';
-  var deleteRequests = [];
 
-  insertJobs.forEach(function(job) {
+  replaceJobs.forEach(function(job) {
     var permId = null;
     try {
-      // Grant anyone=reader temporarily
+      // Grant anyone=reader temporarily (~1 second window)
       var permResp = UrlFetchApp.fetch(driveApiBase+job.fileId+'/permissions', {
         method:'post', contentType:'application/json',
         headers:{'Authorization':'Bearer '+token},
@@ -332,29 +333,27 @@ function createMasterSlides_(data) {
         permId = JSON.parse(permResp.getContentText()).id;
       }
 
-      // createImage via REST — Google fetches the public URL server-side
+      // replaceImage — swaps existing image content, keeps geometry intact
       var imgUrl = 'https://drive.google.com/uc?export=download&id='+job.fileId;
-      var imgResp = UrlFetchApp.fetch(apiBase+':batchUpdate', {
+      var rResp = UrlFetchApp.fetch(apiBase+':batchUpdate', {
         method:'post', contentType:'application/json',
         headers:{'Authorization':'Bearer '+token},
-        payload:JSON.stringify({requests:[{createImage:{
-          url: imgUrl,
-          elementProperties:{
-            pageObjectId: job.slideId,
-            size: job.size,
-            transform: job.transform
+        payload:JSON.stringify({requests:[{
+          replaceImage:{
+            imageObjectId: job.imageObjId,
+            url: imgUrl,
+            imageReplaceMethod: 'CENTER_CROP'
           }
-        }}]}),
+        }]}),
         muteHttpExceptions:true
       });
-      var code = imgResp.getResponseCode();
-      Logger.log(job.label+' createImage HTTP '+code+(code!==200?' — '+imgResp.getContentText().substring(0,200):''));
-      if (code===200) deleteRequests.push({deleteObject:{objectId:job.objId}});
+      var code = rResp.getResponseCode();
+      Logger.log(job.label+' replaceImage HTTP '+code+(code!==200?' — '+rResp.getContentText().substring(0,300):''));
 
     } catch(e) {
       Logger.log(job.label+' error: '+e.message);
     } finally {
-      // Always revoke public permission
+      // Always revoke — even if createImage failed
       if (permId) {
         UrlFetchApp.fetch(driveApiBase+job.fileId+'/permissions/'+permId, {
           method:'delete',
@@ -365,18 +364,7 @@ function createMasterSlides_(data) {
     }
   });
 
-  // 6. Delete placeholder shapes now that images are in place
-  if (deleteRequests.length > 0) {
-    UrlFetchApp.fetch(apiBase+':batchUpdate', {
-      method:'post', contentType:'application/json',
-      headers:{'Authorization':'Bearer '+token},
-      payload:JSON.stringify({requests:deleteRequests}),
-      muteHttpExceptions:true
-    });
-    Logger.log('Deleted '+deleteRequests.length+' placeholder shapes');
-  }
-
-  Logger.log('createMasterSlides_ done — '+insertJobs.length+' images via REST createImage');
+  Logger.log('createMasterSlides_ done — '+replaceJobs.length+' images via replaceImage');
 }
 
 
