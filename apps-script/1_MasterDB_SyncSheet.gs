@@ -157,7 +157,7 @@ function createSlidesForSelectedRow() {
   );
   if (res !== ui.Button.YES) return;
 
-  // Load photos from Drive folder
+  // Load photo file IDs from Drive folder (no base64 needed)
   var photos = [];
   if (driveFolderUrl) {
     try {
@@ -169,37 +169,21 @@ function createSlidesForSelectedRow() {
           var file = files.next();
           var mime = file.getMimeType();
           if (mime === 'image/jpeg' || mime === 'image/png' || mime === 'image/webp') {
-            try {
-              // Convert to base64 so Script 2 can upload to Drive temp folder
-              var bytes  = file.getBlob().getBytes();
-              var b64    = Utilities.base64Encode(bytes);
-              var prefix = mime === 'image/png' ? 'data:image/png;base64,' : 'data:image/jpeg;base64,';
-              photos.push(prefix + b64);
-              Logger.log('Photo loaded: ' + file.getName() + ' (' + bytes.length + ' bytes)');
-            } catch(pe) {
-              Logger.log('Photo load err: ' + pe.message);
-            }
+            photos.push(file.getId()); // just the file ID
+            Logger.log('Photo: ' + file.getName());
           }
         }
       }
-    } catch(e) {
-      Logger.log('Photo load err: ' + e.message);
-    }
+    } catch(e) { Logger.log('Photo load err: ' + e.message); }
   }
 
-  // Load logo white
-  var logoWhiteBase64 = '';
+  // Get logo white file ID
+  var logoWhiteFileId = '';
   if (logoWhiteUrl) {
     try {
-      var logoId = logoWhiteUrl.match(/[-\w]{25,}/);
-      if (logoId) {
-        var logoFile = DriveApp.getFileById(logoId[0]);
-        var logoBytes = logoFile.getBlob().getBytes();
-        logoWhiteBase64 = 'data:image/png;base64,' + Utilities.base64Encode(logoBytes);
-      }
-    } catch(e) {
-      Logger.log('Logo err: ' + e.message);
-    }
+      var logoIdMatch = logoWhiteUrl.match(/[-\w]{25,}/);
+      if (logoIdMatch) logoWhiteFileId = logoIdMatch[0];
+    } catch(e) { Logger.log('Logo ID err: ' + e.message); }
   }
 
   // Parse date
@@ -221,9 +205,9 @@ function createSlidesForSelectedRow() {
     scope:             scope.split('\n').filter(function(s){return s.trim();}),
     challenge:         challenge,
     solution:          solution,
-    photos:            photos,
-    logo_white_base64: logoWhiteBase64,
-    logo_black:        logoBlackUrl
+    photos:             photos,
+    logo_white_file_id: logoWhiteFileId,
+    logo_black:         logoBlackUrl
   };
 
   // Create slides directly in same execution — no HTTP, no retries
@@ -300,26 +284,8 @@ function createMasterSlides_(data) {
   });
   if (!appSlide1||!appSlide2) throw new Error('Cannot find new slides via SlidesApp');
 
-  var photos    = data.photos || [];
-  var tempName  = '_Firebean_SlideTemp';
-  var tempIt    = DriveApp.getFoldersByName(tempName);
-  var tempFolder = tempIt.hasNext() ? tempIt.next() : DriveApp.createFolder(tempName);
-  try{tempFolder.setSharing(DriveApp.Access.ANYONE_WITH_LINK,DriveApp.Permission.VIEW);}catch(e){}
-
-  var photoUrls = [];
-  for (var i=0; i<Math.min(photos.length,8); i++) {
-    try {
-      var clean = String(photos[i]).replace(/^data:[^;]+;base64,/,'').replace(/\s/g,'');
-      var bytes = Utilities.base64Decode(clean);
-      var blob  = Utilities.newBlob(bytes,'image/jpeg','ph'+(i+1)+'.jpg');
-      var it2   = tempFolder.getFilesByName('ph'+(i+1)+'.jpg');
-      while(it2.hasNext()){it2.next().setTrashed(true);}
-      var f = tempFolder.createFile(blob);
-      try{f.setSharing(DriveApp.Access.ANYONE_WITH_LINK,DriveApp.Permission.VIEW);}catch(e){}
-      photoUrls.push('https://drive.google.com/thumbnail?id='+f.getId()+'&sz=s4000');
-      Logger.log('Photo '+(i+1)+' uploaded');
-    } catch(pe) { photoUrls.push(null); Logger.log('Photo err: '+pe.message); }
-  }
+  // 4b. Insert photos directly from Drive using file IDs (no base64, no temp folder)
+  var photoFileIds = data.photos || [];
 
   [appSlide1, appSlide2].forEach(function(slide) {
     slide.getPageElements().forEach(function(el) {
@@ -328,37 +294,32 @@ function createMasterSlides_(data) {
       if (!alt) try{alt=el.getDescription()||'';}catch(e){}
       var m=alt.match(/^PHOTO([1-8])$/);
       if (!m) return;
-      var url=photoUrls[parseInt(m[1])-1];
-      if (!url) return;
+      var fileId = photoFileIds[parseInt(m[1])-1];
+      if (!fileId) return;
       try {
+        var blob = DriveApp.getFileById(fileId).getBlob();
         var l=el.getLeft(),t=el.getTop(),w=el.getWidth(),h=el.getHeight();
-        var img=slide.insertImage(url);
+        var img=slide.insertImage(blob);
         img.setLeft(l);img.setTop(t);img.setWidth(w);img.setHeight(h);
-        Logger.log('PHOTO'+m[1]+' inserted');
+        Logger.log('PHOTO'+m[1]+' inserted from Drive');
       } catch(ie){Logger.log('Insert err: '+ie.message);}
     });
   });
 
-  // 5. Logo
-  var logoB64 = data.logo_white_base64||'';
-  if (logoB64) {
+  // 5. Logo from Drive
+  var logoFileId = data.logo_white_file_id||'';
+  if (logoFileId) {
     try {
-      var lc=String(logoB64).replace(/^data:[^;]+;base64,/,'').replace(/\s/g,'');
-      var lb=Utilities.newBlob(Utilities.base64Decode(lc),'image/png','logo_white.png');
-      var li=tempFolder.getFilesByName('logo_white.png');
-      while(li.hasNext()){li.next().setTrashed(true);}
-      var lf=tempFolder.createFile(lb);
-      try{lf.setSharing(DriveApp.Access.ANYONE_WITH_LINK,DriveApp.Permission.VIEW);}catch(e){}
-      var logoUrl='https://drive.google.com/thumbnail?id='+lf.getId()+'&sz=s4000';
+      var logoBlob = DriveApp.getFileById(logoFileId).getBlob();
       appSlide1.getPageElements().forEach(function(el){
         var d='';try{d=el.getDescription()||'';}catch(e){}
         var t='';try{t=el.getTitle()||'';}catch(e){}
         if (d==='project_logo'||t==='photo1_placeholder'||t==='logo_white') {
           try{
             var l=el.getLeft(),tp=el.getTop(),w=el.getWidth(),h=el.getHeight();
-            var img=appSlide1.insertImage(logoUrl);
+            var img=appSlide1.insertImage(logoBlob);
             img.setLeft(l);img.setTop(tp);img.setWidth(w);img.setHeight(h);
-            Logger.log('Logo inserted');
+            Logger.log('Logo inserted from Drive');
           }catch(le){Logger.log('Logo err: '+le.message);}
         }
       });
