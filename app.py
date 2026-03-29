@@ -251,7 +251,6 @@ JSON format (fill every field, no empty strings):
   "instagram": {{"caption": "", "hashtags": ""}},
   "linkedin": {{"headline": "", "body": ""}},
   "facebook": {{"caption": ""}},
-  "edm": {{"subject": "", "preview": "", "body": ""}},
   "press_release": {{"headline": "", "lead": "", "body": ""}},
   "challenge": "",
   "solution": ""
@@ -613,15 +612,6 @@ def main():
                 if "instagram" not in ai: ai["instagram"] = {}
                 ai["instagram"]["caption"]  = new_ig_c
                 ai["instagram"]["hashtags"] = new_ig_h
-
-            # EDM (bonus — not in sheet but useful)
-            with st.expander("🔵 EDM (bonus)", expanded=False):
-                edm = ai.get("edm", {})
-                new_edm_s = st.text_area("Subject", edm.get("subject",""), key="edit_edm_subject", height=60)
-                new_edm_b = st.text_area("Body", edm.get("body",""), key="edit_edm_body", height=150)
-                if "edm" not in ai: ai["edm"] = {}
-                ai["edm"]["subject"] = new_edm_s
-                ai["edm"]["body"]    = new_edm_b
 
             st.session_state.ai_content = ai
 
