@@ -87,7 +87,12 @@ function createCaseStudySlide_(data) {
     newSlide2.replaceAllText(pair[0], pair[1]);
   });
 
-  // 4. Save so REST API can see the new slides
+  // 4. Clear ALL existing photo images from BOTH new slides BEFORE saving
+  // Must happen in the same session as appendSlide to take effect
+  removeAllPhotoImages_(newSlide1);
+  removeAllPhotoImages_(newSlide2);
+
+  // Save so REST API can see the new slides
   presentation.saveAndClose();
   Utilities.sleep(1500); // give Slides time to commit
 
@@ -102,12 +107,6 @@ function createCaseStudySlide_(data) {
   var heroIndex = parseInt(data.hero_index || 0, 10);
   var photoResults = [];
   var cropRequests = [];
-
-  // IMPORTANT: Clear ALL existing photo images from both slides before inserting
-  // appendSlide() doesn't preserve alt-text titles, so we can't find by name
-  // Instead: remove everything in the photo grid area (right half, x > 200pt)
-  removeAllPhotoImages_(newSlide1);
-  removeAllPhotoImages_(newSlide2);
 
   for (var i = 0; i < Math.min(photos.length, 8); i++) {
     var photoNum  = i + 1;
