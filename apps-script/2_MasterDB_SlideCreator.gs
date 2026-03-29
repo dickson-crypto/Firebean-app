@@ -53,6 +53,19 @@ function resp_(obj) {
 // ─── MAIN ────────────────────────────────────────────────────────────────────
 
 function createSlide_(data) {
+  // Prevent duplicate execution from redirect-follows
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) {
+    return resp_({status:'error', message:'Script is busy, please retry'});
+  }
+  try {
+    return createSlideInner_(data);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function createSlideInner_(data) {
   var token    = ScriptApp.getOAuthToken();
   var apiBase  = 'https://slides.googleapis.com/v1/presentations/' + TEMPLATE_ID;
   var slideUrl = 'https://docs.google.com/presentation/d/' + TEMPLATE_ID + '/edit';
