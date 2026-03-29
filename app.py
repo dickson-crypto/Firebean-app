@@ -468,12 +468,16 @@ def main():
                             st.caption(f"Photo {i+1} preview error")
             st.markdown("</div>", unsafe_allow_html=True)
 
+        st.markdown("---")
         if percent >= 100:
-            st.markdown("---")
-            st.success("🎉 完美！進度達 100%！")
-            if st.button("準備就緒，前往 Review & Multi-Sync 👉", type="primary", use_container_width=True):
-                st.session_state.active_tab = "Review & Multi-Sync"
-                st.rerun()
+            st.success("🎉 完美！進度達 100%！準備同步！")
+        elif percent >= 75:
+            st.info(f"進度 {percent}% — 可以繼續填寫或直接前往 Review & Multi-Sync")
+        else:
+            st.warning(f"進度 {percent}% — 建議填寫更多資料再同步")
+        if st.button("前往 Review & Multi-Sync 👉", type="primary", use_container_width=True):
+            st.session_state.active_tab = "Review & Multi-Sync"
+            st.rerun()
 
     # ════════════════════════════════════════════
     # TAB 2: Review & Multi-Sync
@@ -495,11 +499,11 @@ def main():
         with st.expander("💡 Challenge & Solution (Google Slide Page 2)", expanded=False):
             st.caption("Auto-filled by AI when you click 生成六大平台對接文案. Edit before syncing.")
             st.session_state.challenge = st.text_area(
-                "Challenge (挑戰)", st.session_state.challenge, height=100,
+                "Boring Challenge → col K", st.session_state.challenge, height=100,
                 key="challenge_area", placeholder="What was the core PR/event challenge?"
             )
             st.session_state.solution = st.text_area(
-                "Solution (解決方案)", st.session_state.solution, height=100,
+                "Creative Solution → col L", st.session_state.solution, height=100,
                 key="solution_area", placeholder="How did Firebean solve it creatively?"
             )
 
@@ -609,14 +613,14 @@ def main():
                     # Build full payload — field names match sync-to-github.gs exactly
                     ai = st.session_state.ai_content or {}
                     # Map new platform keys → legacy Apps Script keys
+                    # Map ai_content keys → sheet column names (confirmed from Master DB headers)
+                    # Col M=Google Slide, N=LinkedIn, O=Facebook, P=Threads, Q=Instagram
                     ai_mapped = {
                         "1_google_slide":  json.dumps(ai.get("website", {}), ensure_ascii=False),
                         "2_facebook_post": ai.get("facebook", {}).get("caption", ""),
-                        "3_threads_post":  ai.get("instagram", {}).get("caption", ""),
+                        "3_threads_post":  ai.get("press_release", {}).get("headline", "") + "\n\n" + ai.get("press_release", {}).get("body", ""),
                         "4_instagram_post":ai.get("instagram", {}).get("caption", "") + "\n" + ai.get("instagram", {}).get("hashtags", ""),
                         "5_linkedin_post": ai.get("linkedin", {}).get("headline", "") + "\n\n" + ai.get("linkedin", {}).get("body", ""),
-                        "6_edm":           json.dumps(ai.get("edm", {}), ensure_ascii=False),
-                        "7_press_release": ai.get("press_release", {}).get("headline", "") + "\n\n" + ai.get("press_release", {}).get("body", ""),
                     }
                     payload = {
                         # ── Identity ──
