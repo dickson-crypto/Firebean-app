@@ -70,7 +70,8 @@ function createCaseStudySlide_(data) {
   var tmpl2  = pres.slides[1];
   if (!tmpl1 || !tmpl2) throw new Error('Template must have at least 2 slides');
 
-  // ── STEP 2: Duplicate slides 1 & 2 — appended to end of master deck ──────────
+  // ── STEP 2: Duplicate slides 1 & 2, then move them to position 3 & 4 ──────────
+  // duplicateObject always appends at end — we move them into position afterwards
   var dupResp = UrlFetchApp.fetch(apiBase + ':batchUpdate', {
     method: 'post', contentType: 'application/json',
     headers: {'Authorization': 'Bearer ' + token},
@@ -86,6 +87,20 @@ function createCaseStudySlide_(data) {
   var newId1    = dupResult.replies[0].duplicateObject.objectId;
   var newId2    = dupResult.replies[1].duplicateObject.objectId;
   Logger.log('New slide IDs: ' + newId1 + ', ' + newId2);
+
+  // Move both new slides to index 2 (= position 3) right after the 2 template slides
+  // Move newId1 to index 2 first, then newId2 to index 3
+  Utilities.sleep(500);
+  var moveResp = UrlFetchApp.fetch(apiBase + ':batchUpdate', {
+    method: 'post', contentType: 'application/json',
+    headers: {'Authorization': 'Bearer ' + token},
+    payload: JSON.stringify({requests: [
+      {updateSlidesPosition: {slideObjectIds: [newId1, newId2], insertionIndex: 2}}
+    ]}),
+    muteHttpExceptions: true
+  });
+  if (moveResp.getResponseCode() !== 200) Logger.log('Move warning: ' + moveResp.getContentText().substring(0,200));
+  Logger.log('Moved new slides to position 3 & 4');
 
   // ── STEP 3: Re-read to get element IDs of the new slides ─────────────────────
   Utilities.sleep(1000);
