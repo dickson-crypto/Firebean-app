@@ -468,16 +468,17 @@ def main():
                             st.caption(f"Photo {i+1} preview error")
             st.markdown("</div>", unsafe_allow_html=True)
 
-        st.markdown("---")
-        if percent >= 100:
-            st.success("🎉 完美！進度達 100%！準備同步！")
-        elif percent >= 75:
-            st.info(f"進度 {percent}% — 可以繼續填寫或直接前往 Review & Multi-Sync")
-        else:
-            st.warning(f"進度 {percent}% — 建議填寫更多資料再同步")
-        if st.button("前往 Review & Multi-Sync 👉", type="primary", use_container_width=True):
-            st.session_state.active_tab = "Review & Multi-Sync"
-            st.rerun()
+    # ── Navigation button — always visible, full width, below all columns ──
+    st.markdown("---")
+    if percent >= 100:
+        st.success("🎉 完美！進度達 100%！準備同步！")
+    elif percent >= 75:
+        st.info(f"進度 {percent}% — 可以繼續填寫，或直接前往 Review & Multi-Sync")
+    else:
+        st.warning(f"進度 {percent}% — 建議填寫更多資料再同步")
+    if st.button("前往 Review & Multi-Sync 👉", type="primary", use_container_width=True, key="nav_to_review"):
+        st.session_state.active_tab = "Review & Multi-Sync"
+        st.rerun()
 
     # ════════════════════════════════════════════
     # TAB 2: Review & Multi-Sync
