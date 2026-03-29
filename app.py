@@ -325,14 +325,14 @@ def main():
         st.markdown(get_circle_progress_html(percent, is_dark), unsafe_allow_html=True)
 
     # ── Navigation ──
-    nav_cols = st.columns(4)
-    tabs = ["Project Collector", "Review & Multi-Sync", "Load Project", "老細一鍵填充 (深度內容測試)"]
-    for i, t in enumerate(tabs[:3]):
+    nav_cols = st.columns(5)
+    tabs = ["Project Collector", "Review & Multi-Sync", "Load Project", "🎬 Create Slides", "老細一鍵填充 (深度內容測試)"]
+    for i, t in enumerate(tabs[:4]):
         btn_type = "primary" if st.session_state.active_tab == t else "secondary"
         if nav_cols[i].button(t, use_container_width=True, type=btn_type):
             st.session_state.active_tab = t
             st.rerun()
-    if nav_cols[3].button(tabs[3], use_container_width=True):
+    if nav_cols[4].button(tabs[4], use_container_width=True):
         fill_dummy_data()
         st.rerun()
 
@@ -722,42 +722,6 @@ def main():
                         log_debug(f"❌ Master DB error: {e}", "error")
                         errors.append(f"Master DB: {e}")
 
-                    # 2️⃣ Create Slide in Master DB Slide Creator
-                    slide_payload = {**payload, "action": "create_slide", "photos": processed_imgs, "logo_white_base64": st.session_state.logo_white}
-                    try:
-                        # POST without redirects to prevent Google from triggering multiple doPost calls
-                        r2 = requests.post(SLIDE_DB_URL, json=slide_payload, timeout=120, allow_redirects=False)
-                        if r2.status_code in [200, 302]:
-                            # Follow redirect with GET to get the actual response
-                            if r2.status_code == 302:
-                                r2 = requests.get(r2.headers.get('Location',''), timeout=30)
-                            j2 = r2.json()
-                            if j2.get('status') in ['success', 'queued'] or 'running' in j2.get('message','').lower():
-                                log_debug(f"✅ Slide DB OK: slide creation in progress", "success")
-                            else:
-                                log_debug(f"⚠️ Slide DB: {j2.get('message','')[:100]}", "warning")
-                        else:
-                            log_debug(f"⚠️ Slide DB status {r2.status_code}: {r2.text[:100]}", "warning")
-                            errors.append(f"Slide DB: {r2.status_code}")
-                    except Exception as e:
-                        log_debug(f"❌ Slide DB error: {e}", "error")
-                        errors.append(f"Slide DB: {e}")
-
-                    # 3️⃣ Create Firebean Case Study Slide
-                    case_payload = {**slide_payload, "action": "create_case_study"}
-                    try:
-                        r3 = requests.post(CASE_STUDY_URL, json=case_payload, timeout=120, allow_redirects=False)
-                        if r3.status_code in [200, 302]:
-                            if r3.status_code == 302:
-                                r3 = requests.get(r3.headers.get('Location',''), timeout=30)
-                            log_debug(f"✅ Case Study Slide OK", "success")
-                        else:
-                            log_debug(f"⚠️ Case Study status {r3.status_code}: {r3.text[:100]}", "warning")
-                            errors.append(f"Case Study: {r3.status_code}")
-                    except Exception as e:
-                        log_debug(f"❌ Case Study error: {e}", "error")
-                        errors.append(f"Case Study: {e}")
-
                     if not errors:
                         st.balloons()
                         st.success(f"🎉 同步成功！Project ID: **{pid}**")
@@ -794,6 +758,91 @@ def main():
                         st.error(f"Load failed: {e}")
             else:
                 st.warning("Please enter a Project ID.")
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    # ════════════════════════════════════════════
+    # TAB 4: Create Slides (fully independent from sync)
+    # ════════════════════════════════════════════
+    elif st.session_state.active_tab == "🎬 Create Slides":
+        st.markdown('<div class="neu-card">', unsafe_allow_html=True)
+        st.markdown("#### 🎬 Create Slides")
+        st.caption("在 Master DB 選擇一行，輸入對應 Project ID，點擊按鈕生成兩頁 Slides。")
+
+        slide_pid = st.text_input("Project ID", "", placeholder="e.g. FB2026001", key="slide_pid_input")
+
+        col1, col2 = st.columns(2)
+        create_master = col1.button("🎬 生成 Master DB Slides", type="primary", use_container_width=True, key="create_master_btn")
+        create_case   = col2.button("🎬 生成 Case Study Slides", use_container_width=True, key="create_case_btn")
+
+        if (create_master or create_case):
+            if not slide_pid.strip():
+                st.warning("請先輸入 Project ID")
+            else:
+                pid_clean = slide_pid.strip().upper()
+                # Load project data from sheet
+                with st.spinner(f"讀取 {pid_clean} 資料..."):
+                    try:
+                        r0 = requests.get(
+                            SHEET_SCRIPT_URL + f"?action=load_project&project_id={pid_clean}",
+                            timeout=15
+                        )
+                        proj = r0.json() if r0.status_code == 200 else None
+                    except Exception as e:
+                        proj = None
+                        st.error(f"❌ 讀取失敗: {e}")
+
+                if not proj or proj.get("status") == "error":
+                    st.error(f"❌ 找不到 {pid_clean}。請確認 ID 正確。")
+                else:
+                    slide_payload = {
+                        "project_id":        proj.get("project_id", pid_clean),
+                        "client_name":       proj.get("client_name", ""),
+                        "project_name":      proj.get("project_name", ""),
+                        "category":          proj.get("category", ""),
+                        "venue":             proj.get("venue", ""),
+                        "date":              proj.get("date", ""),
+                        "event_month":       proj.get("event_month", ""),
+                        "event_year":        proj.get("event_year", ""),
+                        "scope":             proj.get("scope", []),
+                        "challenge":         proj.get("challenge", ""),
+                        "solution":          proj.get("solution", ""),
+                        "photos":            proj.get("photos", []),
+                        "logo_white_base64": proj.get("logo_white", ""),
+                        "logo_black":        proj.get("logo_black", ""),
+                    }
+
+                    if create_master:
+                        slide_payload["action"] = "create_slide"
+                        with st.spinner("正在生成 Slides，請稿候..."):
+                            try:
+                                r2 = requests.post(SLIDE_DB_URL, json=slide_payload, timeout=120, allow_redirects=False)
+                                if r2.status_code == 302:
+                                    r2 = requests.get(r2.headers.get('Location',''), timeout=60)
+                                j2 = r2.json()
+                                if j2.get('status') in ['success','queued'] or 'running' in j2.get('message','').lower():
+                                    st.success("✅ Slides 生成成功！")
+                                    url = j2.get('slide_url', 'https://docs.google.com/presentation/d/19rmqCzgKD8y2ZiLxkiAqhhkV6_t-8QAumZkSi0Eu9C0/edit')
+                                    st.markdown(f"[🔗 開啟 Google Slides]({url})")
+                                else:
+                                    st.warning(f"⚠️ {j2.get('message','')[:200]}")
+                            except Exception as e:
+                                st.error(f"❌ 生成失敗: {e}")
+
+                    if create_case:
+                        slide_payload["action"] = "create_case_study"
+                        with st.spinner("正在生成 Case Study Slides..."):
+                            try:
+                                r3 = requests.post(CASE_STUDY_URL, json=slide_payload, timeout=120, allow_redirects=False)
+                                if r3.status_code == 302:
+                                    r3 = requests.get(r3.headers.get('Location',''), timeout=60)
+                                j3 = r3.json()
+                                if j3.get('status') in ['success','queued'] or 'running' in j3.get('message','').lower():
+                                    st.success("✅ Case Study Slides 生成成功！")
+                                else:
+                                    st.warning(f"⚠️ {j3.get('message','')[:200]}")
+                            except Exception as e:
+                                st.error(f"❌ 生成失敗: {e}")
+
         st.markdown("</div>", unsafe_allow_html=True)
 
     # ── Debug Terminal (always visible at bottom) ──
