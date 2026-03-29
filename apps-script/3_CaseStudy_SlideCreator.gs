@@ -188,107 +188,91 @@ function createCaseStudySlide_(data) {
   })).setMimeType(ContentService.MimeType.JSON);
 }
 
-// ─── CROP-CENTRE MATH ────────────────────────────────────────────────────────
+// ─── FILL FRAME: set size + position via REST API ────────────────────────────
 /**
- * Calculates cropProperties for object-fit:cover + object-position:center.
- * Google Slides cropProperties use fractional offsets (0.0–1.0) where:
- *   leftOffset  = fraction of image width to crop from the left
- *   rightOffset = fraction of image width to crop from the right
- *   topOffset   = fraction of image height to crop from the top
- *   bottomOffset= fraction of image height to crop from the bottom
+ * CORRECT approach for object-fit:cover in Google Slides:
  *
- * To fill frameW×frameH from imgW×imgH centred:
- *   If img is wider than frame (relative to height): crop sides equally
- *   If img is taller than frame (relative to width):  crop top/bottom equally
+ * Step 1: updatePageElementTransform — set position (translateX/Y), scale=1
+ * Step 2: updatePageElementSize — set EXACT frame width+height
+ *         After this, Slides renders image stretched to fill frame completely
+ * Step 3: updateImageProperties cropProperties — calculate how much to crop
+ *         based on ORIGINAL image aspect ratio vs frame aspect ratio
+ *         to achieve centre-crop (show middle, trim edges)
+ *
+ * cropProperties fractions are relative to the ORIGINAL image dimensions,
+ * NOT the rendered/stretched size. This is the key insight.
+ *
+ * Example: 3:2 landscape photo in a 1:1 square frame
+ *   → scale to fill height: rendered width > frame width
+ *   → leftOffset = rightOffset = (renderedW - frameW) / (2 * renderedW)
+ *   where renderedW = originalW * (frameH / originalH)
  */
-function calcCropCentre_(imgW, imgH, frameW, frameH) {
-  // Avoid divide-by-zero
-  if (!imgW || !imgH || !frameW || !frameH) {
-    return {leftOffset:0, rightOffset:0, topOffset:0, bottomOffset:0};
-  }
 
-  var imgAspect   = imgW / imgH;
+function calcCropCentre_(imgW, imgH, frameW, frameH) {
+  // If no image dimensions available, no crop needed (already fills frame)
+  if (!imgW || !imgH) return {leftOffset:0, rightOffset:0, topOffset:0, bottomOffset:0};
+
+  var imgAspect   = imgW  / imgH;
   var frameAspect = frameW / frameH;
 
-  var leftOffset = 0, rightOffset = 0, topOffset = 0, bottomOffset = 0;
+  var l = 0, r = 0, t = 0, b = 0;
 
   if (imgAspect > frameAspect) {
-    // Image is wider → crop sides
-    // Scale so height matches: scaledW = imgW * (frameH / imgH)
-    var scaledW  = imgW * (frameH / imgH);
-    var cropFrac = (scaledW - frameW) / scaledW; // total fraction to remove
-    leftOffset   = cropFrac / 2;
-    rightOffset  = cropFrac / 2;
+    // Photo wider than frame → fill by height, crop left+right
+    // When rendered to fill height: scaledW = imgW * (frameH/imgH)
+    var scaledW = imgW * (frameH / imgH);
+    var excess  = (scaledW - frameW) / scaledW; // fraction of original to crop total
+    l = excess / 2;
+    r = excess / 2;
   } else if (imgAspect < frameAspect) {
-    // Image is taller → crop top/bottom
-    var scaledH  = imgH * (frameW / imgW);
-    var cropFrac = (scaledH - frameH) / scaledH;
-    topOffset    = cropFrac / 2;
-    bottomOffset = cropFrac / 2;
+    // Photo taller than frame → fill by width, crop top+bottom
+    var scaledH = imgH * (frameW / imgW);
+    var excess  = (scaledH - frameH) / scaledH;
+    t = excess / 2;
+    b = excess / 2;
   }
-  // If same aspect ratio: no crop needed (all offsets = 0)
 
   return {
-    leftOffset:   Math.max(0, leftOffset),
-    rightOffset:  Math.max(0, rightOffset),
-    topOffset:    Math.max(0, topOffset),
-    bottomOffset: Math.max(0, bottomOffset)
+    leftOffset:   Math.max(0, Math.min(0.49, l)),
+    rightOffset:  Math.max(0, Math.min(0.49, r)),
+    topOffset:    Math.max(0, Math.min(0.49, t)),
+    bottomOffset: Math.max(0, Math.min(0.49, b))
   };
 }
 
-/**
- * Applies cropProperties to a list of image elements via Slides REST API batchUpdate.
- * Each item in requests: { objectId: string, crop: {leftOffset, rightOffset, topOffset, bottomOffset} }
- */
-/**
- * For each image:
- *   Step 1 — updatePageElementSize: set exact frame width+height in EMU
- *             (avoids broken scaleX/Y calculation — directly sets rendered size)
- *   Step 2 — updatePageElementTransform: set exact position (translateX/Y)
- *             with scaleX=scaleY=1 (size is already correct from step 1)
- *   Step 3 — updateImageProperties: cropProperties for centre-crop mask
- *
- * Result: image fills frame edge-to-edge, cropped to centre.
- * Works for any source photo aspect ratio (portrait, landscape, square).
- */
-function applyCropCentreFill_(presentationId, requests) {
-  var PT_TO_EMU = 12700;
-  var batchRequests = [];
+function applyFillAndCrop_(presentationId, requests) {
+  if (!requests.length) return;
+  var PT = 12700; // 1 point = 12700 EMU
+  var batch = [];
 
   requests.forEach(function(r) {
-    var fw = Math.round(r.frameW * PT_TO_EMU);
-    var fh = Math.round(r.frameH * PT_TO_EMU);
-    var tx = Math.round(r.left   * PT_TO_EMU);
-    var ty = Math.round(r.top    * PT_TO_EMU);
+    var fw = Math.round(r.frameW * PT);
+    var fh = Math.round(r.frameH * PT);
+    var tx = Math.round(r.left   * PT);
+    var ty = Math.round(r.top    * PT);
 
-    // Step 1 — Set exact rendered size (width × height) in EMU
-    batchRequests.push({
+    // 1. Position (scaleX/Y = 1, just translate)
+    batch.push({
       updatePageElementTransform: {
-        objectId: r.objectId,
-        transform: {
-          scaleX:     1,
-          scaleY:     1,
-          translateX: tx,
-          translateY: ty,
-          unit: 'EMU'
-        },
+        objectId:  r.objectId,
+        transform: { scaleX:1, scaleY:1, translateX:tx, translateY:ty, unit:'EMU' },
         applyMode: 'ABSOLUTE'
       }
     });
 
-    // Step 2 — Resize to exact frame dimensions
-    batchRequests.push({
+    // 2. Set exact frame size → image stretches to fill
+    batch.push({
       updatePageElementSize: {
         objectId: r.objectId,
         size: {
-          width:  { magnitude: fw, unit: 'EMU' },
-          height: { magnitude: fh, unit: 'EMU' }
+          width:  { magnitude: fw, unit:'EMU' },
+          height: { magnitude: fh, unit:'EMU' }
         }
       }
     });
 
-    // Step 3 — Centre-crop mask (trim excess from whichever dimension is larger)
-    batchRequests.push({
+    // 3. Centre-crop based on original aspect ratio
+    batch.push({
       updateImageProperties: {
         objectId: r.objectId,
         imageProperties: {
@@ -304,60 +288,24 @@ function applyCropCentreFill_(presentationId, requests) {
     });
   });
 
-  if (batchRequests.length === 0) return;
-
   var token    = ScriptApp.getOAuthToken();
   var url      = 'https://slides.googleapis.com/v1/presentations/' + presentationId + ':batchUpdate';
-  var response = UrlFetchApp.fetch(url, {
-    method: 'post',
-    contentType: 'application/json',
+  var resp     = UrlFetchApp.fetch(url, {
+    method: 'post', contentType: 'application/json',
     headers: {'Authorization': 'Bearer ' + token},
-    payload: JSON.stringify({requests: batchRequests}),
+    payload: JSON.stringify({requests: batch}),
     muteHttpExceptions: true
   });
-
-  if (response.getResponseCode() !== 200) {
-    Logger.log('batchUpdate FAILED [' + response.getResponseCode() + ']: ' + response.getContentText().substring(0, 500));
+  if (resp.getResponseCode() !== 200) {
+    Logger.log('Fill+crop FAILED: ' + resp.getContentText().substring(0, 300));
   } else {
-    Logger.log('batchUpdate OK: ' + requests.length + ' images — size+position+crop applied');
+    Logger.log('Fill+crop OK: ' + requests.length + ' images');
   }
 }
 
-/**
- * Reads image dimensions from base64 JPEG/PNG header bytes.
- * Returns {w, h} in pixels. Falls back to {w:0, h:0} on failure.
- */
-function getBase64ImageDimensions_(base64Data) {
-  try {
-    var clean = String(base64Data).replace(/^data:[^;]+;base64,/, '').replace(/\s/g, '');
-    var bytes = Utilities.base64Decode(clean.substring(0, 32)); // only need header
-
-    // JPEG: starts with FF D8, dimensions at specific offsets
-    if (bytes[0] === 0xFF && bytes[1] === 0xD8) {
-      // Full decode needed to find SOF marker — use full header
-      var fullBytes = Utilities.base64Decode(clean.substring(0, 500));
-      for (var i = 2; i < fullBytes.length - 8; i++) {
-        if (fullBytes[i] === 0xFF &&
-            (fullBytes[i+1] === 0xC0 || fullBytes[i+1] === 0xC1 ||
-             fullBytes[i+1] === 0xC2 || fullBytes[i+1] === 0xC3)) {
-          var h = (fullBytes[i+5] << 8) | fullBytes[i+6];
-          var w = (fullBytes[i+7] << 8) | fullBytes[i+8];
-          return {w: w, h: h};
-        }
-      }
-    }
-
-    // PNG: starts with 89 50 4E 47, width at bytes 16-19, height at 20-23
-    if (bytes[0] === 0x89 && bytes[1] === 0x50) {
-      var pngBytes = Utilities.base64Decode(clean.substring(0, 64));
-      var w = (pngBytes[16]<<24)|(pngBytes[17]<<16)|(pngBytes[18]<<8)|pngBytes[19];
-      var h = (pngBytes[20]<<24)|(pngBytes[21]<<16)|(pngBytes[22]<<8)|pngBytes[23];
-      return {w: w, h: h};
-    }
-  } catch(e) {
-    Logger.log('getBase64ImageDimensions_ error: ' + e.message);
-  }
-  return {w: 0, h: 0}; // unknown → no crop offset applied
+// Keep old name as alias for compatibility
+function applyCropCentreFill_(presentationId, requests) {
+  applyFillAndCrop_(presentationId, requests);
 }
 
 // ─── HELPERS — FINDING & REMOVING ───────────────────────────────────────────
