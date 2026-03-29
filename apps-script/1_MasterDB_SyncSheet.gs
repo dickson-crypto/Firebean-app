@@ -110,8 +110,129 @@ function onOpen() {
     .addItem('Sync Changed Only', 'syncChangedToGitHub')
     .addItem('⚡ Sync Selected Project', 'syncSelectedProjectToGitHub')
     .addSeparator()
+    .addItem('🎬 Create Slides for Selected Row', 'createSlidesForSelectedRow')
+    .addSeparator()
     .addItem('🖼️ Fix Hero Photo Pickers (all rows)', 'fixAllHeroPhotoPickers')
     .addToUi();
+}
+
+// ─── CREATE SLIDES FROM SHEET ROW ─────────────────────────────────────────
+// Called directly from sheet menu — no HTTP, no retries, no Streamlit
+function createSlidesForSelectedRow() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Basic Info');
+  var row   = sheet.getActiveRange().getRow();
+  if (row < 2) {
+    SpreadsheetApp.getUi().alert('Please select a data row (not the header).');
+    return;
+  }
+
+  var vals = sheet.getRange(row, 1, 1, sheet.getLastColumn()).getValues()[0];
+
+  // Read columns (1-based index → 0-based array)
+  var projectId   = String(vals[25] || '');  // col Z
+  var clientName  = String(vals[1]  || '');  // col B
+  var projectName = String(vals[2]  || '');  // col C
+  var eventDate   = String(vals[3]  || '');  // col D
+  var venue       = String(vals[4]  || '');  // col E
+  var category    = String(vals[5]  || '');  // col F
+  var scope       = String(vals[7]  || '');  // col H
+  var challenge   = String(vals[10] || '');  // col K
+  var solution    = String(vals[11] || '');  // col L
+  var driveFolderUrl = String(vals[21] || ''); // col V
+  var logoBlackUrl   = String(vals[23] || ''); // col X
+  var logoWhiteUrl   = String(vals[24] || ''); // col Y
+
+  if (!projectId) {
+    SpreadsheetApp.getUi().alert('No Project ID found in this row (col Z). Please sync first.');
+    return;
+  }
+
+  // Confirm
+  var ui  = SpreadsheetApp.getUi();
+  var res = ui.alert(
+    '🎬 Create Slides',
+    'Create slides for: ' + projectName + ' (' + projectId + ')?' +
+    '\n\nThis will append 2 new slides to the Master Deck.',
+    ui.ButtonSet.YES_NO
+  );
+  if (res !== ui.Button.YES) return;
+
+  // Load photos from Drive folder
+  var photos = [];
+  if (driveFolderUrl) {
+    try {
+      var folderId = driveFolderUrl.match(/[-\w]{25,}/);
+      if (folderId) {
+        var folder = DriveApp.getFolderById(folderId[0]);
+        var files  = folder.getFiles();
+        while (files.hasNext() && photos.length < 8) {
+          var file = files.next();
+          var mime = file.getMimeType();
+          if (mime === 'image/jpeg' || mime === 'image/png' || mime === 'image/webp') {
+            photos.push('https://drive.google.com/thumbnail?id=' + file.getId() + '&sz=s4000');
+          }
+        }
+      }
+    } catch(e) {
+      Logger.log('Photo load err: ' + e.message);
+    }
+  }
+
+  // Load logo white
+  var logoWhiteBase64 = '';
+  if (logoWhiteUrl) {
+    try {
+      var logoId = logoWhiteUrl.match(/[-\w]{25,}/);
+      if (logoId) {
+        var logoFile = DriveApp.getFileById(logoId[0]);
+        var logoBytes = logoFile.getBlob().getBytes();
+        logoWhiteBase64 = 'data:image/png;base64,' + Utilities.base64Encode(logoBytes);
+      }
+    } catch(e) {
+      Logger.log('Logo err: ' + e.message);
+    }
+  }
+
+  // Parse date
+  var parts = eventDate.split(' ');
+  var eventMonth = parts[0] || '';
+  var eventYear  = parts[1] || '';
+
+  // Build payload — same structure as Streamlit
+  var data = {
+    action:            'create_slide',
+    project_id:        projectId,
+    client_name:       clientName,
+    project_name:      projectName,
+    category:          category,
+    venue:             venue,
+    date:              eventDate,
+    event_month:       eventMonth,
+    event_year:        eventYear,
+    scope:             scope.split('\n').filter(function(s){return s.trim();}),
+    challenge:         challenge,
+    solution:          solution,
+    photos:            photos,
+    logo_white_base64: logoWhiteBase64,
+    logo_black:        logoBlackUrl
+  };
+
+  // Call Script 2 directly (same project, so no HTTP call needed)
+  // Import the slide creator function by calling the web app
+  var SLIDE_DB_URL = 'https://script.google.com/macros/s/AKfycbwAFo739fMIFwSYWaIZNw9ILiJk96tlnlVWlg8PdbrGYd1SzEGaAc4E_P4aLyNB3tnp/exec';
+  var response = UrlFetchApp.fetch(SLIDE_DB_URL, {
+    method: 'post',
+    contentType: 'application/json',
+    payload: JSON.stringify(data),
+    muteHttpExceptions: true
+  });
+
+  var result = JSON.parse(response.getContentText());
+  if (result.status === 'success' || result.status === 'queued') {
+    ui.alert('✅ Slides created successfully for ' + projectName + '!');
+  } else {
+    ui.alert('⚠️ Result: ' + (result.message || JSON.stringify(result)));
+  }
 }
 
 
