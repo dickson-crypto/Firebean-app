@@ -70,6 +70,21 @@ function createSlideInner_(data) {
   var apiBase  = 'https://slides.googleapis.com/v1/presentations/' + TEMPLATE_ID;
   var slideUrl = 'https://docs.google.com/presentation/d/' + TEMPLATE_ID + '/edit';
 
+  // ── IDEMPOTENCY: if this project_id already has a slide, return immediately ──
+  if (data.project_id) {
+    var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(SHEET_NAME);
+    var vals  = sheet.getDataRange().getValues();
+    for (var r = 1; r < vals.length; r++) {
+      if (String(vals[r][25]).toUpperCase() === String(data.project_id).toUpperCase()) {
+        if (vals[r][12]) { // col M already has slide URL
+          Logger.log('Already exists, skipping: ' + data.project_id);
+          return resp_({status:'success', slide_url:vals[r][12], skipped:true});
+        }
+        break;
+      }
+    }
+  }
+
   // ── STEP 1: Use SlidesApp to insert copies of slide 1 & 2 at position 3 & 4 ──
   // insertSlide(insertionIndex, slide) inserts a copy at that index (0-based)
   // insertionIndex 2 = position 3, insertionIndex 3 = position 4

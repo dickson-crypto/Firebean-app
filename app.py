@@ -725,7 +725,7 @@ def main():
                     # 2️⃣ Create Slide in Master DB Slide Creator
                     slide_payload = {**payload, "action": "create_slide", "photos": processed_imgs, "logo_white_base64": st.session_state.logo_white}
                     try:
-                        r2 = requests.post(SLIDE_DB_URL, json=slide_payload, timeout=60)
+                        r2 = requests.post(SLIDE_DB_URL, json=slide_payload, timeout=120, allow_redirects=False)
                         if r2.status_code == 200:
                             log_debug(f"✅ Slide DB OK: {r2.text[:100]}", "success")
                         else:
@@ -738,7 +738,7 @@ def main():
                     # 3️⃣ Create Firebean Case Study Slide
                     case_payload = {**slide_payload, "action": "create_case_study"}
                     try:
-                        r3 = requests.post(CASE_STUDY_URL, json=case_payload, timeout=60)
+                        r3 = requests.post(CASE_STUDY_URL, json=case_payload, timeout=120, allow_redirects=False)
                         if r3.status_code == 200:
                             log_debug(f"✅ Case Study Slide OK: {r3.text[:100]}", "success")
                         else:
