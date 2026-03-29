@@ -315,6 +315,40 @@ function applyCropCentreFill_(presentationId, requests) {
   applyFillAndCrop_(presentationId, requests);
 }
 
+
+// ─── HELPER: Read image pixel dimensions from base64 header ──────────────────
+// Used to calculate crop offsets (original aspect ratio vs frame aspect ratio).
+// Returns {w, h} in pixels. Falls back to {w:0, h:0} → no crop applied.
+function getBase64ImageDimensions_(base64Data) {
+  try {
+    var clean = String(base64Data).replace(/^data:[^;]+;base64,/, '').replace(/\s/g, '');
+    var bytes  = Utilities.base64Decode(clean.substring(0, 32));
+
+    // JPEG: FF D8 marker, SOF at 0xC0-0xC3
+    if (bytes[0] === 0xFF && bytes[1] === 0xD8) {
+      var fb = Utilities.base64Decode(clean.substring(0, 600));
+      for (var i = 2; i < fb.length - 9; i++) {
+        if (fb[i] === 0xFF && (fb[i+1] === 0xC0 || fb[i+1] === 0xC1 ||
+            fb[i+1] === 0xC2 || fb[i+1] === 0xC3)) {
+          return { w: (fb[i+7] << 8) | fb[i+8], h: (fb[i+5] << 8) | fb[i+6] };
+        }
+      }
+    }
+
+    // PNG: 89 50 4E 47, width bytes 16-19, height 20-23
+    if (bytes[0] === 0x89 && bytes[1] === 0x50) {
+      var pb = Utilities.base64Decode(clean.substring(0, 64));
+      return {
+        w: (pb[16]<<24)|(pb[17]<<16)|(pb[18]<<8)|pb[19],
+        h: (pb[20]<<24)|(pb[21]<<16)|(pb[22]<<8)|pb[23]
+      };
+    }
+  } catch(e) {
+    Logger.log('getBase64ImageDimensions_ error: ' + e.message);
+  }
+  return {w: 0, h: 0};
+}
+
 // ─── HELPERS — FINDING & REMOVING ───────────────────────────────────────────
 
 /**
