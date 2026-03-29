@@ -115,7 +115,7 @@ function createSlide_(data) {
   // ── STEP 3: Move BOTH to position 3 & 4 (insertionIndex:2) ───────────────────
   Utilities.sleep(1000);
   apiBatch_(apiBase, token, [
-    {updateSlidesPosition: {slideObjectIds: [newId1, newId2], insertionIndex: 2}}
+    {updateSlidesPosition: {slideObjectIds: [newId1, newId2], insertionIndex: 3}}
   ]);
   Logger.log('Moved to pos 3&4');
 
