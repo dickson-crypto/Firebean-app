@@ -73,16 +73,19 @@ function createSlide_(data) {
   var newId2 = newSlide2.getObjectId();
   Logger.log('Inserted at 3&4: ' + newId1 + ', ' + newId2);
 
-  // ── STEP 2: Re-read via REST to get element IDs ────────────────────────────
+  // STEP 2: Re-read via REST — new slides are always at index 2 & 3
+  // SlidesApp.insertSlide may assign different objectIds than getObjectId() returns
+  // So we read positions 2 & 3 directly from REST instead of searching by ID
   Utilities.sleep(2000);
   var pres = apiGet_(apiBase, token);
-  var newSlideData1 = null, newSlideData2 = null;
-  pres.slides.forEach(function(s, i) {
-    if (s.objectId === newId1) { newSlideData1 = s; Logger.log('Slide1 at pos '+(i+1)); }
-    if (s.objectId === newId2) { newSlideData2 = s; Logger.log('Slide2 at pos '+(i+1)); }
-  });
+  var newSlideData1 = pres.slides[2];
+  var newSlideData2 = pres.slides[3];
   if (!newSlideData1 || !newSlideData2)
-    throw new Error('Cannot find new slides: ' + newId1 + ', ' + newId2);
+    throw new Error('Slides at index 2&3 not found. Total: ' + pres.slides.length);
+  // Override with REST-confirmed objectIds
+  newId1 = newSlideData1.objectId;
+  newId2 = newSlideData2.objectId;
+  Logger.log('REST-confirmed pos 3&4: ' + newId1 + ', ' + newId2);
 
   // ── STEP 3: Delete template images from new slides (non-fatal) ───────────────
   var deleteReqs = [];
