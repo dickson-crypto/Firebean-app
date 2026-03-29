@@ -496,18 +496,6 @@ def main():
             col_b.markdown(f"**Category:** {st.session_state.category}")
             col_b.markdown(f"**What We Do:** {', '.join(st.session_state.what_we_do)}")
 
-        # ── Challenge & Solution (for Google Slide page 2) ──
-        with st.expander("💡 Challenge & Solution (Google Slide Page 2)", expanded=False):
-            st.caption("Auto-filled by AI when you click 生成六大平台對接文案. Edit before syncing.")
-            st.session_state.challenge = st.text_area(
-                "Boring Challenge → col K", st.session_state.challenge, height=100,
-                key="challenge_area", placeholder="What was the core PR/event challenge?"
-            )
-            st.session_state.solution = st.text_area(
-                "Creative Solution → col L", st.session_state.solution, height=100,
-                key="solution_area", placeholder="How did Firebean solve it creatively?"
-            )
-
         # ── AI content generation ──
         if st.button("生成六大平台對接文案", type="primary", use_container_width=True):
             photos = st.session_state.project_photos if st.session_state.project_photos else None
@@ -563,36 +551,101 @@ def main():
                 else:
                     st.error("網頁文章生成失敗，請檢查 Debug Terminal。")
 
-        # ── Show & edit AI content ──
-        if st.session_state.ai_content:
-            st.markdown("#### 📝 AI 生成文案 (可編輯)")
-            edited = {}
-            for platform, data in st.session_state.ai_content.items():
-                with st.expander(f"🔵 {platform.upper()}", expanded=False):
-                    platform_edits = {}
-                    for field, value in data.items():
-                        platform_edits[field] = st.text_area(
-                            f"{field}", value, key=f"edit_{platform}_{field}", height=100
-                        )
-                    edited[platform] = platform_edits
-            if edited:
-                st.session_state.ai_content = edited
+        # ── Show & edit AI content — sections match Master DB column names ──
+        any_content = (
+            st.session_state.ai_content or
+            st.session_state.challenge or
+            st.session_state.solution or
+            st.session_state.web_en or
+            st.session_state.faq_en_edit
+        )
+        if any_content:
+            st.markdown("#### 📝 AI 生成內容 (可編輯後同步)")
+
+            ai = st.session_state.ai_content or {}
+
+            # col K — Boring Challenge
+            with st.expander("🔴 Boring Challenge — col K", expanded=False):
+                st.session_state.challenge = st.text_area(
+                    "Boring Challenge", st.session_state.challenge,
+                    height=120, key="challenge_area2",
+                    placeholder="What was the core PR/event challenge?"
+                )
+
+            # col L — Creative Solution
+            with st.expander("🟢 Creative Solution — col L", expanded=False):
+                st.session_state.solution = st.text_area(
+                    "Creative Solution", st.session_state.solution,
+                    height=120, key="solution_area2",
+                    placeholder="How did Firebean solve it creatively?"
+                )
+
+            # col N — LinkedIn Post
+            with st.expander("🔵 LinkedIn Post — col N", expanded=False):
+                ln = ai.get("linkedin", {})
+                new_ln_h = st.text_area("Headline", ln.get("headline",""), key="edit_linkedin_headline", height=60)
+                new_ln_b = st.text_area("Body", ln.get("body",""), key="edit_linkedin_body", height=150)
+                if "linkedin" not in ai: ai["linkedin"] = {}
+                ai["linkedin"]["headline"] = new_ln_h
+                ai["linkedin"]["body"]     = new_ln_b
+
+            # col O — Facebook Post
+            with st.expander("🔵 Facebook Post — col O", expanded=False):
+                fb = ai.get("facebook", {})
+                new_fb = st.text_area("Caption", fb.get("caption",""), key="edit_facebook_caption", height=150)
+                if "facebook" not in ai: ai["facebook"] = {}
+                ai["facebook"]["caption"] = new_fb
+
+            # col P — Threads Post (from press_release)
+            with st.expander("🔵 Threads Post — col P", expanded=False):
+                pr = ai.get("press_release", {})
+                new_pr_h = st.text_area("Headline", pr.get("headline",""), key="edit_pr_headline", height=60)
+                new_pr_b = st.text_area("Body", pr.get("body",""), key="edit_pr_body", height=150)
+                if "press_release" not in ai: ai["press_release"] = {}
+                ai["press_release"]["headline"] = new_pr_h
+                ai["press_release"]["body"]     = new_pr_b
+
+            # col Q — Instagram Post
+            with st.expander("🔵 Instagram Post — col Q", expanded=False):
+                ig = ai.get("instagram", {})
+                new_ig_c = st.text_area("Caption", ig.get("caption",""), key="edit_ig_caption", height=120)
+                new_ig_h = st.text_area("Hashtags", ig.get("hashtags",""), key="edit_ig_hashtags", height=60)
+                if "instagram" not in ai: ai["instagram"] = {}
+                ai["instagram"]["caption"]  = new_ig_c
+                ai["instagram"]["hashtags"] = new_ig_h
+
+            # EDM (bonus — not in sheet but useful)
+            with st.expander("🔵 EDM (bonus)", expanded=False):
+                edm = ai.get("edm", {})
+                new_edm_s = st.text_area("Subject", edm.get("subject",""), key="edit_edm_subject", height=60)
+                new_edm_b = st.text_area("Body", edm.get("body",""), key="edit_edm_body", height=150)
+                if "edm" not in ai: ai["edm"] = {}
+                ai["edm"]["subject"] = new_edm_s
+                ai["edm"]["body"]    = new_edm_b
+
+            st.session_state.ai_content = ai
 
             st.markdown("---")
 
-            # ── Web Articles ──
-            with st.expander("🌐 Web Articles (EN / 繁中 / JP)", expanded=False):
-                st.caption("These fill columns R, S, T (Web EN / Web TC / Web JP) in Master DB")
-                st.session_state.web_en = st.text_area("Web Article (English)", st.session_state.web_en, height=250, key="web_en_area")
-                st.session_state.web_tc = st.text_area("Web Article (繁中)", st.session_state.web_tc, height=250, key="web_tc_area")
-                st.session_state.web_jp = st.text_area("Web Article (日文)", st.session_state.web_jp, height=250, key="web_jp_area")
+            # col R/S/T — Web EN / Web TC / Web JP
+            with st.expander("🌐 Web EN — col R", expanded=False):
+                st.caption("Full HTML article → syncs to col R (Web EN)")
+                st.session_state.web_en = st.text_area("Web Article (English)", st.session_state.web_en, height=200, key="web_en_area")
+            with st.expander("🌐 Web TC — col S", expanded=False):
+                st.caption("Full HTML article → syncs to col S (Web TC)")
+                st.session_state.web_tc = st.text_area("Web Article (繁中)", st.session_state.web_tc, height=200, key="web_tc_area")
+            with st.expander("🌐 Web JP — col T", expanded=False):
+                st.caption("Full HTML article → syncs to col T (Web JP)")
+                st.session_state.web_jp = st.text_area("Web Article (日文)", st.session_state.web_jp, height=200, key="web_jp_area")
 
-            # ── FAQ fields ──
-            with st.expander("❓ FAQ (多語言 — 填入 AB / AC / AD 欄)", expanded=False):
-                st.caption("Stored as JSON list [{Q:..., A:...}] in columns AB (FAQ_EN), AC (FAQ_TC), AD (FAQ_JP)")
-                st.session_state.faq_en_edit = st.text_area("FAQ (English) — col AB", st.session_state.faq_en_edit, height=150)
-                st.session_state.faq_tc_edit = st.text_area("FAQ (繁中) — col AC", st.session_state.faq_tc_edit, height=150)
-                st.session_state.faq_jp_edit = st.text_area("FAQ (日文) — col AD", st.session_state.faq_jp_edit, height=150)
+            # col AB/AC/AD — FAQ EN / TC / JP
+            with st.expander("❓ FAQ_EN — col AB", expanded=False):
+                st.caption("JSON list [{Q:..., A:...}]")
+                st.session_state.faq_en_edit = st.text_area("FAQ (English)", st.session_state.faq_en_edit, height=150, key="faq_en_area")
+            with st.expander("❓ FAQ_TC — col AC", expanded=False):
+                st.session_state.faq_tc_edit = st.text_area("FAQ (繁中)", st.session_state.faq_tc_edit, height=150, key="faq_tc_area")
+            with st.expander("❓ FAQ_JP — col AD", expanded=False):
+                st.session_state.faq_jp_edit = st.text_area("FAQ (日文)", st.session_state.faq_jp_edit, height=150, key="faq_jp_area")
 
             # ── Confirm & Sync button ──
             if st.button("✅ Confirm & Sync to Master DB + Slide", type="primary", use_container_width=True):
