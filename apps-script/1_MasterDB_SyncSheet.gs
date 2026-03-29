@@ -169,7 +169,16 @@ function createSlidesForSelectedRow() {
           var file = files.next();
           var mime = file.getMimeType();
           if (mime === 'image/jpeg' || mime === 'image/png' || mime === 'image/webp') {
-            photos.push('https://drive.google.com/thumbnail?id=' + file.getId() + '&sz=s4000');
+            try {
+              // Convert to base64 so Script 2 can upload to Drive temp folder
+              var bytes  = file.getBlob().getBytes();
+              var b64    = Utilities.base64Encode(bytes);
+              var prefix = mime === 'image/png' ? 'data:image/png;base64,' : 'data:image/jpeg;base64,';
+              photos.push(prefix + b64);
+              Logger.log('Photo loaded: ' + file.getName() + ' (' + bytes.length + ' bytes)');
+            } catch(pe) {
+              Logger.log('Photo load err: ' + pe.message);
+            }
           }
         }
       }
