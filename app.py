@@ -728,8 +728,8 @@ def main():
                         r2 = requests.post(SLIDE_DB_URL, json=slide_payload, timeout=120)
                         if r2.status_code == 200:
                             j2 = r2.json()
-                            if j2.get('status') in ['success', 'queued']:
-                                log_debug(f"✅ Slide DB OK: {j2.get('status')} — slide creation in progress", "success")
+                            if j2.get('status') in ['success', 'queued'] or 'running' in j2.get('message','').lower():
+                                log_debug(f"✅ Slide DB OK: slide creation in progress", "success")
                             else:
                                 log_debug(f"⚠️ Slide DB: {j2.get('message','')[:100]}", "warning")
                         else:
