@@ -19,18 +19,19 @@ var SHEET_ID    = '1aTuqgmmSKMWgNCl2KR0QhK4Cj8G7W5yPsr4t39pi-yc';
 var SHEET_NAME  = 'Basic Info';
 
 // Photo grid positions in EMU (1pt = 12700 EMU)
-// Slide right half: x=210pt to x=720pt (510pt wide), y=0 to y=405pt (405pt tall)
-// Each cell bleeds 3pt on every edge to guarantee zero white gaps
+// Right panel: x=210.6pt, y=0, w=509.4pt, h=405pt (confirmed from template API)
+// 2 cols x 2 rows. Each cell: ~254.7pt wide x 202.5pt tall
+// Bleed 5pt on every edge so images always overlap borders — zero white gaps
 var PT = 12700;
 var PHOTO_EMU = {
-  'PHOTO1': {l:207*PT, t:-3*PT,    w:261*PT, h:206*PT},
-  'PHOTO2': {l:462*PT, t:-3*PT,    w:261*PT, h:206*PT},
-  'PHOTO3': {l:207*PT, t:199*PT,   w:261*PT, h:209*PT},
-  'PHOTO4': {l:462*PT, t:199*PT,   w:261*PT, h:209*PT},
-  'PHOTO5': {l:207*PT, t:-3*PT,    w:261*PT, h:206*PT},
-  'PHOTO6': {l:462*PT, t:-3*PT,    w:261*PT, h:206*PT},
-  'PHOTO7': {l:207*PT, t:199*PT,   w:261*PT, h:209*PT},
-  'PHOTO8': {l:462*PT, t:199*PT,   w:261*PT, h:209*PT}
+  'PHOTO1': {l:205*PT, t:-5*PT,    w:265*PT, h:213*PT},
+  'PHOTO2': {l:460*PT, t:-5*PT,    w:265*PT, h:213*PT},
+  'PHOTO3': {l:205*PT, t:197*PT,   w:265*PT, h:213*PT},
+  'PHOTO4': {l:460*PT, t:197*PT,   w:265*PT, h:213*PT},
+  'PHOTO5': {l:205*PT, t:-5*PT,    w:265*PT, h:213*PT},
+  'PHOTO6': {l:460*PT, t:-5*PT,    w:265*PT, h:213*PT},
+  'PHOTO7': {l:205*PT, t:197*PT,   w:265*PT, h:213*PT},
+  'PHOTO8': {l:460*PT, t:197*PT,   w:265*PT, h:213*PT}
 };
 var LOGO_EMU = {l:24.3*PT, t:25.5*PT, w:166.2*PT, h:71.6*PT};
 
@@ -164,7 +165,7 @@ function createCaseStudySlide_(data) {
     }});
   });
 
-  // d) Upload photos to Drive temp folder, create images at exact grid positions
+  // d) Upload photos — size image to COVER cell, centred (true object-fit:cover)
   var photos      = data.photos || data.images || [];
   var photoResults = [];
   var tempFolder  = getOrCreateTempFolder_();
@@ -178,15 +179,18 @@ function createCaseStudySlide_(data) {
     try {
       var imgDims = getBase64ImageDimensions_(photos[i]);
       var url     = saveBase64ToPublicDrive_(tempFolder, 'ph' + photoNum + '.jpg', photos[i], 'image/jpeg');
+      // Cover transform: scale image so it fills cell on BOTH axes, centre it
+      // The image extends beyond cell edges — clipped naturally by slide bounds
+      var cover = calcCoverTransform_(imgDims.w, imgDims.h, pos.w, pos.h, pos.l, pos.t);
       requests.push({createImage: {
         url:      url,
         objectId: 'NEWPHOTO_' + photoNum + '_' + newId1.replace(/[^a-z0-9]/gi, ''),
         elementProperties: {
           pageObjectId: slideId,
-          size:      {width:  {magnitude: pos.w, unit: 'EMU'},
-                      height: {magnitude: pos.h, unit: 'EMU'}},
+          size:      {width:  {magnitude: cover.w, unit: 'EMU'},
+                      height: {magnitude: cover.h, unit: 'EMU'}},
           transform: {scaleX: 1, scaleY: 1,
-                      translateX: pos.l, translateY: pos.t, unit: 'EMU'}
+                      translateX: cover.x, translateY: cover.y, unit: 'EMU'}
         }
       }});
       photoResults.push(altText + ':OK');
@@ -234,36 +238,7 @@ function createCaseStudySlide_(data) {
   }
   Logger.log('batchUpdate OK: ' + requests.length + ' requests');
 
-  // ── STEP 7: Apply cropProperties via second batchUpdate ───────────────────────
-  Utilities.sleep(1500);
-  var cropRequests = [];
-  for (var j = 0; j < Math.min(photos.length, 8); j++) {
-    var pn   = j + 1;
-    var pos2 = PHOTO_EMU['PHOTO' + pn];
-    var dims = getBase64ImageDimensions_(photos[j]);
-    var cr   = calcCropCentre_(dims.w, dims.h, pos2.w / PT, pos2.h / PT);
-    cropRequests.push({updateImageProperties: {
-      objectId: 'NEWPHOTO_' + pn + '_' + newId1.replace(/[^a-z0-9]/gi, ''),
-      imageProperties: {cropProperties: {
-        leftOffset:   cr.leftOffset,
-        rightOffset:  cr.rightOffset,
-        topOffset:    cr.topOffset,
-        bottomOffset: cr.bottomOffset
-      }},
-      fields: 'cropProperties'
-    }});
-  }
-  if (cropRequests.length > 0) {
-    var cropResp = UrlFetchApp.fetch(apiBase + ':batchUpdate', {
-      method: 'post', contentType: 'application/json',
-      headers: {'Authorization': 'Bearer ' + token},
-      payload: JSON.stringify({requests: cropRequests}),
-      muteHttpExceptions: true
-    });
-    Logger.log('Crop update: ' + cropResp.getResponseCode());
-  }
-
-  // ── STEP 8: Write slide URL to Master DB col M ────────────────────────────────
+  // ── STEP 7: Write slide URL to Master DB col M ────────────────────────────────
   updateSheetWithSlideUrl_(data.project_id, slideUrl);
 
   return ContentService.createTextOutput(JSON.stringify({
@@ -274,7 +249,27 @@ function createCaseStudySlide_(data) {
   })).setMimeType(ContentService.MimeType.JSON);
 }
 
-// ─── CROP MATH ────────────────────────────────────────────────────────────────
+// ─── COVER TRANSFORM (object-fit:cover equivalent) ─────────────────────────
+// Scales image so it fully covers the cell on both axes, centred.
+// Image is placed larger than cell — slide boundary clips the overflow.
+// Works correctly even when imgW/imgH are 0 (unknown dims).
+function calcCoverTransform_(imgW, imgH, cellW, cellH, cellX, cellY) {
+  var w, h, x, y;
+  if (!imgW || !imgH) {
+    // Unknown dimensions: just fill the cell exactly (no crop, may stretch slightly)
+    return {w: cellW, h: cellH, x: cellX, y: cellY};
+  }
+  var scaleW = cellW / imgW;   // scale needed to fill width
+  var scaleH = cellH / imgH;   // scale needed to fill height
+  var scale  = Math.max(scaleW, scaleH);  // cover = use the LARGER scale
+  w = imgW * scale;
+  h = imgH * scale;
+  x = cellX - (w - cellW) / 2;  // centre horizontally
+  y = cellY - (h - cellH) / 2;  // centre vertically
+  return {w: w, h: h, x: x, y: y};
+}
+
+// ─── CROP MATH (kept for reference) ──────────────────────────────────────────
 
 function calcCropCentre_(imgW, imgH, frameW, frameH) {
   if (!imgW || !imgH) return {leftOffset: 0, rightOffset: 0, topOffset: 0, bottomOffset: 0};
