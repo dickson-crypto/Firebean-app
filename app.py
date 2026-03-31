@@ -1,858 +1,337 @@
 import streamlit as st
-from google import genai
-from google.genai import types
-import io
-import base64
-import time
-import json
 import requests
-import re
-from PIL import Image, ImageDraw, ImageOps
+import json
+import time
+from PIL import Image, ImageOps
+import io
 from datetime import datetime
 
-# 🚀 FIX: HEIC support for iPhone uploads
-try:
-    from pillow_heif import register_heif_opener
-    register_heif_opener()
-except ImportError:
-    pass
+# ==========================================
+# 1. CONFIGURATION & NEUMORPHIC STYLING
+# ==========================================
+# ACTION: Ensure your Apps Script Web App URL is pasted here
+WEB_APP_URL = "https://script.google.com/macros/s/.../exec"
+apiKey = "" # Environment provides the key automatically
+APP_VERSION = "v11.4.5"
 
-# --- 1. 核心配置 ---
-SHEET_SCRIPT_URL   = "https://script.google.com/macros/s/AKfycbxy6JwJpmclJOBerKJO4EJ50oKyL86Ux1Qci2oHx1RQiw8ruL_Um6qVYsWydyEsLawQ/exec"
-SLIDE_DB_URL       = "https://script.google.com/macros/s/AKfycbwAFo739fMIFwSYWaIZNw9ILiJk96tlnlVWlg8PdbrGYd1SzEGaAc4E_P4aLyNB3tnp/exec"
-CASE_STUDY_URL     = "https://script.google.com/macros/s/AKfycbxKP-8Xrvy6hblPqTmtXn76rO3DFOeU6jYQtLw5QDfDP1-adNDk02bhoKihfvp_Xsvy/exec"
+st.set_page_config(
+    page_title=f"Firebean Brain Collector {APP_VERSION}",
+    page_icon="🔥",
+    layout="wide",
+    initial_sidebar_state="collapsed"
+)
 
-# ✅ gemini-2.5-flash — current stable model for new API keys (2026)
-STABLE_MODEL_ID = "gemini-2.5-flash"
+# Custom CSS for Neumorphic Design & Adaptive Themes (Light/Dark)
+st.markdown("""
+    <style>
+        [data-testid="stSidebar"] {display: none;}
+        #MainMenu {visibility: hidden;}
+        footer {visibility: hidden;}
+        header {visibility: hidden;}
+        
+        /* Neumorphic Card Styling */
+        .neu-card {
+            border-radius: 20px;
+            padding: 30px;
+            margin-bottom: 25px;
+            box-shadow: 10px 10px 20px rgba(0,0,0,0.1), -10px -10px 20px rgba(255,255,255,0.7);
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        
+        /* Progress Circle Container */
+        .progress-container {
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: -80px;
+            padding-right: 20px;
+        }
 
-WHO_WE_HELP_OPTIONS = ["GOVERNMENT & PUBLIC SECTOR", "LIFESTYLE & CONSUMER", "F&B & HOSPITALITY", "MALLS & VENUES"]
-WHAT_WE_DO_OPTIONS  = ["ROVING EXHIBITIONS", "SOCIAL & CONTENT", "INTERACTIVE & TECH", "PR & MEDIA", "EVENTS & CEREMONIES"]
-SOW_OPTIONS = ["Event Planning", "Event Coordination", "Event Production", "Theme Design", "Concept Development",
-               "Social Media Management", "KOL / MI Line up", "Artist Endorsement", "Media Pitching", "PR Consulting", "Souvenir Sourcing"]
+        /* Navigation Buttons */
+        .stButton > button {
+            border-radius: 12px;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+        
+        .next-btn > div > button {
+            background-color: #ff4b4b !important;
+            color: white !important;
+            padding: 15px 0px !important;
+            width: 100% !important;
+            font-size: 18px !important;
+            box-shadow: 0 4px 15px rgba(255, 75, 75, 0.3);
+            border: none !important;
+        }
 
-CURRENT_YEAR  = datetime.now().year
-YEAR_OPTIONS  = [str(y) for y in range(CURRENT_YEAR, 2011, -1)]
-MONTH_OPTIONS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
+        /* Status Message Boxes */
+        .status-box {
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+            font-weight: 600;
+        }
+        .status-yellow { background-color: #FFF2CC; color: #856404; }
+        .status-green { background-color: #D9EAD3; color: #274E13; }
 
-# --- 🛡️ FAQ 扁平化清洗函數 ---
-def safe_flatten_faq(faq_input):
-    if not faq_input: return "[]"
-    if isinstance(faq_input, (list, dict)): return json.dumps(faq_input, ensure_ascii=False)
-    if isinstance(faq_input, str):
-        try: return json.dumps(json.loads(faq_input.strip()), ensure_ascii=False)
-        except: return faq_input.replace("\\n", " ").replace("\\r", "").strip()
-    return "[]"
+        /* MC Question Headers */
+        .mc-header {
+            color: #FF0000;
+            font-weight: bold;
+            border-left: 4px solid #FF0000;
+            padding-left: 10px;
+            margin-top: 20px;
+        }
 
-# --- 系統自動生成邏輯 ---
-def generate_system_metadata():
-    year  = st.session_state.get("event_year", str(CURRENT_YEAR))
-    month = st.session_state.get("event_month", "JAN")
-    m_num = {m: str(i+1).zfill(2) for i, m in enumerate(MONTH_OPTIONS)}.get(month, "01")
-    sort_date = f"{year}-{m_num}-01"
-    try:
-        count_res  = requests.get(SHEET_SCRIPT_URL + "?action=get_row_count", timeout=5)
-        next_index = int(count_res.text.strip()) + 1 if count_res.status_code == 200 else 100
-    except:
-        next_index = 999
-    return f"FB{year}{str(next_index).zfill(3)}", sort_date
+        /* AI Purple Buttons */
+        .ai-btn > div > button {
+            background-color: #7B61FF !important;
+            color: white !important;
+            border: none !important;
+            font-size: 14px !important;
+        }
+        
+        /* Dark mode support */
+        @media (prefers-color-scheme: dark) {
+            .neu-card {
+                box-shadow: 10px 10px 20px rgba(0,0,0,0.4), -5px -5px 15px rgba(255,255,255,0.05);
+                background-color: #1E2128;
+                border: 1px solid rgba(255,255,255,0.1);
+            }
+        }
+    </style>
+""", unsafe_allow_html=True)
 
-FIREBEAN_SYSTEM_PROMPT = "You are a Lead PR Strategist at Firebean Limited, Hong Kong. Transform diagnostic data into a professional PR strategy JSON. Written in past tense retrospective mode. Output valid JSON only."
-
-# --- 2. 核心邏輯 ---
-def log_debug(msg, type="info"):
-    if "debug_logs" not in st.session_state: st.session_state.debug_logs = []
-    st.session_state.debug_logs.append({"time": datetime.now().strftime("%H:%M:%S"), "msg": msg, "type": type})
-
-def open_image_safe(f):
-    """Open a PIL Image from either an UploadedFile or a BytesIO (dummy)."""
-    if hasattr(f, "seek"):
-        f.seek(0)
-    return Image.open(f)
-
-def call_gemini_sdk(prompt, image_files=None, is_json=False, system_prompt=None, force_json_mime=False):
-    api_key = st.secrets.get("GEMINI_API_KEY", "")
-    if not api_key:
-        log_debug("GEMINI_API_KEY not found in secrets.", "error")
-        return None
-    try:
-        client = genai.Client(api_key=api_key)
-        contents = []
-        if image_files:
-            for f in image_files:
-                try:
-                    img = open_image_safe(f)
-                    img.thumbnail((800, 800))
-                    buf = io.BytesIO()
-                    img.save(buf, format="JPEG")
-                    contents.append(types.Part.from_bytes(data=buf.getvalue(), mime_type="image/jpeg"))
-                except Exception as img_err:
-                    log_debug(f"Image load skipped: {img_err}", "warning")
-        contents.append(prompt)
-
-        cfg_kwargs = dict(
-            system_instruction=system_prompt if system_prompt else None,
-            temperature=0.7,
-        )
-        # force_json_mime uses the SDK's native JSON mode — guarantees valid JSON output
-        if force_json_mime:
-            cfg_kwargs["response_mime_type"] = "application/json"
-
-        cfg = types.GenerateContentConfig(**cfg_kwargs)
-        res = client.models.generate_content(
-            model=STABLE_MODEL_ID,
-            contents=contents,
-            config=cfg,
-        )
-        raw = res.text
-        if is_json or force_json_mime:
-            raw = re.sub(r"^```(?:json)?\s*", "", raw.strip(), flags=re.IGNORECASE)
-            raw = re.sub(r"\s*```$", "", raw.strip())
-            match = re.search(r'(\{.*\})|(\[.*\])', raw, re.DOTALL)
-            return match.group(0) if match else raw
-        return raw
-    except Exception as e:
-        log_debug(f"AI API Error: {str(e)}", "error")
-        return None
-
-def init_session_state():
-    fields = {
-        "active_tab": "Project Collector", "client_name": "", "project_name": "", "venue": "", "youtube": "",
-        "event_year": str(CURRENT_YEAR), "event_month": "FEB", "category": WHO_WE_HELP_OPTIONS[0],
-        "what_we_do": [], "scope": [], "project_photos": [], "ai_content": {}, "logo_white": "", "logo_black": "",
-        "debug_logs": [], "mc_questions": [], "open_question_ans": "", "challenge": "", "solution": "",
-        "hero_photo_index": 0, "sync_success": False, "draft_project_id": "", "loaded_image_urls": [],
-        "faq_en_edit": "", "faq_tc_edit": "", "faq_jp_edit": "",
-        "web_en": "", "web_tc": "", "web_jp": ""
-    }
-    for k, v in fields.items():
-        if k not in st.session_state: st.session_state[k] = v
-
-def reset_for_new_case():
-    keys_to_clear = list(st.session_state.keys())
-    for k in keys_to_clear:
-        del st.session_state[k]
-    init_session_state()
-    for w in WHAT_WE_DO_OPTIONS: st.session_state[f"w_{w}"] = False
-    for s in SOW_OPTIONS:         st.session_state[f"s_{s}"] = False
-    st.session_state.active_tab = "Project Collector"
-
-def create_dummy_image(color, label):
-    img = Image.new('RGB', (800, 600), color=color)
-    ImageDraw.Draw(img).text((40, 40), label, fill=(255, 255, 255))
-    buf = io.BytesIO()
-    img.save(buf, format="JPEG")
-    buf.seek(0)
-    return buf
-
-def fill_dummy_data():
-    st.session_state.client_name  = "Firebean HQ"
-    st.session_state.project_name = f"{CURRENT_YEAR} 旗艦同步測試"
-    st.session_state.venue        = "香港會議展覽中心"
-    st.session_state.category     = "LIFESTYLE & CONSUMER"
-
-    st.session_state.what_we_do = ["INTERACTIVE & TECH", "PR & MEDIA"]
-    for w in WHAT_WE_DO_OPTIONS: st.session_state[f"w_{w}"] = (w in st.session_state.what_we_do)
-    st.session_state.scope = ["Theme Design", "Event Production", "Concept Development"]
-    for s in SOW_OPTIONS: st.session_state[f"s_{s}"] = (s in st.session_state.scope)
-
-    st.session_state.open_question_ans = "將 15 個通用診斷問題轉化為一套連貫且可操作的跨平台策略。"
-    st.session_state.challenge = "The core challenge was unifying 15 diagnostic indicators into one actionable cross-platform PR strategy across INTERACTIVE & TECH and PR & MEDIA."
-    st.session_state.solution = "Firebean deployed a synchronisation framework combining data diagnostics with multi-channel content, delivering a flagship 2026 experience at 香港會議展覽中心."
-
-    colors = ["#FF5733", "#33FF57", "#3357FF", "#F333FF", "#33FFF3", "#F3FF33", "#999999", "#222222"]
-    st.session_state.project_photos = [create_dummy_image(c, f"P{i+1}") for i, c in enumerate(colors)]
-    dummy_logo = base64.b64encode(create_dummy_image("#000000", "LOGO").getvalue()).decode()
-    st.session_state.logo_black = dummy_logo
-    st.session_state.logo_white = dummy_logo
-
-    st.session_state.mc_questions = [{"id": i+1, "question": f"診斷指標 {i+1}", "options": ["戰略優化"]} for i in range(15)]
-    for i in range(1, 16): st.session_state[f"ans_{i}"] = ["戰略優化"]
-    log_debug("🚀 老細一鍵填充成功 (100% Status).", "success")
-
-# --- 3. UI 元件 ---
-def get_is_dark_mode():
-    hk_hour = datetime.now().hour
-    return hk_hour >= 20 or hk_hour < 8
-
-def get_circle_progress_html(percent, is_dark):
+# ==========================================
+# 2. UTILITIES & AI ENGINE
+# ==========================================
+def get_progress_circle(percent):
     circum = 439.8
     offset = circum * (1 - percent / 100)
-    bg, sh_d, sh_l, txt, trk = (
-        ("#2A2D35", "#1a1d23", "#3a3f4d", "#E0E5EC", "#1E2128") if is_dark
-        else ("#E0E5EC", "#bec3c9", "#ffffff", "#2D3436", "#d1d9e6")
-    )
-    return (
-        f"<div style='display:flex;justify-content:flex-end;'>"
-        f"<div style='position:relative;width:110px;height:110px;border-radius:50%;background:{bg};"
-        f"box-shadow:9px 9px 16px {sh_d},-9px -9px 16px {sh_l};display:flex;align-items:center;justify-content:center;'>"
-        f"<svg width='110' height='110'>"
-        f"<circle stroke='{trk}' stroke-width='8' fill='transparent' r='45' cx='55' cy='55'/>"
-        f"<circle stroke='#FF0000' stroke-width='8' stroke-dasharray='{circum}' stroke-dashoffset='{offset}' "
-        f"stroke-linecap='round' fill='transparent' r='45' cx='55' cy='55' "
-        f"style='transition:all 0.8s;transform:rotate(-90deg);transform-origin:center;'/>"
-        f"</svg>"
-        f"<div style='position:absolute;font-size:20px;font-weight:900;color:{txt};'>{percent}%</div>"
-        f"</div></div>"
-    )
+    return f"""
+    <div class="progress-container">
+        <div style="position:relative; width:110px; height:110px; display:flex; align-items:center; justify-content:center;">
+            <svg width="110" height="110">
+                <circle stroke="#e8ecf2" stroke-width="8" fill="transparent" r="45" cx="55" cy="55"/>
+                <circle stroke="#FF0000" stroke-width="8" stroke-dasharray="{circum}" stroke-dashoffset="{offset}" 
+                        stroke-linecap="round" fill="transparent" r="45" cx="55" cy="55" 
+                        style="transition: stroke-dashoffset 0.8s; transform: rotate(-90deg); transform-origin: center;"/>
+            </svg>
+            <div style="position:absolute; font-size:22px; font-weight:900;">{percent}%</div>
+        </div>
+    </div>
+    """
 
-def apply_styles(is_dark):
-    bg, card, sh_d, sh_l, txt, in_bg = (
-        ("#1E2128", "#1E2128", "#14161C", "#282C38", "#E0E5EC", "#252830") if is_dark
-        else ("#E0E5EC", "#E0E5EC", "#bec3c9", "#ffffff", "#2D3436", "#e8ecf2")
-    )
-    st.markdown(f"""<style>
-        .stApp {{ background-color: {bg} !important; color: {txt} !important; font-family: 'Inter', sans-serif; }}
-        .neu-card {{ background: {card}; border-radius: 20px; box-shadow: 9px 9px 16px {sh_d}, -9px -9px 16px {sh_l}; padding: 25px; margin-bottom: 20px; }}
-        div[data-testid="stElementContainer"]:has(#logo-anchor) + div button {{
-            background-image: url('https://raw.githubusercontent.com/dickson-crypto/Firebean-app/main/Firebeanlogo2026.png') !important;
-            background-size: contain !important; background-repeat: no-repeat !important;
-            min-height: 180px !important; width: 540px !important;
-            background-color: transparent !important; border: none !important; box-shadow: none !important;
-        }}
-        .mc-question {{ font-weight: 700; color: #FF0000 !important; border-left: 4px solid #FF0000; padding-left: 10px; margin-top: 15px; }}
-        .checkbox-group {{ padding-left: 20px; margin-bottom: 10px; }}
-        button[kind="primary"] {{ background-color: #FF2A2A !important; color: white !important; border-radius: 12px !important; box-shadow: 0px 4px 15px rgba(255,0,0,0.35) !important; }}
-        .debug-terminal {{ background: #111; color: #0f0; font-family: monospace; font-size: 12px; padding: 10px; border-radius: 8px; max-height: 300px; overflow-y: auto; }}
-    </style>""", unsafe_allow_html=True)
+def call_gemini_ai(prompt, system_instruction="", progress_msg="AI Processing..."):
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key={apiKey}"
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}], 
+        "systemInstruction": {"parts": [{"text": system_instruction}]},
+        "generationConfig": {"responseMimeType": "application/json"} if "JSON" in system_instruction else {}
+    }
+    
+    with st.status(progress_msg, expanded=True) as status:
+        st.write("📡 Connecting to Firebean Strategic Engine...")
+        try:
+            res = requests.post(url, json=payload, timeout=60)
+            if res.status_code == 200:
+                status.update(label="✅ Strategy Crafted!", state="complete", expanded=False)
+                return res.json()['candidates'][0]['content']['parts'][0]['text'].strip()
+        except Exception as e:
+            st.error(f"AI Connection Failed: {e}")
+    return None
 
-# --- 4. Review tab helpers: two focused AI prompts -------------------------
+# ==========================================
+# 3. STATE & BOSS TEST LOGIC
+# ==========================================
+if 'page' not in st.session_state: st.session_state.page = 1
+if 'form_data' not in st.session_state: st.session_state.form_data = {}
+if 'mc_questions' not in st.session_state: st.session_state.mc_questions = []
+if 'ai_results' not in st.session_state: st.session_state.ai_results = {}
+if 'mock_assets' not in st.session_state: st.session_state.mock_assets = False
 
-def _project_context():
-    """Shared project context string."""
-    mc_summary = []
-    for q in st.session_state.get("mc_questions", []):
-        ans = st.session_state.get(f"ans_{q['id']}", [])
-        mc_summary.append("Q" + str(q["id"]) + ". " + q["question"] + " → " + ", ".join(ans))
-    ss = st.session_state
-    parts = [
-        "Client: " + ss.get("client_name", ""),
-        "Project: " + ss.get("project_name", ""),
-        "Venue: " + ss.get("venue", ""),
-        "Date: " + ss.get("event_year", "") + " " + ss.get("event_month", ""),
-        "Category: " + ss.get("category", ""),
-        "Services: " + ", ".join(ss.get("what_we_do", [])),
-        "Scope: " + ", ".join(ss.get("scope", [])),
-        "Core Concept: " + ss.get("open_question_ans", ""),
-        "Diagnostic Q&A:",
-    ] + mc_summary
-    return "\n".join(parts)
+def run_boss_test():
+    st.session_state.form_data = {
+        "client": "Firebean Limited",
+        "project": f"Strategic CMS Launch {APP_VERSION}",
+        "venue": "Digital Experience Hub",
+        "year": "2026",
+        "month": "MAR",
+        "youtube": "https://youtube.com/firebean_cms",
+        "category": ["LIFESTYLE & CONSUMER"],
+        "what_we_do": ["SOCIAL & CONTENT", "INTERACTIVE & TECH"],
+        "scope": ["Event Planning", "Concept Development"],
+        "challenge": "Transforming static project data into strategic evergreen case studies for better SEO.",
+        "solution": f"Integrated Gemini AI with a Neumorphic UI ({APP_VERSION}) to automate multi-platform strategic recaps.",
+        "drive_folder": "https://drive.google.com/drive/folders/test_folder_id"
+    }
+    st.session_state.mock_assets = True
+    st.rerun()
 
-def build_platform_prompt():
-    """Prompt 1 — 6 platform copy fields only (short, clean JSON)."""
-    ctx = _project_context()
-    return f"""You are a PR strategist at Firebean Limited, Hong Kong.
-Generate platform copy for this project. Return ONLY a single valid JSON object, no markdown.
+# ==========================================
+# 4. PAGE 1: PROJECT COLLECTOR
+# ==========================================
+required_keys = ["client", "project", "venue", "category", "what_we_do", "scope", "challenge", "solution", "drive_folder"]
 
-{ctx}
+if st.session_state.page == 1:
+    # 1. Calculate Progress
+    filled = sum(1 for k in required_keys if st.session_state.form_data.get(k))
+    if st.session_state.mock_assets: filled += 1
+    percent = int((filled / (len(required_keys) + 1)) * 100)
+    
+    # 2. Header
+    st.markdown(get_progress_circle(percent), unsafe_allow_html=True)
+    st.image("https://raw.githubusercontent.com/dickson-crypto/Firebean-app/main/Firebeanlogo2026.png", width=340)
+    
+    if st.button("🚀 老細一鍵填充 (Boss Test Mode)", use_container_width=True):
+        run_boss_test()
 
-JSON format (fill every field, no empty strings):
-{{
-  "website": {{"headline": "", "body": "", "cta": ""}},
-  "instagram": {{"caption": "", "hashtags": ""}},
-  "linkedin": {{"headline": "", "body": ""}},
-  "facebook": {{"caption": ""}},
-  "press_release": {{"headline": "", "lead": "", "body": ""}},
-  "challenge": "",
-  "solution": ""
-}}
+    st.markdown('<div class="neu-card">', unsafe_allow_html=True)
+    
+    c1, c2, c3 = st.columns(3)
+    with c1: client = st.text_input("Client", value=st.session_state.form_data.get("client", ""))
+    with c2: project = st.text_input("Project", value=st.session_state.form_data.get("project", ""))
+    with c3: venue = st.text_input("Venue", value=st.session_state.form_data.get("venue", ""))
+    
+    d1, d2, d3 = st.columns(3)
+    with d1: year = st.selectbox("Year", [str(y) for y in range(2026, 2019, -1)], index=0)
+    with d2: month = st.selectbox("Month", ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"], index=2)
+    with d3: youtube = st.text_input("YouTube URL (optional)", value=st.session_state.form_data.get("youtube", ""))
 
-challenge: MAXIMUM 40 WORDS. One concise sentence describing the core PR/event challenge.
-solution: MAXIMUM 40 WORDS. One concise sentence describing how Firebean solved it creatively."""
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # Checkbox Selection Groups
+    g1, g2, g3 = st.columns(3)
+    with g1:
+        st.markdown("**Category**")
+        cat_opts = ["GOVERNMENT & PUBLIC SECTOR", "LIFESTYLE & CONSUMER", "F&B & HOSPITALITY", "MALLS & VENUES"]
+        selected_cat = [opt for opt in cat_opts if st.checkbox(opt, key=f"cat_{opt}", value=(opt in st.session_state.form_data.get("category", [])))]
+    with g2:
+        st.markdown("**What we do**")
+        wwd_opts = ["ROVING EXHIBITIONS", "SOCIAL & CONTENT", "INTERACTIVE & TECH", "PR & MEDIA", "EVENTS & CEREMONIES"]
+        selected_wwd = [opt for opt in wwd_opts if st.checkbox(opt, key=f"wwd_{opt}", value=(opt in st.session_state.form_data.get("what_we_do", [])))]
+    with g3:
+        st.markdown("**Scope of work**")
+        sow_opts = ["Event Planning", "Event Production", "Theme Design", "Concept Development", "PR Consulting"]
+        selected_sow = [opt for opt in sow_opts if st.checkbox(opt, key=f"sow_{opt}", value=(opt in st.session_state.form_data.get("scope", [])))]
+    
+    st.markdown("---")
+    
+    # Text Areas with SEO Enhance
+    st.write("**Boring Challenge (Recap Focus)**")
+    ch_1, ch_2 = st.columns([0.88, 0.12])
+    with ch_1: challenge = st.text_area("Challenge", value=st.session_state.form_data.get("challenge", ""), height=100, label_visibility="collapsed")
+    with ch_2:
+        st.markdown('<div class="ai-btn" style="margin-top:30px;">', unsafe_allow_html=True)
+        if st.button("✨ SEO", key="ai_ch"):
+            res = call_gemini_ai(f"Enhance this for SEO and searchability: {challenge}", "Expert PR strategist. Focus on keywords.", "✨ Optimizing for Search...")
+            if res: st.session_state.form_data["challenge"] = res; st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
 
-def build_web_faq_prompt():
-    """Prompt 2 — 3 web articles + 3-language FAQ only."""
-    ctx = _project_context()
-    client  = st.session_state.get("client_name", "")
-    project = st.session_state.get("project_name", "")
-    return f"""You are a PR strategist at Firebean Limited, Hong Kong.
-Generate web articles and FAQ for this project. Return ONLY a single valid JSON object, no markdown.
+    st.write("**Creative Solution (Recap Focus)**")
+    so_1, so_2 = st.columns([0.88, 0.12])
+    with so_1: solution = st.text_area("Solution", value=st.session_state.form_data.get("solution", ""), height=100, label_visibility="collapsed")
+    with so_2:
+        st.markdown('<div class="ai-btn" style="margin-top:30px;">', unsafe_allow_html=True)
+        if st.button("✨ SEO", key="ai_so"):
+            res = call_gemini_ai(f"Enhance this for SEO and searchability: {solution}", "Creative PR tone. Focus on innovation.", "✨ Optimizing for Search...")
+            if res: st.session_state.form_data["solution"] = res; st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
 
-{ctx}
+    drive_folder = st.text_input("Drive Link", value=st.session_state.form_data.get("drive_folder", ""))
+    st.markdown("</div>", unsafe_allow_html=True)
 
-Requirements for web_en / web_tc / web_jp:
-- 600-900 words each (shorter = cleaner JSON)
-- HTML tags only: <h1> <h2> <h3> <p> <b> — NO quotes inside attribute values
-- Tone: retrospective, thought leadership
-- web_en: professional English
-- web_tc: Traditional Chinese (正體中文)
-- web_jp: Standard Japanese
+    # Assets & MC Questions Section
+    cl, cr = st.columns([1.2, 1])
+    with cl:
+        st.markdown('<div class="neu-card">', unsafe_allow_html=True)
+        if st.button("生成 15 題繁中診斷題目"):
+            prompt = f"為項目 {project} 生成 15 題專業 PR 診斷多選題。格式: JSON [{{'id':1, 'q':'...', 'o':['A','B','C']}}]"
+            res = call_gemini_ai(prompt, "Output valid JSON only. Strategic diagnostic tone.", "📝 Generating Questions...")
+            if res: 
+                try: st.session_state.mc_questions = json.loads(res.replace("```json", "").replace("```", ""))
+                except: st.error("AI Output Format Error.")
+        
+        if st.session_state.mc_questions:
+            for q in st.session_state.mc_questions:
+                st.markdown(f'<div class="mc-header">Q{q["id"]}. {q["q"]}</div>', unsafe_allow_html=True)
+                for opt in q["o"]: st.checkbox(opt, key=f"mc_{q['id']}_{opt}")
+        st.markdown('</div>', unsafe_allow_html=True)
 
-Requirements for faq: exactly 5 items per language, keys must be "Q" and "A"
+    with cr:
+        st.markdown('<div class="neu-card">', unsafe_allow_html=True)
+        photos = st.file_uploader("Upload Project Photos (min 4)", accept_multiple_files=True)
+        if st.session_state.mock_assets: st.info("✅ Boss Test: Mock Assets Loaded.")
+        if photos:
+            st.session_state.mock_assets = False
+            p_cols = st.columns(4)
+            for i, p in enumerate(photos[:8]):
+                with p_cols[i%4]:
+                    img = ImageOps.exif_transpose(Image.open(p)) # Auto-orientation fix
+                    st.image(img, use_container_width=True)
+        st.markdown('</div>', unsafe_allow_html=True)
 
-JSON format:
-{{
-  "web_en": "<h1>Title</h1><p>Body...</p>",
-  "web_tc": "<h1>標題</h1><p>內文...</p>",
-  "web_jp": "<h1>タイトル</h1><p>本文...</p>",
-  "faq_en": [{{"Q": "", "A": ""}}, {{"Q": "", "A": ""}}, {{"Q": "", "A": ""}}, {{"Q": "", "A": ""}}, {{"Q": "", "A": ""}}],
-  "faq_tc": [{{"Q": "", "A": ""}}, {{"Q": "", "A": ""}}, {{"Q": "", "A": ""}}, {{"Q": "", "A": ""}}, {{"Q": "", "A": ""}}],
-  "faq_jp": [{{"Q": "", "A": ""}}, {{"Q": "", "A": ""}}, {{"Q": "", "A": ""}}, {{"Q": "", "A": ""}}, {{"Q": "", "A": ""}}]
-}}"""
+    # Progress Messaging & Navigation
+    st.markdown("---")
+    status_class = "status-green" if percent >= 100 else "status-yellow"
+    status_msg = f"進度 {percent}% — " + ("完美！準備同步！" if percent >= 100 else "請填寫所有必填欄位")
+    st.markdown(f'<div class="status-box {status_class}">{status_msg}</div>', unsafe_allow_html=True)
 
-
-# --- 5. Main App ---
-def main():
-    st.set_page_config(page_title="Firebean Brain Collector", layout="wide")
-    init_session_state()
-    is_dark = get_is_dark_mode()
-    apply_styles(is_dark)
-
-    # ── Header row ──
-    c1, c2 = st.columns([1, 1])
-    with c1:
-        st.markdown('<span id="logo-anchor"></span>', unsafe_allow_html=True)
-        if st.button("", key="logo_btn"):
-            reset_for_new_case()
-            st.rerun()
-    with c2:
-        mc_ans   = sum([1 for i in range(1, 16) if st.session_state.get(f"ans_{i}")])
-        logo_ok  = bool(st.session_state.logo_black) and bool(st.session_state.logo_white)
-        criteria = [
-            logo_ok,
-            bool(st.session_state.client_name),
-            bool(st.session_state.project_name),
-            bool(st.session_state.venue),
-            bool(st.session_state.event_year),
-            bool(st.session_state.event_month),
-            bool(st.session_state.category),
-            len(st.session_state.what_we_do) > 0,
-            len(st.session_state.scope) > 0,
-            len(st.session_state.project_photos) >= 4,
-            mc_ans == 15,
-            bool(st.session_state.open_question_ans.strip()),
-        ]
-        percent = int((sum(criteria) / 12) * 100)
-        st.markdown(get_circle_progress_html(percent, is_dark), unsafe_allow_html=True)
-
-    # ── Navigation ──
-    nav_cols = st.columns(5)
-    tabs = ["Project Collector", "Review & Multi-Sync", "Load Project", "🎬 Create Slides", "老細一鍵填充 (深度內容測試)"]
-    for i, t in enumerate(tabs[:4]):
-        btn_type = "primary" if st.session_state.active_tab == t else "secondary"
-        if nav_cols[i].button(t, use_container_width=True, type=btn_type):
-            st.session_state.active_tab = t
-            st.rerun()
-    if nav_cols[4].button(tabs[4], use_container_width=True):
-        fill_dummy_data()
+    if st.button("前往 Review & Multi-Sync 👉", type="primary", use_container_width=True):
+        st.session_state.form_data.update({
+            "client":client, "project":project, "venue":venue, "date":f"{month} {year}",
+            "category":", ".join(selected_cat), "what_we_do":", ".join(selected_wwd), 
+            "scope":", ".join(selected_sow), "challenge":challenge, "solution":solution, 
+            "drive_folder":drive_folder, "youtube":youtube
+        })
+        st.session_state.page = 2
         st.rerun()
 
-    st.markdown("---")
+# ==========================================
+# 5. PAGE 2: REVIEW & AI STRATEGY
+# ==========================================
+elif st.session_state.page == 2:
+    st.title("Step 2: SEO & AI Search Engine")
+    if st.button("← Back to Collector"): st.session_state.page = 1; st.rerun()
 
-    # ════════════════════════════════════════════
-    # TAB 1: Project Collector
-    # ════════════════════════════════════════════
-    if st.session_state.active_tab == "Project Collector":
-        with st.container():
-            st.markdown('<div class="neu-card">', unsafe_allow_html=True)
+    st.markdown('<div class="neu-card">', unsafe_allow_html=True)
+    if st.button("🚀 生成 6 平台文案 + SEO & AI Search Metadata", type="primary", use_container_width=True):
+        sys_prompt = """
+        You are a Top-Tier PR & SEO Expert. Generate a unique JSON response for 6 platforms.
+        
+        SEO & SEARCH READABILITY:
+        1. Web Content: Use Semantic HTML tags (h1, h2, p).
+        2. Content Variety: Rotate styles (Analytical, Storytelling).
+        3. Searchability: Use bullet points and strategic headers for AI crawlers.
+        
+        Output JSON only.
+        """
+        user_prompt = f"Project: {st.session_state.form_data['project']}. Client: {st.session_state.form_data['client']}. Category: {st.session_state.form_data['category']}. Challenge: {st.session_state.form_data['challenge']}. Solution: {st.session_state.form_data['solution']}."
+        res = call_gemini_ai(user_prompt, sys_prompt, "🚀 Optimizing for Search Engines...")
+        if res:
+            try: st.session_state.ai_results = json.loads(res.replace("```json", "").replace("```", ""))
+            except: st.error("AI JSON Format Error.")
 
-            col1, col2 = st.columns(2)
-            with col1:
-                ub = st.file_uploader("Black Logo (PNG)", type=["png"], key="l_b_up")
-                if ub:
-                    st.session_state.logo_black = base64.b64encode(ub.read()).decode()
-                if st.session_state.logo_black:
-                    st.image(base64.b64decode(st.session_state.logo_black), width=150)
-            with col2:
-                uw = st.file_uploader("White Logo (PNG)", type=["png"], key="l_w_up")
-                if uw:
-                    st.session_state.logo_white = base64.b64encode(uw.read()).decode()
-                if st.session_state.logo_white:
-                    st.markdown(
-                        f'<div style="background:#333;padding:5px;display:inline-block;">'
-                        f'<img src="data:image/png;base64,{st.session_state.logo_white}" width="150"></div>',
-                        unsafe_allow_html=True,
-                    )
+    if st.session_state.ai_results:
+        with st.expander("LinkedIn (Professional EN)", expanded=True): st.write(st.session_state.ai_results.get("LinkedIn"))
+        with st.expander("Facebook (Conversational Cantonese)"): st.write(st.session_state.ai_results.get("Facebook"))
+        with st.expander("Web Article (SEO HTML Preview)"):
+            web_data = st.session_state.ai_results.get("Web", {})
+            st.markdown(web_data.get("TC", web_data.get("web_tc", "No content")), unsafe_allow_html=True)
 
-            b1, b2, b3 = st.columns(3)
-            st.session_state.client_name  = b1.text_input("Client",  st.session_state.client_name)
-            st.session_state.project_name = b2.text_input("Project", st.session_state.project_name)
-            st.session_state.venue        = b3.text_input("Venue",   st.session_state.venue)
-
-            d1, d2, d3 = st.columns(3)
-            with d1:
-                st.session_state.event_year = st.selectbox(
-                    "Year", YEAR_OPTIONS,
-                    index=YEAR_OPTIONS.index(st.session_state.event_year) if st.session_state.event_year in YEAR_OPTIONS else 0
-                )
-            with d2:
-                st.session_state.event_month = st.selectbox(
-                    "Month", MONTH_OPTIONS,
-                    index=MONTH_OPTIONS.index(st.session_state.event_month) if st.session_state.event_month in MONTH_OPTIONS else 1
-                )
-            with d3:
-                st.session_state.youtube = st.text_input("YouTube URL (optional)", st.session_state.youtube)
-
-            ca, cb, cc = st.columns(3)
-            with ca:
-                st.markdown("##### Category")
-                st.session_state.category = st.radio(
-                    "Category", WHO_WE_HELP_OPTIONS,
-                    index=WHO_WE_HELP_OPTIONS.index(st.session_state.category),
-                    label_visibility="collapsed",
-                )
-            with cb:
-                st.markdown("##### What we do")
-                st.session_state.what_we_do = [
-                    o for o in WHAT_WE_DO_OPTIONS
-                    if st.checkbox(o, key=f"w_{o}", value=st.session_state.get(f"w_{o}", False))
-                ]
-            with cc:
-                st.markdown("##### Scope of work")
-                st.session_state.scope = [
-                    o for o in SOW_OPTIONS
-                    if st.checkbox(o, key=f"s_{o}", value=st.session_state.get(f"s_{o}", False))
-                ]
-
-            st.markdown("</div>", unsafe_allow_html=True)
-
-        cl, cr = st.columns([1.2, 1])
-        with cl:
-            st.markdown('<div class="neu-card">', unsafe_allow_html=True)
-            if st.button("生成 15 題繁中診斷題目"):
-                with st.spinner("AI Strategizing..."):
-                    prompt = (
-                        f"你是 Firebean 的 PR 策略師。根據以下項目資訊，生成 15 題專業 PR 診斷問題的 JSON 陣列。\n"
-                        f"客戶: {st.session_state.client_name}, 項目: {st.session_state.project_name}, 場地: {st.session_state.venue}\n"
-                        f"每題格式: {{\"id\": 1, \"question\": \"...\", \"options\": [\"A選項\", \"B選項\", \"C選項\"]}}\n"
-                        f"輸出嚴格 JSON 陣列，共 15 題，選項每題 3-4 個，繁體中文。"
-                    )
-                    res = call_gemini_sdk(
-                        prompt,
-                        image_files=st.session_state.project_photos if st.session_state.project_photos else None,
-                        is_json=True,
-                        system_prompt=FIREBEAN_SYSTEM_PROMPT,
-                    )
-                    if res:
-                        try:
-                            parsed = json.loads(res)
-                            st.session_state.mc_questions = parsed if isinstance(parsed, list) else parsed.get("questions", [])
-                            log_debug(f"✅ 生成 {len(st.session_state.mc_questions)} 題成功", "success")
-                        except json.JSONDecodeError as je:
-                            log_debug(f"JSON parse error: {je} | raw: {res[:200]}", "error")
-                            st.error("AI 返回格式有誤，請重試。")
-                    st.rerun()
-
-            if st.session_state.mc_questions:
-                for q in st.session_state.mc_questions:
-                    st.markdown(f"<div class='mc-question'>Q{q['id']}. {q['question']}</div>", unsafe_allow_html=True)
-                    ans_key = f"ans_{q['id']}"
-                    current = st.session_state.get(ans_key, [])
-                    new_ans = []
-                    for opt in q.get("options", []):
-                        if st.checkbox(opt, value=(opt in current), key=f"chk_{q['id']}_{opt}"):
-                            new_ans.append(opt)
-                    st.session_state[ans_key] = new_ans
-
-            st.session_state.open_question_ans = st.text_area("最核心的概念？", st.session_state.open_question_ans)
-            st.markdown("</div>", unsafe_allow_html=True)
-
-        with cr:
-            st.markdown('<div class="neu-card">', unsafe_allow_html=True)
-            f_up = st.file_uploader("Upload 4-8 Photos", accept_multiple_files=True, key="photo_up")
-            if f_up:
-                st.session_state.project_photos = f_up
-            if st.session_state.project_photos:
-                n = len(st.session_state.project_photos)
-                st.session_state.hero_photo_index = st.radio(
-                    "Select Hero Banner:", range(n), horizontal=True,
-                    format_func=lambda i: f"#{i+1}",
-                )
-                g_cols = st.columns(4)
-                for i, f in enumerate(st.session_state.project_photos):
-                    with g_cols[i % 4]:
-                        try:
-                            img = open_image_safe(f)
-                            st.image(img, use_container_width=True)
-                        except Exception as e:
-                            st.caption(f"Photo {i+1} preview error")
-            st.markdown("</div>", unsafe_allow_html=True)
-
-    # ── Navigation button — always visible, full width, below all columns ──
-    st.markdown("---")
-    if percent >= 100:
-        st.success("🎉 完美！進度達 100%！準備同步！")
-    elif percent >= 75:
-        st.info(f"進度 {percent}% — 可以繼續填寫，或直接前往 Review & Multi-Sync")
-    else:
-        st.warning(f"進度 {percent}% — 建議填寫更多資料再同步")
-    if st.button("前往 Review & Multi-Sync 👉", type="primary", use_container_width=True, key="nav_to_review"):
-        st.session_state.active_tab = "Review & Multi-Sync"
-        st.rerun()
-
-    # ════════════════════════════════════════════
-    # TAB 2: Review & Multi-Sync
-    # ════════════════════════════════════════════
-    elif st.session_state.active_tab == "Review & Multi-Sync":
-        st.markdown('<div class="neu-card">', unsafe_allow_html=True)
-
-        # ── Project summary ──
-        with st.expander("📋 Project Summary", expanded=True):
-            col_a, col_b = st.columns(2)
-            col_a.markdown(f"**Client:** {st.session_state.client_name}")
-            col_a.markdown(f"**Project:** {st.session_state.project_name}")
-            col_a.markdown(f"**Venue:** {st.session_state.venue}")
-            col_b.markdown(f"**Year/Month:** {st.session_state.event_year} {st.session_state.event_month}")
-            col_b.markdown(f"**Category:** {st.session_state.category}")
-            col_b.markdown(f"**What We Do:** {', '.join(st.session_state.what_we_do)}")
-
-        # ── AI content generation ──
-        if st.button("生成六大平台對接文案", type="primary", use_container_width=True):
-            photos = st.session_state.project_photos if st.session_state.project_photos else None
-
-            # ── Call 1: Platform copy (website, instagram, linkedin, facebook, edm, press_release) ──
-            with st.spinner("AI 生成平台文案 (1/2)..."):
-                res1 = call_gemini_sdk(
-                    build_platform_prompt(),
-                    image_files=photos,
-                    force_json_mime=True,
-                )
-                if res1:
-                    try:
-                        p1 = json.loads(res1)
-                        # Pull challenge + solution into session state for slide + sheet
-                        st.session_state.challenge = p1.pop("challenge", "")
-                        st.session_state.solution  = p1.pop("solution", "")
-                        st.session_state.ai_content = p1
-                        log_debug("✅ 六大平台文案生成成功", "success")
-                    except json.JSONDecodeError as je:
-                        log_debug(f"Platform JSON error: {je} | raw: {res1[:200]}", "error")
-                        st.error("平台文案格式有誤，請重試。")
+    st.write("---")
+    if st.button("✅ Confirm & Sync to Master DB", type="primary", use_container_width=True):
+        with st.status("📡 Synchronizing SEO Data...") as status:
+            payload = {**st.session_state.form_data, "ai_content": st.session_state.ai_results}
+            try:
+                res = requests.post(WEB_APP_URL, json=payload, timeout=30)
+                if res.status_code == 200:
+                    status.update(label="✅ Master DB Synced!", state="complete")
+                    st.balloons(); time.sleep(2)
+                    st.session_state.form_data = {}; st.session_state.page = 1; st.rerun()
                 else:
-                    st.error("平台文案生成失敗，請檢查 Debug Terminal。")
+                    st.error(f"Sync Failed: {res.text}")
+            except Exception as e:
+                st.error(f"Connection Error: {e}")
+    st.markdown("</div>", unsafe_allow_html=True)
 
-            # ── Call 2: Web articles + FAQ ──
-            with st.spinner("AI 生成網頁文章 + FAQ (2/2)..."):
-                res2 = call_gemini_sdk(
-                    build_web_faq_prompt(),
-                    image_files=photos,
-                    force_json_mime=True,
-                )
-                if res2:
-                    try:
-                        parsed2 = json.loads(res2)
-                        def _normalise_faq(items):
-                            out = []
-                            for x in items:
-                                q = x.get("Q") or x.get("q", "")
-                                a = x.get("A") or x.get("a", "")
-                                out.append({"Q": q, "A": a})
-                            return json.dumps(out, ensure_ascii=False)
-                        st.session_state.web_en = parsed2.get("web_en", "")
-                        st.session_state.web_tc = parsed2.get("web_tc", "")
-                        st.session_state.web_jp = parsed2.get("web_jp", "")
-                        st.session_state.faq_en_edit = _normalise_faq(parsed2.get("faq_en", []))
-                        st.session_state.faq_tc_edit = _normalise_faq(parsed2.get("faq_tc", []))
-                        st.session_state.faq_jp_edit = _normalise_faq(parsed2.get("faq_jp", []))
-                        log_debug("✅ Web 文章 + FAQ 生成成功", "success")
-                    except json.JSONDecodeError as je:
-                        log_debug(f"Web/FAQ JSON error: {je} | raw: {res2[:200]}", "error")
-                        st.error("網頁文章格式有誤，請重試。")
-                else:
-                    st.error("網頁文章生成失敗，請檢查 Debug Terminal。")
-
-        # ── Show & edit AI content — sections match Master DB column names ──
-        any_content = (
-            st.session_state.ai_content or
-            st.session_state.challenge or
-            st.session_state.solution or
-            st.session_state.web_en or
-            st.session_state.faq_en_edit
-        )
-        if any_content:
-            st.markdown("#### 📝 AI 生成內容 (可編輯後同步)")
-
-            ai = st.session_state.ai_content or {}
-
-            # col K — Boring Challenge
-            with st.expander("🔴 Boring Challenge — col K", expanded=False):
-                ch_words = len(st.session_state.challenge.split()) if st.session_state.challenge else 0
-                ch_color = "red" if ch_words > 40 else "green"
-                st.markdown(f"<small style='color:{ch_color}'>字數：{ch_words} / 40 words max</small>", unsafe_allow_html=True)
-                st.session_state.challenge = st.text_area(
-                    "Boring Challenge", st.session_state.challenge,
-                    height=100, key="challenge_area2",
-                    placeholder="Max 40 words — core PR/event challenge"
-                )
-                if ch_words > 40:
-                    st.warning(f"⚠️ 超過 40 字 ({ch_words} words) — 請縮短")
-
-            # col L — Creative Solution
-            with st.expander("🟢 Creative Solution — col L", expanded=False):
-                so_words = len(st.session_state.solution.split()) if st.session_state.solution else 0
-                so_color = "red" if so_words > 40 else "green"
-                st.markdown(f"<small style='color:{so_color}'>字數：{so_words} / 40 words max</small>", unsafe_allow_html=True)
-                st.session_state.solution = st.text_area(
-                    "Creative Solution", st.session_state.solution,
-                    height=100, key="solution_area2",
-                    placeholder="Max 40 words — how Firebean solved it"
-                )
-                if so_words > 40:
-                    st.warning(f"⚠️ 超過 40 字 ({so_words} words) — 請縮短")
-
-            # col N — LinkedIn Post
-            with st.expander("🔵 LinkedIn Post — col N", expanded=False):
-                ln = ai.get("linkedin", {})
-                new_ln_h = st.text_area("Headline", ln.get("headline",""), key="edit_linkedin_headline", height=60)
-                new_ln_b = st.text_area("Body", ln.get("body",""), key="edit_linkedin_body", height=150)
-                if "linkedin" not in ai: ai["linkedin"] = {}
-                ai["linkedin"]["headline"] = new_ln_h
-                ai["linkedin"]["body"]     = new_ln_b
-
-            # col O — Facebook Post
-            with st.expander("🔵 Facebook Post — col O", expanded=False):
-                fb = ai.get("facebook", {})
-                new_fb = st.text_area("Caption", fb.get("caption",""), key="edit_facebook_caption", height=150)
-                if "facebook" not in ai: ai["facebook"] = {}
-                ai["facebook"]["caption"] = new_fb
-
-            # col P — Threads Post (from press_release)
-            with st.expander("🔵 Threads Post — col P", expanded=False):
-                pr = ai.get("press_release", {})
-                new_pr_h = st.text_area("Headline", pr.get("headline",""), key="edit_pr_headline", height=60)
-                new_pr_b = st.text_area("Body", pr.get("body",""), key="edit_pr_body", height=150)
-                if "press_release" not in ai: ai["press_release"] = {}
-                ai["press_release"]["headline"] = new_pr_h
-                ai["press_release"]["body"]     = new_pr_b
-
-            # col Q — Instagram Post
-            with st.expander("🔵 Instagram Post — col Q", expanded=False):
-                ig = ai.get("instagram", {})
-                new_ig_c = st.text_area("Caption", ig.get("caption",""), key="edit_ig_caption", height=120)
-                new_ig_h = st.text_area("Hashtags", ig.get("hashtags",""), key="edit_ig_hashtags", height=60)
-                if "instagram" not in ai: ai["instagram"] = {}
-                ai["instagram"]["caption"]  = new_ig_c
-                ai["instagram"]["hashtags"] = new_ig_h
-
-            st.session_state.ai_content = ai
-
-            st.markdown("---")
-
-            # col R/S/T — Web EN / Web TC / Web JP
-            with st.expander("🌐 Web EN — col R", expanded=False):
-                st.caption("Full HTML article → syncs to col R (Web EN)")
-                st.session_state.web_en = st.text_area("Web Article (English)", st.session_state.web_en, height=200, key="web_en_area")
-            with st.expander("🌐 Web TC — col S", expanded=False):
-                st.caption("Full HTML article → syncs to col S (Web TC)")
-                st.session_state.web_tc = st.text_area("Web Article (繁中)", st.session_state.web_tc, height=200, key="web_tc_area")
-            with st.expander("🌐 Web JP — col T", expanded=False):
-                st.caption("Full HTML article → syncs to col T (Web JP)")
-                st.session_state.web_jp = st.text_area("Web Article (日文)", st.session_state.web_jp, height=200, key="web_jp_area")
-
-            # col AB/AC/AD — FAQ EN / TC / JP
-            with st.expander("❓ FAQ_EN — col AB", expanded=False):
-                st.caption("JSON list [{Q:..., A:...}]")
-                st.session_state.faq_en_edit = st.text_area("FAQ (English)", st.session_state.faq_en_edit, height=150, key="faq_en_area")
-            with st.expander("❓ FAQ_TC — col AC", expanded=False):
-                st.session_state.faq_tc_edit = st.text_area("FAQ (繁中)", st.session_state.faq_tc_edit, height=150, key="faq_tc_area")
-            with st.expander("❓ FAQ_JP — col AD", expanded=False):
-                st.session_state.faq_jp_edit = st.text_area("FAQ (日文)", st.session_state.faq_jp_edit, height=150, key="faq_jp_area")
-
-            # ── Confirm & Sync button ──
-            if st.button("✅ Confirm & Sync to Master DB + Slide", type="primary", use_container_width=True):
-                with st.spinner("🔄 同步中... 請稍候 (最長 60 秒)"):
-                    pid, sdate = generate_system_metadata()
-                    log_debug(f"🆔 Project ID: {pid}", "info")
-
-                    # Process images to base64
-                    processed_imgs = []
-                    for f in st.session_state.project_photos:
-                        try:
-                            img = open_image_safe(f).convert("RGB")
-                            buf = io.BytesIO()
-                            img.save(buf, format="JPEG", quality=85)
-                            processed_imgs.append(base64.b64encode(buf.getvalue()).decode())
-                        except Exception as ie:
-                            log_debug(f"Image encode skipped: {ie}", "warning")
-
-                    # Build full payload — field names match sync-to-github.gs exactly
-                    ai = st.session_state.ai_content or {}
-                    # Map new platform keys → legacy Apps Script keys
-                    # Map ai_content keys → sheet column names (confirmed from Master DB headers)
-                    # Col M=Google Slide, N=LinkedIn, O=Facebook, P=Threads, Q=Instagram
-                    ai_mapped = {
-                        "1_google_slide":  json.dumps(ai.get("website", {}), ensure_ascii=False),
-                        "2_facebook_post": ai.get("facebook", {}).get("caption", ""),
-                        "3_threads_post":  ai.get("press_release", {}).get("headline", "") + "\n\n" + ai.get("press_release", {}).get("body", ""),
-                        "4_instagram_post":ai.get("instagram", {}).get("caption", "") + "\n" + ai.get("instagram", {}).get("hashtags", ""),
-                        "5_linkedin_post": ai.get("linkedin", {}).get("headline", "") + "\n\n" + ai.get("linkedin", {}).get("body", ""),
-                    }
-                    payload = {
-                        # ── Identity ──
-                        "action":           "sync_project",
-                        "project_id":       pid,
-                        "sort_date":        sdate,
-                        # ── Basic fields (matching COL keys in .gs) ──
-                        "client_name":      st.session_state.client_name,
-                        "project_name":     st.session_state.project_name,
-                        "date":             st.session_state.event_month + " " + st.session_state.event_year,
-                        "venue":            st.session_state.venue,
-                        "category":         st.session_state.category,
-                        "category_what":    ", ".join(st.session_state.what_we_do),
-                        "scope":            ", ".join(st.session_state.scope),
-                        "youtube":          st.session_state.youtube,
-                        "open_question":    st.session_state.open_question_ans,
-                        "challenge":        st.session_state.challenge,
-                        "solution":         st.session_state.solution,
-                        # ── AI content (legacy key names Apps Script reads) ──
-                        "ai_content":       ai_mapped,
-                        # ── Web articles (direct fields) ──
-                        "website_texts":    {"en": st.session_state.web_en, "tc": st.session_state.web_tc, "jp": st.session_state.web_jp},
-                        # ── FAQ (flat fields) ──
-                        "faq_en":           st.session_state.faq_en_edit,
-                        "faq_tc":           st.session_state.faq_tc_edit,
-                        "faq_jp":           st.session_state.faq_jp_edit,
-                        # ── Images (base64) ──
-                        "images":           processed_imgs,
-                        "logo_white":       st.session_state.logo_white,
-                        "logo_black":       st.session_state.logo_black,
-                        "hero_index":       st.session_state.hero_photo_index,
-                    }
-
-                    errors = []
-
-                    # 1️⃣ Sync to Master DB (Google Sheet)
-                    try:
-                        r1 = requests.post(SHEET_SCRIPT_URL, json=payload, timeout=60)
-                        if r1.status_code == 200:
-                            log_debug(f"✅ Master DB sync OK: {r1.text[:100]}", "success")
-                        else:
-                            log_debug(f"⚠️ Master DB status {r1.status_code}: {r1.text[:100]}", "warning")
-                            errors.append(f"Master DB: {r1.status_code}")
-                    except Exception as e:
-                        log_debug(f"❌ Master DB error: {e}", "error")
-                        errors.append(f"Master DB: {e}")
-
-                    if not errors:
-                        st.balloons()
-                        st.success(f"🎉 同步成功！Project ID: **{pid}**")
-                        st.session_state.sync_success = True
-                        st.session_state.draft_project_id = pid
-                    else:
-                        st.warning(f"部分同步完成，Project ID: **{pid}**\n錯誤: {', '.join(errors)}")
-
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    # ════════════════════════════════════════════
-    # TAB 3: Load Project
-    # ════════════════════════════════════════════
-    elif st.session_state.active_tab == "Load Project":
-        st.markdown('<div class="neu-card">', unsafe_allow_html=True)
-        st.markdown("#### 📂 Load Existing Project")
-        project_id_input = st.text_input("Enter Project ID (e.g. FB2026001)", "")
-        if st.button("Load Project", use_container_width=True):
-            if project_id_input:
-                with st.spinner(f"Loading {project_id_input}..."):
-                    try:
-                        r = requests.get(
-                            SHEET_SCRIPT_URL + f"?action=load_project&project_id={project_id_input}",
-                            timeout=10,
-                        )
-                        if r.status_code == 200:
-                            data = r.json()
-                            st.session_state.update(data)
-                            st.success(f"✅ Project {project_id_input} loaded.")
-                            log_debug(f"Project {project_id_input} loaded OK", "success")
-                        else:
-                            st.error(f"Project not found (status {r.status_code})")
-                    except Exception as e:
-                        st.error(f"Load failed: {e}")
-            else:
-                st.warning("Please enter a Project ID.")
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    # ════════════════════════════════════════════
-    # TAB 4: Create Slides (fully independent from sync)
-    # ════════════════════════════════════════════
-    elif st.session_state.active_tab == "🎬 Create Slides":
-        st.markdown('<div class="neu-card">', unsafe_allow_html=True)
-        st.markdown("#### 🎬 Create Slides")
-        st.caption("在 Master DB 選擇一行，輸入對應 Project ID，點擊按鈕生成兩頁 Slides。")
-
-        slide_pid = st.text_input("Project ID", "", placeholder="e.g. FB2026001", key="slide_pid_input")
-
-        col1, col2 = st.columns(2)
-        create_master = col1.button("🎬 生成 Master DB Slides", type="primary", use_container_width=True, key="create_master_btn")
-        create_case   = col2.button("🎬 生成 Case Study Slides", use_container_width=True, key="create_case_btn")
-
-        if (create_master or create_case):
-            if not slide_pid.strip():
-                st.warning("請先輸入 Project ID")
-            else:
-                pid_clean = slide_pid.strip().upper()
-                # Load project data from sheet
-                with st.spinner(f"讀取 {pid_clean} 資料..."):
-                    try:
-                        r0 = requests.get(
-                            SHEET_SCRIPT_URL + f"?action=load_project&project_id={pid_clean}",
-                            timeout=15
-                        )
-                        proj = r0.json() if r0.status_code == 200 else None
-                    except Exception as e:
-                        proj = None
-                        st.error(f"❌ 讀取失敗: {e}")
-
-                if not proj or proj.get("status") == "error":
-                    st.error(f"❌ 找不到 {pid_clean}。請確認 ID 正確。")
-                else:
-                    slide_payload = {
-                        "project_id":        proj.get("project_id", pid_clean),
-                        "client_name":       proj.get("client_name", ""),
-                        "project_name":      proj.get("project_name", ""),
-                        "category":          proj.get("category", ""),
-                        "venue":             proj.get("venue", ""),
-                        "date":              proj.get("date", ""),
-                        "event_month":       proj.get("event_month", ""),
-                        "event_year":        proj.get("event_year", ""),
-                        "scope":             proj.get("scope", []),
-                        "challenge":         proj.get("challenge", ""),
-                        "solution":          proj.get("solution", ""),
-                        "photos":            proj.get("photos", []),
-                        "logo_white_base64": proj.get("logo_white", ""),
-                        "logo_black":        proj.get("logo_black", ""),
-                    }
-
-                    if create_master:
-                        slide_payload["action"] = "create_slide"
-                        with st.spinner("正在生成 Slides，請稿候..."):
-                            try:
-                                r2 = requests.post(SLIDE_DB_URL, json=slide_payload, timeout=120, allow_redirects=False)
-                                if r2.status_code == 302:
-                                    r2 = requests.get(r2.headers.get('Location',''), timeout=60)
-                                j2 = r2.json()
-                                if j2.get('status') in ['success','queued'] or 'running' in j2.get('message','').lower():
-                                    st.success("✅ Slides 生成成功！")
-                                    url = j2.get('slide_url', 'https://docs.google.com/presentation/d/19rmqCzgKD8y2ZiLxkiAqhhkV6_t-8QAumZkSi0Eu9C0/edit')
-                                    st.markdown(f"[🔗 開啟 Google Slides]({url})")
-                                else:
-                                    st.warning(f"⚠️ {j2.get('message','')[:200]}")
-                            except Exception as e:
-                                st.error(f"❌ 生成失敗: {e}")
-
-                    if create_case:
-                        slide_payload["action"] = "create_case_study"
-                        with st.spinner("正在生成 Case Study Slides..."):
-                            try:
-                                r3 = requests.post(CASE_STUDY_URL, json=slide_payload, timeout=120, allow_redirects=False)
-                                if r3.status_code == 302:
-                                    r3 = requests.get(r3.headers.get('Location',''), timeout=60)
-                                j3 = r3.json()
-                                if j3.get('status') in ['success','queued'] or 'running' in j3.get('message','').lower():
-                                    st.success("✅ Case Study Slides 生成成功！")
-                                else:
-                                    st.warning(f"⚠️ {j3.get('message','')[:200]}")
-                            except Exception as e:
-                                st.error(f"❌ 生成失敗: {e}")
-
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    # ── Debug Terminal (always visible at bottom) ──
-    with st.expander("🛠️ Debug Terminal", expanded=False):
-        logs = "".join(
-            [f"<div style='color:{'#f00' if l['type']=='error' else '#ff0' if l['type']=='warning' else '#0f0' if l['type']=='success' else '#aaa'}'>[{l['time']}] {l['msg']}</div>"
-             for l in reversed(st.session_state.get("debug_logs", []))]
-        )
-        st.markdown(f"<div class='debug-terminal'>{logs if logs else '<span style=color:#555>No logs yet.</span>'}</div>", unsafe_allow_html=True)
-
-
-if __name__ == "__main__":
-    main()
+st.markdown(f"<p style='text-align: center; color: grey; font-size: 10px;'>Firebean Limited CMS {APP_VERSION} | Strategy-Driven Portal</p>", unsafe_allow_html=True)
