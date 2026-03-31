@@ -4,7 +4,15 @@ import json
 import time
 from PIL import Image, ImageOps
 import io
+import base64
 from datetime import datetime
+
+# 🚀 Logic Hint: HEIC support for iPhone uploads
+try:
+    from pillow_heif import register_heif_opener
+    register_heif_opener()
+except ImportError:
+    pass
 
 # ==========================================
 # 1. CONFIGURATION & NEUMORPHIC STYLING
@@ -12,7 +20,7 @@ from datetime import datetime
 # ACTION: Ensure your Apps Script Web App URL is pasted here
 WEB_APP_URL = "https://script.google.com/macros/s/.../exec"
 apiKey = "" # Environment provides the key automatically
-APP_VERSION = "v11.4.5"
+APP_VERSION = "v11.4.8"
 
 st.set_page_config(
     page_title=f"Firebean Brain Collector {APP_VERSION}",
@@ -160,9 +168,7 @@ def run_boss_test():
         "category": ["LIFESTYLE & CONSUMER"],
         "what_we_do": ["SOCIAL & CONTENT", "INTERACTIVE & TECH"],
         "scope": ["Event Planning", "Concept Development"],
-        "challenge": "Transforming static project data into strategic evergreen case studies for better SEO.",
-        "solution": f"Integrated Gemini AI with a Neumorphic UI ({APP_VERSION}) to automate multi-platform strategic recaps.",
-        "drive_folder": "https://drive.google.com/drive/folders/test_folder_id"
+        "open_question": "我們如何將枯燥的項目數據，轉化為具備 SEO 優勢且能吸引 AI 搜尋引擎抓取的『長青型』B2B 案例研究？這需要結合 Gemini AI 的戰略生成能力與高度視覺化的 Neumorphic 界面。"
     }
     st.session_state.mock_assets = True
     st.rerun()
@@ -170,7 +176,8 @@ def run_boss_test():
 # ==========================================
 # 4. PAGE 1: PROJECT COLLECTOR
 # ==========================================
-required_keys = ["client", "project", "venue", "category", "what_we_do", "scope", "challenge", "solution", "drive_folder"]
+# Logic Hint: required_keys focuses on conceptual inputs; folder is created by backend
+required_keys = ["client", "project", "venue", "category", "what_we_do", "scope", "open_question"]
 
 if st.session_state.page == 1:
     # 1. Calculate Progress
@@ -193,7 +200,7 @@ if st.session_state.page == 1:
     with c3: venue = st.text_input("Venue", value=st.session_state.form_data.get("venue", ""))
     
     d1, d2, d3 = st.columns(3)
-    with d1: year = st.selectbox("Year", [str(y) for y in range(2026, 2019, -1)], index=0)
+    with d1: year = st.selectbox("Year", [str(y) for y in range(2026, 2011, -1)], index=0)
     with d2: month = st.selectbox("Month", ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"], index=2)
     with d3: youtube = st.text_input("YouTube URL (optional)", value=st.session_state.form_data.get("youtube", ""))
 
@@ -216,28 +223,10 @@ if st.session_state.page == 1:
     
     st.markdown("---")
     
-    # Text Areas with SEO Enhance
-    st.write("**Boring Challenge (Recap Focus)**")
-    ch_1, ch_2 = st.columns([0.88, 0.12])
-    with ch_1: challenge = st.text_area("Challenge", value=st.session_state.form_data.get("challenge", ""), height=100, label_visibility="collapsed")
-    with ch_2:
-        st.markdown('<div class="ai-btn" style="margin-top:30px;">', unsafe_allow_html=True)
-        if st.button("✨ SEO", key="ai_ch"):
-            res = call_gemini_ai(f"Enhance this for SEO and searchability: {challenge}", "Expert PR strategist. Focus on keywords.", "✨ Optimizing for Search...")
-            if res: st.session_state.form_data["challenge"] = res; st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
+    # Column J: Open Question (Conceptual Input)
+    st.write("**最核心的概念？ (Open Question — Column J)**")
+    open_question = st.text_area("核心概念描述", value=st.session_state.form_data.get("open_question", ""), height=150, label_visibility="collapsed", placeholder="請輸入本項目的核心戰略、解決方案或品牌故事概念... AI 將以此生成專業 Challenge 與 Solution。")
 
-    st.write("**Creative Solution (Recap Focus)**")
-    so_1, so_2 = st.columns([0.88, 0.12])
-    with so_1: solution = st.text_area("Solution", value=st.session_state.form_data.get("solution", ""), height=100, label_visibility="collapsed")
-    with so_2:
-        st.markdown('<div class="ai-btn" style="margin-top:30px;">', unsafe_allow_html=True)
-        if st.button("✨ SEO", key="ai_so"):
-            res = call_gemini_ai(f"Enhance this for SEO and searchability: {solution}", "Creative PR tone. Focus on innovation.", "✨ Optimizing for Search...")
-            if res: st.session_state.form_data["solution"] = res; st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    drive_folder = st.text_input("Drive Link", value=st.session_state.form_data.get("drive_folder", ""))
     st.markdown("</div>", unsafe_allow_html=True)
 
     # Assets & MC Questions Section
@@ -266,7 +255,7 @@ if st.session_state.page == 1:
             p_cols = st.columns(4)
             for i, p in enumerate(photos[:8]):
                 with p_cols[i%4]:
-                    img = ImageOps.exif_transpose(Image.open(p)) # Auto-orientation fix
+                    img = ImageOps.exif_transpose(Image.open(p))
                     st.image(img, use_container_width=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
@@ -280,8 +269,8 @@ if st.session_state.page == 1:
         st.session_state.form_data.update({
             "client":client, "project":project, "venue":venue, "date":f"{month} {year}",
             "category":", ".join(selected_cat), "what_we_do":", ".join(selected_wwd), 
-            "scope":", ".join(selected_sow), "challenge":challenge, "solution":solution, 
-            "drive_folder":drive_folder, "youtube":youtube
+            "scope":", ".join(selected_sow), "open_question":open_question, 
+            "youtube":youtube
         })
         st.session_state.page = 2
         st.rerun()
@@ -294,34 +283,51 @@ elif st.session_state.page == 2:
     if st.button("← Back to Collector"): st.session_state.page = 1; st.rerun()
 
     st.markdown('<div class="neu-card">', unsafe_allow_html=True)
-    if st.button("🚀 生成 6 平台文案 + SEO & AI Search Metadata", type="primary", use_container_width=True):
+    if st.button("🚀 生成全平台文案 (6 Platforms) + 戰略分析 (K/L)", type="primary", use_container_width=True):
+        # AI derives Boring Challenge (K) and Creative Solution (L) from Open Question (J)
         sys_prompt = """
-        You are a Top-Tier PR & SEO Expert. Generate a unique JSON response for 6 platforms.
+        You are a Top-Tier PR & SEO Expert. Based on the "Open Question" conceptual input, generate a JSON response.
         
-        SEO & SEARCH READABILITY:
-        1. Web Content: Use Semantic HTML tags (h1, h2, p).
-        2. Content Variety: Rotate styles (Analytical, Storytelling).
-        3. Searchability: Use bullet points and strategic headers for AI crawlers.
+        VARIETY RULE: Rotate styles between Analytical, Narrative, and Provocative. 
+        HASHTAG RULES: IG (15-20 tags), FB (3-5 tags), Threads (0-1 tags).
         
+        MASTER DB STRATEGY (Mandatory):
+        1. "BoringChallenge": A professional one-sentence PR challenge (max 40 words).
+        2. "CreativeSolution": A creative one-sentence Firebean solution (max 40 words).
+        
+        SEO & AI-SEARCH:
+        - Web Content: Semantic HTML (H1, H2, P). Keywords optimized for Category.
+        - Schema Metadata: JSON-LD block for CaseStudy schema.
+        - FAQ: Multi-lingual JSON arrays (EN, TC, JP).
+
         Output JSON only.
         """
-        user_prompt = f"Project: {st.session_state.form_data['project']}. Client: {st.session_state.form_data['client']}. Category: {st.session_state.form_data['category']}. Challenge: {st.session_state.form_data['challenge']}. Solution: {st.session_state.form_data['solution']}."
+        user_prompt = f"Concept: {st.session_state.form_data['open_question']}. Client: {st.session_state.form_data['client']}. Project: {st.session_state.form_data['project']}."
         res = call_gemini_ai(user_prompt, sys_prompt, "🚀 Optimizing for Search Engines...")
         if res:
             try: st.session_state.ai_results = json.loads(res.replace("```json", "").replace("```", ""))
             except: st.error("AI JSON Format Error.")
 
     if st.session_state.ai_results:
-        with st.expander("LinkedIn (Professional EN)", expanded=True): st.write(st.session_state.ai_results.get("LinkedIn"))
-        with st.expander("Facebook (Conversational Cantonese)"): st.write(st.session_state.ai_results.get("Facebook"))
+        with st.expander("Strategic Mapping (Cols K & L)", expanded=True):
+            st.write(f"**🔴 Challenge:** {st.session_state.ai_results.get('BoringChallenge')}")
+            st.write(f"**🟢 Solution:** {st.session_state.ai_results.get('CreativeSolution')}")
+        with st.expander("LinkedIn (Professional EN)"): st.write(st.session_state.ai_results.get("LinkedIn"))
         with st.expander("Web Article (SEO HTML Preview)"):
             web_data = st.session_state.ai_results.get("Web", {})
             st.markdown(web_data.get("TC", web_data.get("web_tc", "No content")), unsafe_allow_html=True)
+        with st.expander("AI Search Metadata (JSON-LD)"):
+            st.code(json.dumps(st.session_state.ai_results.get("Metadata"), indent=2), language='json')
 
     st.write("---")
     if st.button("✅ Confirm & Sync to Master DB", type="primary", use_container_width=True):
-        with st.status("📡 Synchronizing SEO Data...") as status:
-            payload = {**st.session_state.form_data, "ai_content": st.session_state.ai_results}
+        with st.status("📡 Synchronizing Strategy to Google Sheets...") as status:
+            payload = {
+                **st.session_state.form_data, 
+                "challenge": st.session_state.ai_results.get("BoringChallenge"),
+                "solution": st.session_state.ai_results.get("CreativeSolution"),
+                "ai_content": st.session_state.ai_results
+            }
             try:
                 res = requests.post(WEB_APP_URL, json=payload, timeout=30)
                 if res.status_code == 200:
@@ -334,4 +340,4 @@ elif st.session_state.page == 2:
                 st.error(f"Connection Error: {e}")
     st.markdown("</div>", unsafe_allow_html=True)
 
-st.markdown(f"<p style='text-align: center; color: grey; font-size: 10px;'>Firebean Limited CMS {APP_VERSION} | Strategy-Driven Portal</p>", unsafe_allow_html=True)
+st.markdown(f"<p style='text-align: center; color: grey; font-size: 10px;'>Firebean Limited CMS {APP_VERSION} | Neumorphic Strategic Mode</p>", unsafe_allow_html=True)
