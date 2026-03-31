@@ -4,7 +4,6 @@ import json
 import time
 from PIL import Image, ImageOps
 import io
-import base64
 from datetime import datetime
 
 # 🚀 Logic Hint: HEIC support for iPhone uploads
@@ -17,8 +16,8 @@ except ImportError:
 # ==========================================
 # 1. CONFIGURATION & NEUMORPHIC STYLING
 # ==========================================
-# ACTION: Ensure your Apps Script Web App URL is pasted here
-WEB_APP_URL = "https://script.google.com/macros/s/.../exec"
+# ACTION: Web App URL updated from your provided link
+WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyCfSfjgYi7yQFpqBDshjYQ1Zye4VjaT-U4_0nfF9c5oYF1Pr0CrGI38Is4BS3KigIz/exec"
 apiKey = "" # Environment provides the key automatically
 APP_VERSION = "v11.4.8"
 
@@ -176,7 +175,6 @@ def run_boss_test():
 # ==========================================
 # 4. PAGE 1: PROJECT COLLECTOR
 # ==========================================
-# Logic Hint: required_keys focuses on conceptual inputs; folder is created by backend
 required_keys = ["client", "project", "venue", "category", "what_we_do", "scope", "open_question"]
 
 if st.session_state.page == 1:
@@ -223,9 +221,9 @@ if st.session_state.page == 1:
     
     st.markdown("---")
     
-    # Column J: Open Question (Conceptual Input)
+    # Column J: Open Question
     st.write("**最核心的概念？ (Open Question — Column J)**")
-    open_question = st.text_area("核心概念描述", value=st.session_state.form_data.get("open_question", ""), height=150, label_visibility="collapsed", placeholder="請輸入本項目的核心戰略、解決方案或品牌故事概念... AI 將以此生成專業 Challenge 與 Solution。")
+    open_question = st.text_area("核心概念描述", value=st.session_state.form_data.get("open_question", ""), height=150, label_visibility="collapsed", placeholder="請輸入核心戰略、解決方案或故事概念...")
 
     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -259,10 +257,10 @@ if st.session_state.page == 1:
                     st.image(img, use_container_width=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # Progress Messaging & Navigation
+    # Navigation
     st.markdown("---")
     status_class = "status-green" if percent >= 100 else "status-yellow"
-    status_msg = f"進度 {percent}% — " + ("完美！準備同步！" if percent >= 100 else "請填寫所有必填欄位")
+    status_msg = f"進度 {percent}% — " + ("完美！準備同步！" if percent >= 100 else "請完成必填欄位")
     st.markdown(f'<div class="status-box {status_class}">{status_msg}</div>', unsafe_allow_html=True)
 
     if st.button("前往 Review & Multi-Sync 👉", type="primary", use_container_width=True):
@@ -284,26 +282,16 @@ elif st.session_state.page == 2:
 
     st.markdown('<div class="neu-card">', unsafe_allow_html=True)
     if st.button("🚀 生成全平台文案 (6 Platforms) + 戰略分析 (K/L)", type="primary", use_container_width=True):
-        # AI derives Boring Challenge (K) and Creative Solution (L) from Open Question (J)
         sys_prompt = """
         You are a Top-Tier PR & SEO Expert. Based on the "Open Question" conceptual input, generate a JSON response.
-        
-        VARIETY RULE: Rotate styles between Analytical, Narrative, and Provocative. 
-        HASHTAG RULES: IG (15-20 tags), FB (3-5 tags), Threads (0-1 tags).
-        
-        MASTER DB STRATEGY (Mandatory):
-        1. "BoringChallenge": A professional one-sentence PR challenge (max 40 words).
-        2. "CreativeSolution": A creative one-sentence Firebean solution (max 40 words).
-        
-        SEO & AI-SEARCH:
-        - Web Content: Semantic HTML (H1, H2, P). Keywords optimized for Category.
-        - Schema Metadata: JSON-LD block for CaseStudy schema.
-        - FAQ: Multi-lingual JSON arrays (EN, TC, JP).
-
+        1. "BoringChallenge": One-sentence PR challenge (max 40 words).
+        2. "CreativeSolution": One-sentence solution (max 40 words).
+        3. Web Content: Semantic HTML (H1, H2, P).
+        4. Social Media: LinkedIn (EN), FB/IG/Threads (Cantonese).
         Output JSON only.
         """
         user_prompt = f"Concept: {st.session_state.form_data['open_question']}. Client: {st.session_state.form_data['client']}. Project: {st.session_state.form_data['project']}."
-        res = call_gemini_ai(user_prompt, sys_prompt, "🚀 Optimizing for Search Engines...")
+        res = call_gemini_ai(user_prompt, sys_prompt, "🚀 Crafting Strategic Content...")
         if res:
             try: st.session_state.ai_results = json.loads(res.replace("```json", "").replace("```", ""))
             except: st.error("AI JSON Format Error.")
@@ -312,12 +300,10 @@ elif st.session_state.page == 2:
         with st.expander("Strategic Mapping (Cols K & L)", expanded=True):
             st.write(f"**🔴 Challenge:** {st.session_state.ai_results.get('BoringChallenge')}")
             st.write(f"**🟢 Solution:** {st.session_state.ai_results.get('CreativeSolution')}")
-        with st.expander("LinkedIn (Professional EN)"): st.write(st.session_state.ai_results.get("LinkedIn"))
-        with st.expander("Web Article (SEO HTML Preview)"):
+        with st.expander("LinkedIn (EN)"): st.write(st.session_state.ai_results.get("LinkedIn"))
+        with st.expander("Web Article (SEO Preview)"):
             web_data = st.session_state.ai_results.get("Web", {})
             st.markdown(web_data.get("TC", web_data.get("web_tc", "No content")), unsafe_allow_html=True)
-        with st.expander("AI Search Metadata (JSON-LD)"):
-            st.code(json.dumps(st.session_state.ai_results.get("Metadata"), indent=2), language='json')
 
     st.write("---")
     if st.button("✅ Confirm & Sync to Master DB", type="primary", use_container_width=True):
@@ -334,10 +320,8 @@ elif st.session_state.page == 2:
                     status.update(label="✅ Master DB Synced!", state="complete")
                     st.balloons(); time.sleep(2)
                     st.session_state.form_data = {}; st.session_state.page = 1; st.rerun()
-                else:
-                    st.error(f"Sync Failed: {res.text}")
-            except Exception as e:
-                st.error(f"Connection Error: {e}")
+                else: st.error(f"Sync Failed: {res.text}")
+            except Exception as e: st.error(f"Connection Error: {e}")
     st.markdown("</div>", unsafe_allow_html=True)
 
 st.markdown(f"<p style='text-align: center; color: grey; font-size: 10px;'>Firebean Limited CMS {APP_VERSION} | Neumorphic Strategic Mode</p>", unsafe_allow_html=True)
