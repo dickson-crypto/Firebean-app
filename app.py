@@ -19,7 +19,7 @@ except ImportError:
 # ==========================================
 WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyCfSfjgYi7yQFpqBDshjYQ1Zye4VjaT-U4_0nfF9c5oYF1Pr0CrGI38Is4BS3KigIz/exec"
 apiKey = "" 
-APP_VERSION = "v13.8.0"
+APP_VERSION = "v13.9.0"
 
 st.set_page_config(
     page_title=f"Firebean Brain Collector {APP_VERSION}",
@@ -69,22 +69,51 @@ st.markdown(f"""
         @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;700;900&display=swap');
         .stApp {{ background-color: {t['bg']}; color: {t['text']}; font-family: 'Montserrat', sans-serif; transition: all 0.5s ease; }}
         h1, h2, h3, p, span, label, div, .stMarkdown {{ color: {t['text']} !important; }}
-        .header-container {{ display: flex; align-items: center; gap: 25px; padding: 20px 0; margin-bottom: 10px; }}
-        .hero-title {{ font-size: 84px !important; font-weight: 900 !important; line-height: 0.85 !important; letter-spacing: -3px !important; margin: 0 !important; text-align: left !important; }}
+        
+        .header-container {{ display: flex; align-items: center; gap: 30px; padding: 20px 0; margin-bottom: 10px; }}
+        
+        /* Enlarged, Left-Aligned Hero Title to match Logo Height */
+        .hero-title {{ 
+            font-size: 84px !important; 
+            font-weight: 900 !important; 
+            line-height: 0.85 !important; 
+            letter-spacing: -4px !important; 
+            margin: 0 !important; 
+            text-align: left !important;
+        }}
+        
         .dotted-sep {{ border-bottom: 1px dotted {t['border']}; margin: 25px 0; width: 100%; }}
+
         .stTextInput input, .stTextArea textarea, .stSelectbox div[data-baseweb="select"] {{
             background-color: {t['input_bg']} !important; border: 1px solid {t['border']} !important;
             border-radius: 6px !important; padding: 10px 14px !important; font-size: 14px !important;
             color: {t['text']} !important; box-shadow: none !important;
         }}
+        
         .sec-header {{ font-size: 16px; font-weight: 900; color: {S_RED} !important; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 15px; display: flex; align-items: center; gap: 12px; }}
         .progress-hub {{ position: fixed; top: 25px; right: 40px; z-index: 1000; }}
-        .stButton button {{ background-color: {S_RED} !important; color: white !important; border-radius: 50px !important; padding: 10px 20px !important; font-weight: 700 !important; text-transform: uppercase; letter-spacing: 1px; border: none !important; font-size: 12px !important; }}
+        
+        /* SpeedUp Red Utility Buttons */
+        .stButton button {{ 
+            background-color: {S_RED} !important; 
+            color: white !important; 
+            border-radius: 50px !important; 
+            padding: 10px 25px !important; 
+            font-weight: 700 !important; 
+            text-transform: uppercase; 
+            letter-spacing: 1px; 
+            border: none !important; 
+            font-size: 12px !important;
+            white-space: nowrap !important;
+        }}
+        
         .terminal-box {{ background: #000; color: #39ff14; font-family: 'Courier New', monospace; padding: 15px; border-radius: 8px; font-size: 11px; line-height: 1.5; border-left: 4px solid {S_RED}; height: 200px; overflow-y: auto; }}
         .success-box {{ padding: 30px; border-radius: 12px; border: 2px solid {S_RED}; text-align: center; background: {t['input_bg']}; }}
+        
         [data-testid="stSidebar"] {{display: none;}}
         header {{visibility: hidden;}}
         footer {{visibility: hidden;}}
+        .block-container {{ padding-top: 1rem !important; padding-bottom: 1rem !important; }}
     </style>
 """, unsafe_allow_html=True)
 
@@ -101,7 +130,7 @@ def render_speedup_progress(percent):
                 <circle stroke="{t['border']}" stroke-width="1" fill="transparent" r="35" cx="45" cy="45"/>
                 <circle stroke="{S_RED}" stroke-width="2" stroke-dasharray="{circum}" stroke-dashoffset="{offset}" 
                         stroke-linecap="round" fill="transparent" r="35" cx="45" cy="45" 
-                        style="transition: stroke-dashoffset 1s ease-out; transform: rotate(-90deg); transform-origin: center;"/>
+                        style="transition: stroke-dashoffset 0.8s ease-out; transform: rotate(-90deg); transform-origin: center;"/>
             </svg>
             <div style="position:absolute; font-size:22px; font-weight:300; color:{t['text']};">{percent}%</div>
         </div>
@@ -119,7 +148,7 @@ def call_gemini_ai(prompt, sys_prompt, image_blobs=None):
     try:
         res = requests.post(url, json=payload, timeout=60)
         if res.status_code == 200:
-            add_log("AI Synthesis Successful. Tokens analyzed: ~1,240")
+            add_log("AI Synthesis Successful.")
             return res.json()['candidates'][0]['content']['parts'][0]['text']
         else:
             add_log(f"AI Connection Error: Status {res.status_code}")
@@ -129,12 +158,15 @@ def call_gemini_ai(prompt, sys_prompt, image_blobs=None):
 
 def process_image_for_payload(uploaded_file):
     if not uploaded_file: return None
-    img = Image.open(uploaded_file)
-    img = ImageOps.exif_transpose(img)
-    img.thumbnail((1600, 1600)) 
-    buf = io.BytesIO()
-    img.convert('RGB').save(buf, format='JPEG', quality=80)
-    return {"data": base64.b64encode(buf.getvalue()).decode('utf-8'), "mimeType": "image/jpeg", "ext": "jpg"}
+    try:
+        img = Image.open(uploaded_file)
+        img = ImageOps.exif_transpose(img)
+        img.thumbnail((1600, 1600)) 
+        buf = io.BytesIO()
+        img.convert('RGB').save(buf, format='JPEG', quality=80)
+        return {"data": base64.b64encode(buf.getvalue()).decode('utf-8'), "mimeType": "image/jpeg", "ext": "jpg"}
+    except:
+        return None
 
 CAT_OPTS = ["GOVERNMENT & PUBLIC SECTOR", "LIFESTYLE & CONSUMER", "F&B & HOSPITALITY", "MALLS & VENUES"]
 WWD_OPTS = ["ROVING EXHIBITIONS", "SOCIAL & CONTENT", "INTERACTIVE & TECH", "PR & MEDIA", "EVENTS & CEREMONIES"]
@@ -150,15 +182,19 @@ def run_boss_test():
 # 4. PAGE 1: STRATEGIC COLLECTOR
 # ==========================================
 if st.session_state.page == 1:
-    h_col1, h_col2, h_col3, h_col4 = st.columns([1.2, 4.5, 1.5, 1.5])
-    with h_col1: st.image("https://raw.githubusercontent.com/dickson-crypto/Firebeanlogo2026.png", use_container_width=True)
-    with h_col2: st.markdown('<h1 class="hero-title">Project<br>Collector.</h1>', unsafe_allow_html=True)
+    h_col1, h_col2, h_col3, h_col4 = st.columns([1.2, 4.5, 1.8, 1.8])
+    with h_col1: 
+        # Restored Logo Link
+        st.image("https://raw.githubusercontent.com/dickson-crypto/Firebean-app/main/Firebeanlogo2026.png", use_container_width=True)
+    with h_col2: 
+        st.markdown('<h1 class="hero-title">Project<br>Collector.</h1>', unsafe_allow_html=True)
     with h_col3:
-        st.markdown('<div style="margin-top: 30px;"></div>', unsafe_allow_html=True)
+        st.markdown('<div style="margin-top: 35px;"></div>', unsafe_allow_html=True)
         if st.button("🚀 BOSS MODE", use_container_width=True): run_boss_test()
     with h_col4:
-        st.markdown('<div style="margin-top: 30px;"></div>', unsafe_allow_html=True)
-        if st.button("☀️ LIGHT" if st.session_state.dark_mode else "🌙 DARK", use_container_width=True):
+        st.markdown('<div style="margin-top: 35px;"></div>', unsafe_allow_html=True)
+        label = "☀️ LIGHT MODE" if st.session_state.dark_mode else "🌙 DARK MODE"
+        if st.button(label, use_container_width=True):
             st.session_state.dark_mode = not st.session_state.dark_mode
             st.rerun()
 
@@ -172,8 +208,10 @@ if st.session_state.page == 1:
     venue = c3.text_input("Venue", value=st.session_state.form_data.get("venue", ""), placeholder="Location")
     
     d1, d2, d3 = st.columns([1, 1, 2])
-    year = d1.selectbox("Year", [str(y) for y in range(2026, 2011, -1)], index=0)
-    month = d2.selectbox("Month", ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"], index=3)
+    year_opts = [str(y) for y in range(2026, 2011, -1)]
+    year = d1.selectbox("Year", year_opts, index=year_opts.index(st.session_state.form_data.get("year", "2026")))
+    month_opts = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
+    month = d2.selectbox("Month", month_opts, index=month_opts.index(st.session_state.form_data.get("month", "APR")))
 
     st.markdown('<div class="dotted-sep"></div>', unsafe_allow_html=True)
     st.markdown(f'<div class="sec-header">Strategic Framework</div>', unsafe_allow_html=True)
@@ -211,10 +249,12 @@ if st.session_state.page == 1:
     youtube = u1.text_input("YouTube (Optional)")
     open_q = u2.text_area("Concept Goal?", value=st.session_state.form_data.get("open_question", ""), height=80)
 
-    # Real-time Progress Logic
-    pts = sum([bool(client), bool(project), bool(venue), bool(sel_cat), bool(sel_wwd), bool(sel_sow), bool(open_q)])
+    # --- UPDATED PROGRESS CALCULATION (Including Year/Month) ---
+    pts = sum([bool(client), bool(project), bool(venue), bool(year), bool(month), bool(sel_cat), bool(sel_wwd), bool(sel_sow), bool(open_q)])
+    # Assets
     pts += 2 if st.session_state.mock_assets else (bool(logo_b or logo_w) + bool(photos))
     
+    # AI Diagnostics Answered
     answered_mc = False
     if st.session_state.mc_questions:
         for i, q in enumerate(st.session_state.mc_questions):
@@ -222,22 +262,27 @@ if st.session_state.page == 1:
                 if st.session_state.get(f"mc_{i}_{opt}", False): answered_mc = True
     if answered_mc: pts += 1
     
-    percent = int((pts / 10) * 100) 
+    # Total possible: 9 (text) + 2 (assets) + 1 (AI) = 12
+    percent = int((pts / 12) * 100) 
     render_speedup_progress(min(percent, 100))
 
     st.markdown('<div class="dotted-sep"></div>', unsafe_allow_html=True)
     st.markdown(f'<div class="sec-header">AI Diagnostics</div>', unsafe_allow_html=True)
-    if pts >= 9 or st.session_state.mock_assets:
+    if pts >= 11 or st.session_state.mock_assets:
         if st.button("📝 GENERATE 15 MC ANALYSIS", use_container_width=True):
             res = call_gemini_ai(f"Client: {client}. Concept: {open_q}", "Output JSON diagnostic array [{'q':'...', 'opts':['A','B','C']}]", st.session_state.get('photos_for_ai'))
-            if res: st.session_state.mc_questions = json.loads(res.replace("```json", "").replace("```", ""))
+            if res: 
+                try:
+                    st.session_state.mc_questions = json.loads(res.replace("```json", "").replace("```", ""))
+                except:
+                    st.error("AI Error. Please try again.")
             st.rerun()
         if st.session_state.mc_questions:
             for i, q in enumerate(st.session_state.mc_questions):
                 st.markdown(f'**Q{i+1}. {q["q"]}**')
                 for opt in q["opts"]: st.checkbox(opt, key=f"mc_{i}_{opt}")
     else:
-        st.info(f"Progress: {percent}% — Complete identity, framework, and assets to unlock diagnostics.")
+        st.info(f"Progress: {percent}% — Complete all fields and upload assets to unlock diagnostics.")
 
     if percent >= 100:
         if st.button("PROCEED TO CONTENT REVIEW 👉", type="primary", use_container_width=True):
@@ -247,7 +292,6 @@ if st.session_state.page == 1:
             st.session_state.form_data.update({"client": client, "project": project, "venue": venue, "year": year, "month": month, "category": sel_cat, "what_we_do": sel_wwd, "scope": sel_sow, "open_question": open_q, "youtube": youtube})
             st.session_state.page = 2; st.rerun()
 
-    # RESTORED TERMINAL BOX
     st.markdown('<div class="dotted-sep"></div>', unsafe_allow_html=True)
     st.markdown('<div class="sec-header">Strategic Operations Center</div>', unsafe_allow_html=True)
     log_content = "<br>".join(st.session_state.terminal_logs)
@@ -260,13 +304,13 @@ elif st.session_state.page == 2:
     if not st.session_state.sync_complete:
         h_col1, h_col2 = st.columns([1, 4])
         h_col1.image("https://raw.githubusercontent.com/dickson-crypto/Firebeanlogo2026.png", use_container_width=True)
-        h_col2.markdown('<h1 class="hero-title">Content Review.</h1>', unsafe_allow_html=True)
+        h_col2.markdown('<h1 class="hero-title" style="font-size: 72px !important;">Content<br>Review.</h1>', unsafe_allow_html=True)
         
         if st.button("← BACK TO COLLECTOR"): st.session_state.page = 1; st.rerun()
         st.markdown('<div class="dotted-sep"></div>', unsafe_allow_html=True)
 
         if st.session_state.generated_content is None:
-            res = call_gemini_ai(f"Project: {st.session_state.form_data['project']}. Core: {st.session_state.form_data['open_question']}", "Output JSON social and web structure: {'BoringChallenge':'...', 'CreativeSolution':'...', 'SocialMedia':{'FB':'...', 'LI':'...'}, 'Web':{'EN':'...', 'TC':'...', 'JP':'...'}, 'FAQ':{'EN':[{'q':'','a':''}]}}")
+            res = call_gemini_ai(f"Project: {st.session_state.form_data['project']}. Core: {st.session_state.form_data['open_question']}", "Output JSON structure: {'BoringChallenge':'...', 'CreativeSolution':'...', 'SocialMedia':{'FB':'...', 'LI':'...'}, 'Web':{'EN':'...', 'TC':'...', 'JP':'...'}, 'FAQ':{'EN':[{'q':'','a':''}]}}")
             if res: st.session_state.generated_content = json.loads(res.replace("```json", "").replace("```", ""))
 
         if st.session_state.generated_content:
@@ -281,23 +325,5 @@ elif st.session_state.page == 2:
             if c1.button("🔄 REGENERATE", use_container_width=True): st.session_state.generated_content = None; st.rerun()
             if c2.button("🚀 EXECUTE MASTER SYNC", type="primary", use_container_width=True):
                 add_log("Connecting to Handlers.gs API v11.9.0...")
-                add_log("Triggering Google Drive Automation: Folder Creation...")
                 payload = {**st.session_state.form_data, "category": ", ".join(st.session_state.form_data['category']), "what_we_do": ", ".join(st.session_state.form_data['what_we_do']), "scope": "\n".join(st.session_state.form_data['scope']), "challenge": gc.get("BoringChallenge"), "solution": gc.get("CreativeSolution"), "ai_content": {"Web": gc.get("Web"), "FAQ": gc.get("FAQ")}, "date": f"{st.session_state.form_data['year']} {st.session_state.form_data['month']}", "assets": st.session_state.full_assets}
-                res = requests.post(WEB_APP_URL, json=payload)
-                if res.status_code == 200:
-                    add_log("SYNC SUCCESSFUL: Master DB Row Appended.")
-                    st.session_state.sync_complete = True; st.rerun()
-                else: add_log(f"Sync Failed: {res.status_code}")
-
-    else:
-        st.markdown(f'<div class="success-box" style="margin-top:100px;"><h1 style="color:{S_RED} !important; font-size:48px;">SYNC SUCCESSFUL</h1><p>Master DB Updated. Automated folder created.</p></div>', unsafe_allow_html=True)
-        if st.button("➕ SUBMIT ANOTHER", type="primary", use_container_width=True):
-            for key in list(st.session_state.keys()): del st.session_state[key]
-            st.rerun()
-
-    # TERMINAL BOX ON PAGE 2
-    st.markdown('<div class="dotted-sep"></div>', unsafe_allow_html=True)
-    log_content = "<br>".join(st.session_state.terminal_logs)
-    st.markdown(f'<div class="terminal-box">{log_content}</div>', unsafe_allow_html=True)
-
-st.markdown(f"<p style='text-align: center; color: grey; font-size: 10px; letter-spacing: 2px; text-transform: uppercase; margin-top: 40px;'>FIREBEAN LIMITED | SPEEDUP UI v13.8.0</p>", unsafe_allow_html=True)
+                res =
