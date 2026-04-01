@@ -52,12 +52,16 @@ class InputEngine:
         st.markdown('<div class="sec-header">Visual Assets Hub</div>', unsafe_allow_html=True)
         a1, a2, a3 = st.columns([1, 1, 2])
         lb = a1.file_uploader("Logo Black", key="l_black")
-        if lb: st.image(lb, caption="Black Logo", use_container_width=True)
+        if lb: 
+            st.image(lb, width=80)
+            
         lw = a2.file_uploader("Logo White", key="l_white")
         if lw:
-            st.markdown('<div style="background-color:#2A2A2A; padding:10px; border-radius:8px;">', unsafe_allow_html=True)
-            st.image(lw, caption="White Logo", use_container_width=True)
+            # Dark background container for white logo, sized tightly to the image
+            st.markdown('<div style="background-color:#2A2A2A; padding:10px; border-radius:8px; display: inline-block; margin-top: 5px;">', unsafe_allow_html=True)
+            st.image(lw, width=80)
             st.markdown('</div>', unsafe_allow_html=True)
+            
         ph = a3.file_uploader("Gallery (Max 8)", accept_multiple_files=True, key="p_gallery")
         encoded = []
         if ph:
