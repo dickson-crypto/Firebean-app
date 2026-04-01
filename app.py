@@ -3,6 +3,7 @@ import requests
 import json
 import time
 import random
+import base64
 from PIL import Image, ImageOps
 from datetime import datetime
 
@@ -18,7 +19,7 @@ except ImportError:
 # ==========================================
 WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyCfSfjgYi7yQFpqBDshjYQ1Zye4VjaT-U4_0nfF9c5oYF1Pr0CrGI38Is4BS3KigIz/exec"
 apiKey = "" 
-APP_VERSION = "v12.4.5"
+APP_VERSION = "v12.8.0"
 
 st.set_page_config(
     page_title=f"Firebean Brain Collector {APP_VERSION}",
@@ -28,7 +29,7 @@ st.set_page_config(
 )
 
 # ==========================================
-# 2. STATE & THEME MANAGEMENT
+# 2. STATE & THEME ENGINE (Full Screen Change)
 # ==========================================
 if 'page' not in st.session_state: st.session_state.page = 1
 if 'form_data' not in st.session_state: st.session_state.form_data = {}
@@ -36,44 +37,19 @@ if 'mc_questions' not in st.session_state: st.session_state.mc_questions = []
 if 'mock_assets' not in st.session_state: st.session_state.mock_assets = False
 if 'dark_mode' not in st.session_state: st.session_state.dark_mode = True
 
-# Comprehensive Theme Definition
-theme_styles = {
-    "dark": {
-        "bg": "#121418",
-        "card_bg": "#1e2128",
-        "shadow": "8px 8px 16px #0b0d10, -4px -4px 12px #272b34",
-        "text": "#ffffff",
-        "input_bg": "#262932",
-        "border": "#2d323b"
-    },
-    "light": {
-        "bg": "#e0e5ec",
-        "card_bg": "#f0f2f6",
-        "shadow": "10px 10px 20px #a3b1c6, -10px -10px 20px #ffffff",
-        "text": "#2d3436",
-        "input_bg": "#ffffff",
-        "border": "#d1d9e6"
-    }
+theme = {
+    "bg": "#121418" if st.session_state.dark_mode else "#e0e5ec",
+    "card": "#1e2128" if st.session_state.dark_mode else "#f0f2f6",
+    "text": "#ffffff" if st.session_state.dark_mode else "#2d3436",
+    "shadow": "8px 8px 16px #0b0d10, -4px -4px 12px #272b34" if st.session_state.dark_mode else "10px 10px 20px #a3b1c6, -10px -10px 20px #ffffff",
+    "input": "#262932" if st.session_state.dark_mode else "#ffffff",
+    "border": "#2d323b" if st.session_state.dark_mode else "#d1d9e6"
 }
-current_theme = theme_styles["dark"] if st.session_state.dark_mode else theme_styles["light"]
 
-# Inject Global Theme CSS
 st.markdown(f"""
     <style>
-        /* Global App Container */
-        .stApp {{
-            background-color: {current_theme['bg']};
-            color: {current_theme['text']};
-            transition: background-color 0.5s ease, color 0.5s ease;
-        }}
-
-        /* Global Typography Overrides */
-        h1, h2, h3, h4, h5, h6, p, span, label, .stMarkdown {{
-            color: {current_theme['text']} !important;
-            transition: color 0.5s ease;
-        }}
-
-        /* Hide Streamlit Native Decorations */
+        .stApp {{ background-color: {theme['bg']}; color: {theme['text']}; transition: all 0.5s ease; }}
+        h1, h2, h3, h4, h5, h6, p, span, label, div {{ color: {theme['text']} !important; }}
         [data-testid="stSidebar"] {{display: none;}}
         #MainMenu {{visibility: hidden;}}
         footer {{visibility: hidden;}}
@@ -81,28 +57,23 @@ st.markdown(f"""
 
         .progress-hub {{ position: fixed; top: 25px; right: 40px; z-index: 1000; }}
         
-        /* Neumorphic Card Styling */
         .neu-card {{
-            border-radius: 24px;
-            padding: 35px;
-            margin-bottom: 30px;
-            background: {current_theme['card_bg']};
-            box-shadow: {current_theme['shadow']};
-            border: 1px solid {current_theme['border']};
-            color: {current_theme['text']};
+            border-radius: 24px; padding: 35px; margin-bottom: 30px;
+            background: {theme['card']};
+            box-shadow: {theme['shadow']};
+            border: 1px solid {theme['border']};
             transition: all 0.5s ease;
         }}
 
-        /* Input Widget Skinning */
-        .stTextInput input, .stTextArea textarea, .stSelectbox div[data-baseweb="select"] {{
-            background-color: {current_theme['input_bg']} !important;
-            color: {current_theme['text']} !important;
-            border: 1px solid {current_theme['border']} !important;
+        .stTextInput input, .stTextArea textarea {{
+            background-color: {theme['input']} !important;
+            color: {theme['text']} !important;
+            border: 1px solid {theme['border']} !important;
             border-radius: 12px !important;
         }}
 
         .sec-header {{
-            color: #FF4B4B; font-weight: 900; text-transform: uppercase; letter-spacing: 2px;
+            color: #FF4B4B !important; font-weight: 900; text-transform: uppercase; letter-spacing: 2px;
             border-left: 5px solid #FF4B4B; padding-left: 15px; margin: 25px 0 15px 0; font-size: 0.95rem;
         }}
 
@@ -122,7 +93,7 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 3. UI UTILITIES
+# 3. UTILITIES
 # ==========================================
 def render_neon_progress(percent):
     circum = 282.7 
@@ -141,26 +112,35 @@ def render_neon_progress(percent):
     </div>
     """, unsafe_allow_html=True)
 
-def call_gemini_ai(prompt, sys_prompt):
+def call_gemini_ai(prompt, sys_prompt, image_blobs=None):
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key={apiKey}"
-    payload = {"contents": [{"parts": [{"text": prompt}]}], "systemInstruction": {"parts": [{"text": sys_prompt}]}, "generationConfig": {"responseMimeType": "application/json"} }
+    parts = [{"text": prompt}]
+    if image_blobs:
+        for b in image_blobs[:4]:
+            parts.append({"inline_data": {"mime_type": "image/png", "data": b}})
+    payload = {"contents": [{"parts": parts}], "systemInstruction": {"parts": [{"text": sys_prompt}]}, "generationConfig": {"responseMimeType": "application/json"}}
     try:
         res = requests.post(url, json=payload, timeout=60)
-        return res.json()['candidates'][0]['content']['parts'][0]['text'] if res.status_code == 200 else None
+        return res.json()['candidates'][0]['content']['parts'][0]['text']
     except: return None
 
-# Options Configuration
+# Expanded SOW Guidelines
 CAT_OPTS = ["GOVERNMENT & PUBLIC SECTOR", "LIFESTYLE & CONSUMER", "F&B & HOSPITALITY", "MALLS & VENUES"]
 WWD_OPTS = ["ROVING EXHIBITIONS", "SOCIAL & CONTENT", "INTERACTIVE & TECH", "PR & MEDIA", "EVENTS & CEREMONIES"]
-SOW_OPTS = ["Event Planning", "Event Production", "Theme Design", "Concept Development", "PR Consulting"]
+SOW_OPTS = [
+    "Concept Development", "Branding Strategy", "PR Consulting", "Media Relations",
+    "Theme Design", "Visual Identity", "UI/UX Design", "Social Media Content",
+    "Influencer Seeding", "Video Production", "Motion Graphics", "Interactive Installation",
+    "Event Planning", "Event Production", "RSVP Management", "Talent Management",
+    "On-site Operation", "Technical Support"
+]
 
 def run_boss_test():
     st.session_state.form_data = {
-        "client": "Firebean Limited", "project": "Strategic Neumorphic Portfolio", "venue": "Cyberport Hub",
-        "category": ["LIFESTYLE & CONSUMER", "GOVERNMENT & PUBLIC SECTOR"],
-        "what_we_do": ["SOCIAL & CONTENT", "INTERACTIVE & TECH"],
-        "scope": ["Event Planning", "Concept Development"],
-        "open_question": "How to utilize AI to transform static PR data into a 24/7 lead generation engine for global event agencies?"
+        "client": "Firebean HQ", "project": "Strategic Neumorphic Hub", "venue": "Cyberport",
+        "category": ["LIFESTYLE & CONSUMER"], "what_we_do": ["INTERACTIVE & TECH"],
+        "scope": ["Concept Development", "Interactive Installation", "Technical Support"],
+        "open_question": "How to utilize AI to transform static PR data into a 24/7 lead generation engine?"
     }
     st.session_state.mock_assets = True
     st.rerun()
@@ -171,7 +151,6 @@ def run_boss_test():
 STRATEGIC_REQUIRED = ["client", "project", "venue", "category", "what_we_do", "scope", "open_question"]
 
 if st.session_state.page == 1:
-    # 1. Progress Logic
     points = sum(1 for k in STRATEGIC_REQUIRED if st.session_state.form_data.get(k))
     if st.session_state.mock_assets: points += 2
     else:
@@ -181,38 +160,36 @@ if st.session_state.page == 1:
     percent = int((points / 9) * 100) 
     render_neon_progress(min(percent, 100))
 
-    # Header Row with Integrated Theme Toggle
     top_l, top_r = st.columns([4, 1])
-    with top_l:
-        st.image("https://raw.githubusercontent.com/dickson-crypto/Firebean-app/main/Firebeanlogo2026.png", width=340)
+    with top_l: st.image("https://raw.githubusercontent.com/dickson-crypto/Firebean-app/main/Firebeanlogo2026.png", width=340)
     with top_r:
-        label = "☀️ Switch to Light" if st.session_state.dark_mode else "🌙 Switch to Dark"
+        label = "☀️ Light" if st.session_state.dark_mode else "🌙 Dark"
         if st.button(label, use_container_width=True):
             st.session_state.dark_mode = not st.session_state.dark_mode
             st.rerun()
 
-    if st.button("🚀 BOSS TEST MODE (1-Click Populate)", use_container_width=True): run_boss_test()
+    if st.button("🚀 BOSS TEST MODE", use_container_width=True): run_boss_test()
 
     st.markdown('<div class="neu-card">', unsafe_allow_html=True)
     c1, c2, c3 = st.columns(3)
-    with c1: client = st.text_input("Client", value=st.session_state.form_data.get("client", ""), placeholder="Levi's")
-    with c2: project = st.text_input("Project Name", value=st.session_state.form_data.get("project", ""), placeholder="Denim Pop-up")
-    with c3: venue = st.text_input("Venue", value=st.session_state.form_data.get("venue", ""), placeholder="Harbour City")
+    with c1: client = st.text_input("Client", value=st.session_state.form_data.get("client", ""), placeholder="e.g. Levi's")
+    with c2: project = st.text_input("Project Name", value=st.session_state.form_data.get("project", ""), placeholder="e.g. Pop-up Store")
+    with c3: venue = st.text_input("Venue", value=st.session_state.form_data.get("venue", ""), placeholder="e.g. Times Square")
     
     st.markdown("---")
     g1, g2, g3 = st.columns(3)
     with g1:
-        st.markdown('<div class="sec-header">Category</div>', unsafe_allow_html=True)
+        st.markdown('<div class="sec-header">Who we help</div>', unsafe_allow_html=True)
         sel_cat = [o for o in CAT_OPTS if st.checkbox(o, key=f"c_{o}", value=(o in st.session_state.form_data.get("category", [])))]
     with g2:
-        st.markdown('<div class="sec-header">What We Do</div>', unsafe_allow_html=True)
+        st.markdown('<div class="sec-header">What we do</div>', unsafe_allow_html=True)
         sel_wwd = [o for o in WWD_OPTS if st.checkbox(o, key=f"w_{o}", value=(o in st.session_state.form_data.get("what_we_do", [])))]
     with g3:
         st.markdown('<div class="sec-header">Scope of Work</div>', unsafe_allow_html=True)
         sel_sow = [o for o in SOW_OPTS if st.checkbox(o, key=f"s_{o}", value=(o in st.session_state.form_data.get("scope", [])))]
 
     st.markdown("---")
-    st.markdown('<div class="sec-header">Visual Assets Hub</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sec-header">Visual Assets</div>', unsafe_allow_html=True)
     a1, a2, a3 = st.columns([1, 1, 2])
     with a1:
         logo_b = st.file_uploader("Logo Black", key="logo_b")
@@ -221,8 +198,13 @@ if st.session_state.page == 1:
         logo_w = st.file_uploader("Logo White", key="logo_w")
         if logo_w: st.session_state.uploaded_logo = True
     with a3:
-        photos = st.file_uploader("Gallery (Up to 8 Photos)", accept_multiple_files=True, key="photos")
-        if photos: st.session_state.uploaded_photos = True
+        photos = st.file_uploader("Gallery", accept_multiple_files=True, key="photos")
+        if photos: 
+            st.session_state.uploaded_photos = True
+            img_list = []
+            for p in photos[:4]:
+                img_list.append(base64.b64encode(p.read()).decode('utf-8'))
+            st.session_state.photos_for_ai = img_list
 
     st.markdown("---")
     u1, u2 = st.columns([1, 2])
@@ -231,30 +213,28 @@ if st.session_state.page == 1:
     st.markdown("</div>", unsafe_allow_html=True)
 
     if percent >= 100:
-        if st.button("Unlock Strategic Recap 👉", type="primary", use_container_width=True):
-            st.session_state.form_data.update({
-                "client":client, "project":project, "venue":venue, 
-                "category":sel_cat, "what_we_do":sel_wwd, "scope":sel_sow, 
-                "open_question":open_q, "youtube":youtube
-            })
+        if st.button("Unlock AI Diagnostic Suite 👉", type="primary", use_container_width=True):
+            st.session_state.form_data.update({"client":client,"project":project,"venue":venue,"category":sel_cat,"what_we_do":sel_wwd,"scope":sel_sow,"open_question":open_q,"youtube":youtube})
             st.session_state.page = 2; st.rerun()
     else:
-        st.warning(f"Strategy incomplete: {percent}% (Complete all text and upload assets to proceed)")
+        st.warning(f"Incomplete: {percent}%")
 
 # ==========================================
-# 5. PAGE 2: RECAP & SYNC
+# 5. PAGE 2: DIAGNOSTIC & SYNC
 # ==========================================
 elif st.session_state.page == 2:
-    st.title("Step 2: Strategic Recap & Sync")
+    st.title("Step 2: Multimodal Diagnostics")
     if st.button("← Back"): st.session_state.page = 1; st.rerun()
 
     l, r = st.columns([1.2, 1])
     with l:
         st.markdown('<div class="neu-card">', unsafe_allow_html=True)
         if st.button("📝 生成 15 題專業 PR 診斷"):
-            sys = "Output JSON. Generate 15 diagnostic questions. [{'q': '...', 'opts': ['A','B','C']}]"
-            res = call_gemini_ai(f"Project: {st.session_state.form_data['project']}", sys)
-            if res: st.session_state.mc_questions = json.loads(res.replace("```json", "").replace("```", ""))
+            with st.spinner("AI is analyzing Brand + SOW + Photos..."):
+                sys = "Output JSON array of 15 diagnostic questions. Guidelines: Analyze PHOTOS for visual quality, SOW for operational depth, and Brand for positioning. Format: [{'q':'...', 'opts':['A','B','C']}]"
+                ctx = f"Brand: {st.session_state.form_data['client']}. SOW: {', '.join(st.session_state.form_data['scope'])}. Concept: {st.session_state.form_data['open_question']}"
+                res = call_gemini_ai(ctx, sys, st.session_state.get('photos_for_ai'))
+                if res: st.session_state.mc_questions = json.loads(res.replace("```json", "").replace("```", ""))
         if st.session_state.mc_questions:
             for i, q in enumerate(st.session_state.mc_questions):
                 st.markdown(f'<div class="sec-header">Q{i+1}. {q["q"]}</div>', unsafe_allow_html=True)
@@ -266,7 +246,7 @@ elif st.session_state.page == 2:
         st.markdown('<div class="sec-header">Strategic Terminal</div>', unsafe_allow_html=True)
         log = st.empty()
         if st.button("🚀 EXECUTE MASTER SYNC", type="primary", use_container_width=True):
-            log.markdown('<div class="terminal-box">> Initializing Sync v12.4.5...<br>> Mapping Strategic Directions...</div>', unsafe_allow_html=True)
+            log.markdown('<div class="terminal-box">> Analysis Complete.<br>> Syncing Expanded SOW to Master DB...</div>', unsafe_allow_html=True)
             time.sleep(1)
             payload = {
                 **st.session_state.form_data, 
@@ -277,9 +257,9 @@ elif st.session_state.page == 2:
             }
             res = requests.post(WEB_APP_URL, json=payload)
             if res.status_code == 200:
-                log.markdown('<div class="terminal-box">> SYNC SUCCESSFUL.<br>> Master DB Updated.<br>> Ready for Production.</div>', unsafe_allow_html=True)
+                log.markdown('<div class="terminal-box">> SYNC SUCCESSFUL.<br>> Data Mapped to Column 8.<br>> GitHub Sync Ready.</div>', unsafe_allow_html=True)
                 st.balloons()
             else: st.error("Sync Failed.")
         st.markdown("</div>", unsafe_allow_html=True)
 
-st.markdown(f"<p style='text-align: center; color: grey; font-size: 10px;'>Firebean HQ Strategic Hub {APP_VERSION}</p>", unsafe_allow_html=True)
+st.markdown(f"<p style='text-align: center; color: grey; font-size: 10px;'>Firebean Limited | Multimodal Strategic Hub {APP_VERSION}</p>", unsafe_allow_html=True)
