@@ -18,11 +18,8 @@ except ImportError:
 # 1. CONFIGURATION & SECRETS
 # ==========================================
 WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyCfSfjgYi7yQFpqBDshjYQ1Zye4VjaT-U4_0nfF9c5oYF1Pr0CrGI38Is4BS3KigIz/exec"
-
-# Logic: Priority to st.secrets for production, empty string for preview environment
 apiKey = st.secrets.get("GEMINI_API_KEY", "")
-
-APP_VERSION = "v14.1.0"
+APP_VERSION = "v14.2.0"
 
 st.set_page_config(
     page_title=f"Firebean Brain Collector {APP_VERSION}",
@@ -43,14 +40,49 @@ if 'hero_index' not in st.session_state: st.session_state.hero_index = 0
 if 'generated_content' not in st.session_state: st.session_state.generated_content = None
 if 'sync_complete' not in st.session_state: st.session_state.sync_complete = False
 if 'full_assets' not in st.session_state: st.session_state.full_assets = None
+if 'ai_status' not in st.session_state: st.session_state.ai_status = "🟡 CHECKING"
 if 'terminal_logs' not in st.session_state: 
-    st.session_state.terminal_logs = [f"> System initialized: {APP_VERSION}", "> Ready for strategic input..."]
+    st.session_state.terminal_logs = [f"> System initialized: {APP_VERSION}"]
 
 def add_log(msg):
     ts = datetime.now().strftime("%H:%M:%S")
     st.session_state.terminal_logs.append(f"[{ts}] {msg}")
     if len(st.session_state.terminal_logs) > 12:
         st.session_state.terminal_logs.pop(0)
+
+# ==========================================
+# 3. AI CONNECTION CHECKER
+# ==========================================
+def verify_ai_connection():
+    if not apiKey:
+        st.session_state.ai_status = "🔴 OFFLINE (Key Missing)"
+        add_log("AI Error: GEMINI_API_KEY not found in secrets.")
+        return
+    
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key={apiKey}"
+    payload = {
+        "contents": [{"role": "user", "parts": [{"text": "ping"}]}],
+        "generationConfig": {"maxOutputTokens": 1}
+    }
+    
+    try:
+        t0 = time.time()
+        res = requests.post(url, json=payload, timeout=10)
+        latency = round((time.time() - t0) * 1000)
+        
+        if res.status_code == 200:
+            st.session_state.ai_status = "🟢 ONLINE"
+            add_log(f"AI Handshake Successful: Gemini 2.5 Flash ({latency}ms)")
+        else:
+            st.session_state.ai_status = f"🔴 OFFLINE (Err {res.status_code})"
+            add_log(f"AI Handshake Failed: Status {res.status_code}")
+    except Exception as e:
+        st.session_state.ai_status = "🔴 OFFLINE (Timeout)"
+        add_log(f"AI Connection Exception: {str(e)}")
+
+# Run connection check once per session load
+if st.session_state.ai_status == "🟡 CHECKING":
+    verify_ai_connection()
 
 # SpeedUp Specification Palette
 S_RED = "#E2231A"
@@ -82,18 +114,18 @@ st.markdown(f"""
         }}
         .sec-header {{ font-size: 16px; font-weight: 900; color: {S_RED} !important; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 15px; display: flex; align-items: center; gap: 12px; }}
         .progress-hub {{ position: fixed; top: 25px; right: 40px; z-index: 1000; }}
-        .stButton button {{ background-color: {S_RED} !important; color: white !important; border-radius: 50px !important; padding: 8px 25px !important; font-weight: 700 !important; text-transform: uppercase; letter-spacing: 1px; border: none !important; font-size: 12px !important; white-space: nowrap !important; }}
+        .stButton button {{ background-color: {S_RED} !important; color: white !important; border-radius: 50px !important; padding: 10px 25px !important; font-weight: 700 !important; text-transform: uppercase; letter-spacing: 1px; border: none !important; font-size: 12px !important; white-space: nowrap !important; }}
         .terminal-box {{ background: #000; color: #39ff14; font-family: 'Courier New', monospace; padding: 15px; border-radius: 8px; font-size: 11px; line-height: 1.5; border-left: 4px solid {S_RED}; height: 200px; overflow-y: auto; }}
+        .status-badge {{ background: {S_RED}; color: white; padding: 4px 12px; border-radius: 4px; font-size: 10px; font-weight: 900; letter-spacing: 1px; }}
         .success-box {{ padding: 30px; border-radius: 12px; border: 2px solid {S_RED}; text-align: center; background: {t['input_bg']}; }}
         [data-testid="stSidebar"] {{display: none;}}
         header {{visibility: hidden;}}
         footer {{visibility: hidden;}}
-        .block-container {{ padding-top: 1rem !important; padding-bottom: 1rem !important; }}
     </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 3. UTILITIES
+# 4. UTILITIES
 # ==========================================
 def render_speedup_progress(percent):
     circum = 251.3
@@ -113,11 +145,6 @@ def render_speedup_progress(percent):
     """, unsafe_allow_html=True)
 
 def call_gemini_ai(prompt, sys_prompt, image_blobs=None):
-    if not apiKey:
-        add_log("API Error: GEMINI_API_KEY is missing from st.secrets.")
-        st.error("Gemini API Key missing. Please check your Streamlit Secrets dashboard.")
-        return None
-        
     add_log("Connecting to Gemini-2.5-Flash Strategic Engine...")
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key={apiKey}"
     
@@ -127,7 +154,6 @@ def call_gemini_ai(prompt, sys_prompt, image_blobs=None):
         for b in image_blobs[:4]: 
             parts.append({"inlineData": {"mimeType": "image/png", "data": b}})
     
-    # Strict Multimodal Payload for Gemini 2.5
     payload = {
         "contents": [{"role": "user", "parts": parts}],
         "systemInstruction": {"parts": [{"text": sys_prompt}]},
@@ -169,12 +195,14 @@ def run_boss_test():
     st.rerun()
 
 # ==========================================
-# 4. PAGE 1: STRATEGIC COLLECTOR
+# 5. PAGE 1: STRATEGIC COLLECTOR
 # ==========================================
 if st.session_state.page == 1:
     h_col1, h_col2, h_col3, h_col4 = st.columns([1.2, 4.5, 1.8, 1.8])
     with h_col1: st.image("https://raw.githubusercontent.com/dickson-crypto/Firebean-app/main/Firebeanlogo2026.png", use_container_width=True)
-    with h_col2: st.markdown('<h1 class="hero-title">Project<br>Collector.</h1>', unsafe_allow_html=True)
+    with h_col2: 
+        st.markdown('<h1 class="hero-title">Project<br>Collector.</h1>', unsafe_allow_html=True)
+        st.markdown(f'<span class="status-badge">AI STATUS: {st.session_state.ai_status}</span>', unsafe_allow_html=True)
     with h_col3:
         st.markdown('<div style="margin-top: 35px;"></div>', unsafe_allow_html=True)
         if st.button("🚀 BOSS MODE", use_container_width=True): run_boss_test()
@@ -187,7 +215,7 @@ if st.session_state.page == 1:
 
     st.markdown('<div class="dotted-sep"></div>', unsafe_allow_html=True)
 
-    # Forms
+    # Core Form
     st.markdown(f'<div class="sec-header">Brand Identity</div>', unsafe_allow_html=True)
     c1, c2, c3 = st.columns(3)
     client = c1.text_input("Client", value=st.session_state.form_data.get("client", ""), placeholder="e.g. Levi's")
@@ -237,92 +265,4 @@ if st.session_state.page == 1:
     open_q = u2.text_area("Concept Goal?", value=st.session_state.form_data.get("open_question", ""), height=80)
 
     # --- PROGRESS TRACKING ---
-    pts = sum([bool(client), bool(project), bool(venue), bool(year), bool(month), bool(sel_cat), bool(sel_wwd), bool(sel_sow), bool(open_q)])
-    pts += 2 if st.session_state.mock_assets else (bool(logo_b or logo_w) + bool(photos))
-    
-    ans_mc = False
-    if st.session_state.mc_questions:
-        for i, q in enumerate(st.session_state.mc_questions):
-            for opt in q["opts"]:
-                if st.session_state.get(f"mc_{i}_{opt}", False): ans_mc = True
-    if ans_mc: pts += 1
-    
-    percent = int((pts / 12) * 100) 
-    render_speedup_progress(min(percent, 100))
-
-    st.markdown('<div class="dotted-sep"></div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="sec-header">AI Diagnostics</div>', unsafe_allow_html=True)
-    if pts >= 11 or st.session_state.mock_assets:
-        if st.button("📝 GENERATE 15 MC ANALYSIS", use_container_width=True):
-            res = call_gemini_ai(f"Client: {client}. Core Strategy: {open_q}", "Output JSON array of 15 diagnostic MC questions [{'q':'...', 'opts':['A','B','C']}]", st.session_state.get('photos_for_ai'))
-            if res: 
-                try: st.session_state.mc_questions = json.loads(res.replace("```json", "").replace("```", ""))
-                except: st.error("AI returned invalid JSON. Retrying...")
-            st.rerun()
-        if st.session_state.mc_questions:
-            for i, q in enumerate(st.session_state.mc_questions):
-                st.markdown(f'**Q{i+1}. {q["q"]}**')
-                for opt in q["opts"]: st.checkbox(opt, key=f"mc_{i}_{opt}")
-    else:
-        st.info(f"Progress: {percent}% — Complete fields and assets to unlock.")
-
-    if percent >= 100:
-        if st.button("PROCEED TO CONTENT REVIEW 👉", type="primary", use_container_width=True):
-            add_log("Finalizing data package. Compressing assets...")
-            if not st.session_state.mock_assets:
-                st.session_state.full_assets = {"logo_black": process_image_for_payload(logo_b), "logo_white": process_image_for_payload(logo_w), "photos": [process_image_for_payload(p) for p in photos[:8]], "hero_index": st.session_state.hero_index}
-            st.session_state.form_data.update({"client": client, "project": project, "venue": venue, "year": year, "month": month, "category": sel_cat, "what_we_do": sel_wwd, "scope": sel_sow, "open_question": open_q, "youtube": youtube})
-            st.session_state.page = 2; st.rerun()
-
-    st.markdown('<div class="dotted-sep"></div>', unsafe_allow_html=True)
-    st.markdown('<div class="sec-header">Strategic Operations Center</div>', unsafe_allow_html=True)
-    log_content = "<br>".join(st.session_state.terminal_logs)
-    st.markdown(f'<div class="terminal-box">{log_content}</div>', unsafe_allow_html=True)
-
-# ==========================================
-# 5. PAGE 2: CONTENT REVIEW
-# ==========================================
-elif st.session_state.page == 2:
-    if not st.session_state.sync_complete:
-        h_col1, h_col2 = st.columns([1, 4])
-        h_col1.image("https://raw.githubusercontent.com/dickson-crypto/Firebeanlogo2026.png", use_container_width=True)
-        h_col2.markdown('<h1 class="hero-title" style="font-size: 72px !important;">Content<br>Review.</h1>', unsafe_allow_html=True)
-        
-        if st.button("← BACK TO COLLECTOR"): st.session_state.page = 1; st.rerun()
-        st.markdown('<div class="dotted-sep"></div>', unsafe_allow_html=True)
-
-        if st.session_state.generated_content is None:
-            ctx = f"Project: {st.session_state.form_data['project']}. Core Strategy: {st.session_state.form_data['open_question']}"
-            res = call_gemini_ai(ctx, "Output JSON object: {'BoringChallenge':'...', 'CreativeSolution':'...', 'SocialMedia':{'FB':'...', 'LI':'...'}, 'Web':{'EN':'...', 'TC':'...', 'JP':'...'}, 'FAQ':{'EN':[{'q':'','a':''}]}}")
-            if res: st.session_state.generated_content = json.loads(res.replace("```json", "").replace("```", ""))
-
-        if st.session_state.generated_content:
-            gc = st.session_state.generated_content
-            st.write(f"**Challenge:** {gc.get('BoringChallenge')}")
-            st.write(f"**Solution:** {gc.get('CreativeSolution')}")
-            sm = gc.get('SocialMedia', {})
-            st.text_area("LinkedIn Copy", sm.get('LI'), height=100)
-            st.text_area("Facebook Copy", sm.get('FB'), height=100)
-            
-            c1, c2 = st.columns(2)
-            if c1.button("🔄 REGENERATE", use_container_width=True): st.session_state.generated_content = None; st.rerun()
-            if c2.button("🚀 EXECUTE MASTER SYNC", type="primary", use_container_width=True):
-                add_log("Connecting to Handlers.gs API...")
-                payload = {**st.session_state.form_data, "category": ", ".join(st.session_state.form_data['category']), "what_we_do": ", ".join(st.session_state.form_data['what_we_do']), "scope": "\n".join(st.session_state.form_data['scope']), "challenge": gc.get("BoringChallenge"), "solution": gc.get("CreativeSolution"), "ai_content": {"Web": gc.get("Web"), "FAQ": gc.get("FAQ")}, "date": f"{st.session_state.form_data['year']} {st.session_state.form_data['month']}", "assets": st.session_state.full_assets}
-                res = requests.post(WEB_APP_URL, json=payload)
-                if res.status_code == 200:
-                    add_log("SYNC SUCCESSFUL.")
-                    st.session_state.sync_complete = True; st.rerun()
-                else: add_log(f"Sync Failed: {res.status_code}")
-
-    else:
-        st.markdown(f'<div class="success-box" style="margin-top:100px;"><h1 style="color:{S_RED} !important; font-size:48px;">SYNC SUCCESSFUL</h1><p>Master DB Updated. Folder automation complete.</p></div>', unsafe_allow_html=True)
-        if st.button("➕ SUBMIT ANOTHER", type="primary", use_container_width=True):
-            for key in list(st.session_state.keys()): del st.session_state[key]
-            st.rerun()
-
-    st.markdown('<div class="dotted-sep"></div>', unsafe_allow_html=True)
-    log_content = "<br>".join(st.session_state.terminal_logs)
-    st.markdown(f'<div class="terminal-box">{log_content}</div>', unsafe_allow_html=True)
-
-st.markdown(f"<p style='text-align: center; color: grey; font-size: 10px; letter-spacing: 2px; text-transform: uppercase; margin-top: 40px;'>FIREBEAN LIMITED | SPEEDUP UI v14.1.0</p>", unsafe_allow_html=True)
+    pts = sum([bool(client), bool(project), bool(venue
