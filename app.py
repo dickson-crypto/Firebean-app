@@ -18,7 +18,7 @@ except ImportError:
 # ==========================================
 WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyCfSfjgYi7yQFpqBDshjYQ1Zye4VjaT-U4_0nfF9c5oYF1Pr0CrGI38Is4BS3KigIz/exec"
 apiKey = "" 
-APP_VERSION = "v12.4.0"
+APP_VERSION = "v12.4.5"
 
 st.set_page_config(
     page_title=f"Firebean Brain Collector {APP_VERSION}",
@@ -36,23 +36,44 @@ if 'mc_questions' not in st.session_state: st.session_state.mc_questions = []
 if 'mock_assets' not in st.session_state: st.session_state.mock_assets = False
 if 'dark_mode' not in st.session_state: st.session_state.dark_mode = True
 
-# Neumorphic CSS with Theme Switching
+# Comprehensive Theme Definition
 theme_styles = {
     "dark": {
-        "bg": "#1e2128",
-        "shadow": "8px 8px 16px #15171c, -4px -4px 12px #272b34",
-        "text": "#e5e5e5"
+        "bg": "#121418",
+        "card_bg": "#1e2128",
+        "shadow": "8px 8px 16px #0b0d10, -4px -4px 12px #272b34",
+        "text": "#ffffff",
+        "input_bg": "#262932",
+        "border": "#2d323b"
     },
     "light": {
-        "bg": "#f0f0f0",
-        "shadow": "10px 10px 20px #bebebe, -10px -10px 20px #ffffff",
-        "text": "#0a0a0a"
+        "bg": "#e0e5ec",
+        "card_bg": "#f0f2f6",
+        "shadow": "10px 10px 20px #a3b1c6, -10px -10px 20px #ffffff",
+        "text": "#2d3436",
+        "input_bg": "#ffffff",
+        "border": "#d1d9e6"
     }
 }
 current_theme = theme_styles["dark"] if st.session_state.dark_mode else theme_styles["light"]
 
+# Inject Global Theme CSS
 st.markdown(f"""
     <style>
+        /* Global App Container */
+        .stApp {{
+            background-color: {current_theme['bg']};
+            color: {current_theme['text']};
+            transition: background-color 0.5s ease, color 0.5s ease;
+        }}
+
+        /* Global Typography Overrides */
+        h1, h2, h3, h4, h5, h6, p, span, label, .stMarkdown {{
+            color: {current_theme['text']} !important;
+            transition: color 0.5s ease;
+        }}
+
+        /* Hide Streamlit Native Decorations */
         [data-testid="stSidebar"] {{display: none;}}
         #MainMenu {{visibility: hidden;}}
         footer {{visibility: hidden;}}
@@ -60,14 +81,24 @@ st.markdown(f"""
 
         .progress-hub {{ position: fixed; top: 25px; right: 40px; z-index: 1000; }}
         
+        /* Neumorphic Card Styling */
         .neu-card {{
-            border-radius: 20px;
-            padding: 30px;
-            margin-bottom: 25px;
-            background: {current_theme['bg']};
+            border-radius: 24px;
+            padding: 35px;
+            margin-bottom: 30px;
+            background: {current_theme['card_bg']};
             box-shadow: {current_theme['shadow']};
-            border: 1px solid rgba(255,255,255,0.05);
+            border: 1px solid {current_theme['border']};
             color: {current_theme['text']};
+            transition: all 0.5s ease;
+        }}
+
+        /* Input Widget Skinning */
+        .stTextInput input, .stTextArea textarea, .stSelectbox div[data-baseweb="select"] {{
+            background-color: {current_theme['input_bg']} !important;
+            color: {current_theme['text']} !important;
+            border: 1px solid {current_theme['border']} !important;
+            border-radius: 12px !important;
         }}
 
         .sec-header {{
@@ -112,7 +143,7 @@ def render_neon_progress(percent):
 
 def call_gemini_ai(prompt, sys_prompt):
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key={apiKey}"
-    payload = {{"contents": [{{ "parts": [{{ "text": prompt }}] }}], "systemInstruction": {{ "parts": [{{ "text": sys_prompt }}] }}, "generationConfig": {{ "responseMimeType": "application/json" }} }}
+    payload = {"contents": [{"parts": [{"text": prompt}]}], "systemInstruction": {"parts": [{"text": sys_prompt}]}, "generationConfig": {"responseMimeType": "application/json"} }
     try:
         res = requests.post(url, json=payload, timeout=60)
         return res.json()['candidates'][0]['content']['parts'][0]['text'] if res.status_code == 200 else None
@@ -125,7 +156,7 @@ SOW_OPTS = ["Event Planning", "Event Production", "Theme Design", "Concept Devel
 
 def run_boss_test():
     st.session_state.form_data = {
-        "client": "Firebean HQ", "project": "Strategic Neumorphic Portfolio", "venue": "Cyberport Hub",
+        "client": "Firebean Limited", "project": "Strategic Neumorphic Portfolio", "venue": "Cyberport Hub",
         "category": ["LIFESTYLE & CONSUMER", "GOVERNMENT & PUBLIC SECTOR"],
         "what_we_do": ["SOCIAL & CONTENT", "INTERACTIVE & TECH"],
         "scope": ["Event Planning", "Concept Development"],
@@ -147,15 +178,16 @@ if st.session_state.page == 1:
         if st.session_state.get('uploaded_logo'): points += 1
         if st.session_state.get('uploaded_photos'): points += 1
     
-    percent = int((points / 9) * 100) # 7 text/checks + 1 logo + 1 photos = 9
+    percent = int((points / 9) * 100) 
     render_neon_progress(min(percent, 100))
 
-    # Header Row
+    # Header Row with Integrated Theme Toggle
     top_l, top_r = st.columns([4, 1])
     with top_l:
         st.image("https://raw.githubusercontent.com/dickson-crypto/Firebean-app/main/Firebeanlogo2026.png", width=340)
     with top_r:
-        if st.button("🌓 Toggle Theme", use_container_width=True):
+        label = "☀️ Switch to Light" if st.session_state.dark_mode else "🌙 Switch to Dark"
+        if st.button(label, use_container_width=True):
             st.session_state.dark_mode = not st.session_state.dark_mode
             st.rerun()
 
@@ -234,7 +266,7 @@ elif st.session_state.page == 2:
         st.markdown('<div class="sec-header">Strategic Terminal</div>', unsafe_allow_html=True)
         log = st.empty()
         if st.button("🚀 EXECUTE MASTER SYNC", type="primary", use_container_width=True):
-            log.markdown('<div class="terminal-box">> Initializing Sync v12.4...<br>> Folder creation delegated to Apps Script...</div>', unsafe_allow_html=True)
+            log.markdown('<div class="terminal-box">> Initializing Sync v12.4.5...<br>> Mapping Strategic Directions...</div>', unsafe_allow_html=True)
             time.sleep(1)
             payload = {
                 **st.session_state.form_data, 
@@ -245,7 +277,7 @@ elif st.session_state.page == 2:
             }
             res = requests.post(WEB_APP_URL, json=payload)
             if res.status_code == 200:
-                log.markdown('<div class="terminal-box">> SYNC SUCCESSFUL.<br>> Master DB Updated.<br>> Assets Folder Queued.</div>', unsafe_allow_html=True)
+                log.markdown('<div class="terminal-box">> SYNC SUCCESSFUL.<br>> Master DB Updated.<br>> Ready for Production.</div>', unsafe_allow_html=True)
                 st.balloons()
             else: st.error("Sync Failed.")
         st.markdown("</div>", unsafe_allow_html=True)
