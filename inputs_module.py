@@ -1,10 +1,11 @@
-# VERSION: v18.4.2
-# TIMESTAMP: 2026-04-02 07:48:00 HKT
+# VERSION: v18.4.3
+# TIMESTAMP: 2026-04-02 07:51:00 HKT
 
 import streamlit as st
 from PIL import Image, ImageOps
 import io
 import base64
+from datetime import datetime
 
 try:
     from pillow_heif import register_heif_opener
@@ -29,6 +30,13 @@ class InputEngine:
         h_col1, h_col2 = st.columns([5, 1])
         with h_col2:
             if st.button("⚡ HANDSHAKE", help="Retry AI Model Connection & Failover", use_container_width=True):
+                # Log the manual trigger to the Operations Center (Terminal)
+                ts = datetime.now().strftime("%H:%M:%S")
+                log_msg = f"[{ts}] ⚡ Manual Handshake: Re-probing AI Strategic Engines..."
+                if 'terminal_logs' in st.session_state:
+                    st.session_state.terminal_logs.append(log_msg)
+                    if len(st.session_state.terminal_logs) > 12: st.session_state.terminal_logs.pop(0)
+                
                 st.session_state.ai_status = "🟡 INITIALIZING"
                 st.rerun()
                 
