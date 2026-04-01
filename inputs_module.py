@@ -51,20 +51,30 @@ class InputEngine:
     def render_assets(self):
         st.markdown('<div class="sec-header">Visual Assets Hub</div>', unsafe_allow_html=True)
         a1, a2, a3 = st.columns([1, 1, 2])
-        lb = a1.file_uploader("Logo Black", key="l_black")
-        if lb: 
-            st.image(lb, width=80)
+        
+        with a1:
+            st.markdown('<div class="sub-label">Logo Black</div>', unsafe_allow_html=True)
+            lb = st.file_uploader("B", key="l_black", label_visibility="collapsed")
+            if lb: 
+                # Enlarge to full width within its column container
+                st.image(lb, use_container_width=True)
             
-        lw = a2.file_uploader("Logo White", key="l_white")
-        if lw:
-            # Dark background container for white logo, sized tightly to the image
-            st.markdown('<div style="background-color:#2A2A2A; padding:10px; border-radius:8px; display: inline-block; margin-top: 5px;">', unsafe_allow_html=True)
-            st.image(lw, width=80)
-            st.markdown('</div>', unsafe_allow_html=True)
+        with a2:
+            st.markdown('<div class="sub-label">Logo White</div>', unsafe_allow_html=True)
+            lw = st.file_uploader("W", key="l_white", label_visibility="collapsed")
+            if lw:
+                # Dark background container for white logo, full width
+                st.markdown('<div style="background-color:#2A2A2A; padding:15px; border-radius:8px; display: flex; align-items: center; justify-content: center;">', unsafe_allow_html=True)
+                st.image(lw, use_container_width=True)
+                st.markdown('</div>', unsafe_allow_html=True)
             
-        ph = a3.file_uploader("Gallery (Max 8)", accept_multiple_files=True, key="p_gallery")
+        with a3:
+            st.markdown('<div class="sub-label">Gallery (Max 8)</div>', unsafe_allow_html=True)
+            ph = st.file_uploader("G", accept_multiple_files=True, key="p_gallery", label_visibility="collapsed")
+        
         encoded = []
         if ph:
+            st.markdown('<div style="margin-top:10px"></div>', unsafe_allow_html=True)
             p_cols = st.columns(4)
             for idx, p in enumerate(ph[:8]):
                 with p_cols[idx%4]:
