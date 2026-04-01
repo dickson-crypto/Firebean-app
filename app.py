@@ -20,7 +20,7 @@ except ImportError:
 # ==========================================
 WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyCfSfjgYi7yQFpqBDshjYQ1Zye4VjaT-U4_0nfF9c5oYF1Pr0CrGI38Is4BS3KigIz/exec"
 apiKey = "" 
-APP_VERSION = "v13.6.1"
+APP_VERSION = "v13.6.2"
 
 st.set_page_config(
     page_title=f"Firebean Brain Collector {APP_VERSION}",
@@ -70,7 +70,17 @@ st.markdown(f"""
         h1, h2, h3, p, span, label, div, .stMarkdown {{ color: {t['text']} !important; }}
 
         .header-container {{ display: flex; align-items: center; gap: 25px; padding: 20px 0; margin-bottom: 10px; }}
-        .hero-title {{ font-size: 56px !important; font-weight: 900 !important; line-height: 0.85 !important; letter-spacing: -3px !important; margin: 0 !important; }}
+        
+        /* Enlarged, Left-Aligned Hero Title */
+        .hero-title {{ 
+            font-size: 84px !important; 
+            font-weight: 900 !important; 
+            line-height: 0.85 !important; 
+            letter-spacing: -3px !important; 
+            margin: 0 !important; 
+            text-align: left !important;
+        }}
+        
         .dotted-sep {{ border-bottom: 1px dotted {t['border']}; margin: 25px 0; width: 100%; }}
 
         .stTextInput input, .stTextArea textarea, .stSelectbox div[data-baseweb="select"] {{
@@ -90,12 +100,19 @@ st.markdown(f"""
 
         .progress-hub {{ position: fixed; top: 25px; right: 40px; z-index: 1000; }}
 
+        /* Unified Red Buttons */
         .stButton button {{
-            border-radius: 50px !important; padding: 8px 20px !important; font-weight: 700 !important;
-            text-transform: uppercase; letter-spacing: 1px; border: none !important; font-size: 11px !important;
+            background-color: {S_RED} !important; 
+            color: white !important; 
+            border-radius: 50px !important; 
+            padding: 10px 20px !important; 
+            font-weight: 700 !important;
+            text-transform: uppercase; 
+            letter-spacing: 1px; 
+            border: none !important; 
+            font-size: 12px !important;
         }}
-        .boss-btn button {{ background-color: {t['text']} !important; color: {t['bg']} !important; }}
-        .next-btn button {{ background-color: {S_RED} !important; color: white !important; font-size: 14px !important; padding: 12px 40px !important; }}
+        .next-btn button {{ font-size: 14px !important; padding: 12px 40px !important; }}
         .success-box {{ padding: 30px; border-radius: 12px; border: 2px solid {S_RED}; text-align: center; background: {t['input_bg']}; }}
 
         [data-testid="stSidebar"] {{display: none;}}
@@ -127,7 +144,7 @@ def render_speedup_progress(percent):
                 <circle stroke="{t['border']}" stroke-width="1" fill="transparent" r="35" cx="45" cy="45"/>
                 <circle stroke="{S_RED}" stroke-width="2" stroke-dasharray="{circum}" stroke-dashoffset="{offset}" 
                         stroke-linecap="round" fill="transparent" r="35" cx="45" cy="45" 
-                        style="transition: stroke-dashoffset 1s ease-out; transform: rotate(-90deg); transform-origin: center;"/>
+                        style="transition: stroke-dashoffset 0.8s ease-out; transform: rotate(-90deg); transform-origin: center;"/>
             </svg>
             <div style="position:absolute; font-size:22px; font-weight:300; color:{t['text']};">{percent}%</div>
         </div>
@@ -146,7 +163,7 @@ def call_gemini_ai(prompt, sys_prompt, image_blobs=None):
     except: return None
 
 CAT_OPTS = ["GOVERNMENT & PUBLIC SECTOR", "LIFESTYLE & CONSUMER", "F&B & HOSPITALITY", "MALLS & VENUES"]
-WWD_OPTS = ["ROVING EXHIBITIONS", "SOCIAL & CONTENT", "INTERACTIVE & TECH", "PR & MEDIA", "EVENTS & CEREMONIES"]
+WWD_OPTS = ["ROVING EXHIBITIONS", "SOCIAL & CONTENT", "INTERACTIVE & TECH", "PR & MEDIA", "EVENTS & CERেমONIES"]
 SOW_OPTS = ["Concept Development", "Branding Strategy", "PR Consulting", "Media Relations", "Theme Design", "Visual Identity", "UI/UX Design", "Social Media Content", "Influencer Seeding", "Video Production", "Motion Graphics", "Interactive Installation", "Event Planning", "Event Production", "RSVP Management", "Talent Management", "On-site Operation", "Technical Support"]
 
 def run_boss_test():
@@ -164,38 +181,20 @@ def run_boss_test():
 # ==========================================
 # 4. PAGE 1: STRATEGIC COLLECTOR
 # ==========================================
-# Added drive_folder back to mandatory fields to guarantee Main.gs integration
-STRATEGIC_REQUIRED = ["client", "project", "venue", "category", "what_we_do", "scope", "drive_folder", "open_question"]
-
 if st.session_state.page == 1:
-    # --- PROGRESS CALCULATION (Max 11 points = 100%) ---
-    pts = sum(1 for k in STRATEGIC_REQUIRED if st.session_state.form_data.get(k)) # Max 8
-    if st.session_state.mock_assets: pts += 2
-    else:
-        if st.session_state.get('uploaded_logo'): pts += 1
-        if st.session_state.get('uploaded_photos'): pts += 1 # Max 10 (90%)
 
-    answered_mc = False
-    if st.session_state.mc_questions:
-        for i, q in enumerate(st.session_state.mc_questions):
-            for opt in q["opts"]:
-                if st.session_state.get(f"mc_{i}_{opt}", False): answered_mc = True
-    if answered_mc or (st.session_state.mock_assets and st.session_state.mc_questions):
-        pts += 1 # Max 11 (100%)
-    
-    percent = int((pts / 11) * 100) 
-    render_speedup_progress(min(percent, 100))
-
-    # Header Row
-    h_col1, h_col2, h_col3, h_col4 = st.columns([1.5, 4, 0.8, 0.8])
-    with h_col1: st.image("https://raw.githubusercontent.com/dickson-crypto/Firebean-app/main/Firebeanlogo2026.png", use_container_width=True)
-    with h_col2: st.markdown('<h1 class="hero-title">Project Collector.</h1>', unsafe_allow_html=True)
+    # Header Row - Adjusted Widths for single line buttons & larger title
+    h_col1, h_col2, h_col3, h_col4 = st.columns([1.2, 4.5, 1.5, 1.5])
+    with h_col1: 
+        st.image("https://raw.githubusercontent.com/dickson-crypto/Firebean-app/main/Firebeanlogo2026.png", use_container_width=True)
+    with h_col2: 
+        st.markdown('<h1 class="hero-title">Project<br>Collector.</h1>', unsafe_allow_html=True)
     with h_col3:
-        st.markdown('<div class="boss-btn">', unsafe_allow_html=True)
-        if st.button("🚀 BOSS", use_container_width=True): run_boss_test()
-        st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown('<div style="margin-top: 30px;"></div>', unsafe_allow_html=True)
+        if st.button("🚀 BOSS MODE", use_container_width=True): run_boss_test()
     with h_col4:
-        if st.button("☀️" if st.session_state.dark_mode else "🌙", use_container_width=True):
+        st.markdown('<div style="margin-top: 30px;"></div>', unsafe_allow_html=True)
+        if st.button("☀️ LIGHT MODE" if st.session_state.dark_mode else "🌙 DARK MODE", use_container_width=True):
             st.session_state.dark_mode = not st.session_state.dark_mode
             st.rerun()
 
@@ -266,6 +265,36 @@ if st.session_state.page == 1:
 
     st.markdown('<div class="dotted-sep"></div>', unsafe_allow_html=True)
 
+    # --- REAL-TIME PROGRESS CALCULATION ---
+    # Moved calculation here so it evaluates the *current* state of variables instantly
+    pts = 0
+    if client: pts += 1
+    if project: pts += 1
+    if venue: pts += 1
+    if sel_cat: pts += 1
+    if sel_wwd: pts += 1
+    if sel_sow: pts += 1
+    if drive_folder: pts += 1
+    if open_q: pts += 1
+
+    if st.session_state.mock_assets: 
+        pts += 2
+    else:
+        if st.session_state.get('uploaded_logo'): pts += 1
+        if st.session_state.get('uploaded_photos'): pts += 1
+
+    answered_mc = False
+    if st.session_state.mc_questions:
+        for i, q in enumerate(st.session_state.mc_questions):
+            for opt in q["opts"]:
+                if st.session_state.get(f"mc_{i}_{opt}", False): answered_mc = True
+                
+    if answered_mc or (st.session_state.mock_assets and st.session_state.mc_questions):
+        pts += 1 
+    
+    percent = int((pts / 11) * 100) 
+    render_speedup_progress(min(percent, 100))
+
     # --- SESSION: DIAGNOSTICS (Required for 100%) ---
     st.markdown(f'<div class="sec-header">AI Diagnostics</div>', unsafe_allow_html=True)
     if pts >= 8 or st.session_state.mock_assets:
@@ -305,7 +334,7 @@ elif st.session_state.page == 2:
         st.markdown(f"""
             <div class="header-container">
                 <img src="https://raw.githubusercontent.com/dickson-crypto/Firebeanlogo2026.png" width="180">
-                <h1 class="hero-title">Content Review.</h1>
+                <h1 class="hero-title" style="font-size: 72px !important;">Content<br>Review.</h1>
             </div>
         """, unsafe_allow_html=True)
         if st.button("← BACK TO COLLECTOR"): st.session_state.page = 1; st.rerun()
@@ -350,10 +379,8 @@ elif st.session_state.page == 2:
 
             c1, c2 = st.columns(2)
             with c1:
-                st.markdown('<div class="boss-btn">', unsafe_allow_html=True)
                 if st.button("🔄 REGENERATE CONTENT", use_container_width=True):
                     generate_ai_content(); st.rerun()
-                st.markdown('</div>', unsafe_allow_html=True)
             with c2:
                 st.markdown('<div class="next-btn">', unsafe_allow_html=True)
                 if st.button("🚀 CONFIRM & MASTER SYNC", type="primary", use_container_width=True):
@@ -391,4 +418,4 @@ elif st.session_state.page == 2:
             st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
-st.markdown(f"<p style='text-align: center; color: grey; font-size: 10px; letter-spacing: 2px; text-transform: uppercase; margin-top: 40px;'>FIREBEAN LIMITED | SPEEDUP UI v13.6.1</p>", unsafe_allow_html=True)
+st.markdown(f"<p style='text-align: center; color: grey; font-size: 10px; letter-spacing: 2px; text-transform: uppercase; margin-top: 40px;'>FIREBEAN LIMITED | SPEEDUP UI v13.6.2</p>", unsafe_allow_html=True)
