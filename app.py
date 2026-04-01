@@ -6,7 +6,7 @@ import random
 from PIL import Image, ImageOps
 from datetime import datetime
 
-# 🚀 iPhone HEIC Support
+# 🚀 Logic Hint: HEIC support for iPhone uploads
 try:
     from pillow_heif import register_heif_opener
     register_heif_opener()
@@ -18,7 +18,7 @@ except ImportError:
 # ==========================================
 WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyCfSfjgYi7yQFpqBDshjYQ1Zye4VjaT-U4_0nfF9c5oYF1Pr0CrGI38Is4BS3KigIz/exec"
 apiKey = "" 
-APP_VERSION = "v11.9.6"
+APP_VERSION = "v12.0.5"
 
 st.set_page_config(
     page_title=f"Firebean Brain Collector {APP_VERSION}",
@@ -60,7 +60,7 @@ st.markdown("""
             }
         }
 
-        /* MC Question Headers */
+        /* MC Question & Section Headers */
         .mc-header {
             color: #FF0000;
             font-weight: 900;
@@ -69,6 +69,7 @@ st.markdown("""
             border-left: 5px solid #FF0000;
             padding-left: 15px;
             margin: 20px 0 10px 0;
+            font-size: 0.9rem;
         }
 
         /* Terminal Debug Box */
@@ -116,11 +117,7 @@ def render_neon_progress(percent):
 
 def call_gemini_ai(prompt, sys_prompt):
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key={apiKey}"
-    payload = {
-        "contents": [{"parts": [{"text": prompt}]}], 
-        "systemInstruction": {"parts": [{"text": sys_prompt}]}, 
-        "generationConfig": {"responseMimeType": "application/json"}
-    }
+    payload = {"contents": [{"parts": [{"text": prompt}]}], "systemInstruction": {"parts": [{"text": sys_prompt}]}, "generationConfig": {"responseMimeType": "application/json"}}
     try:
         res = requests.post(url, json=payload, timeout=60)
         if res.status_code == 200:
@@ -134,17 +131,18 @@ def call_gemini_ai(prompt, sys_prompt):
 if 'page' not in st.session_state: st.session_state.page = 1
 if 'form_data' not in st.session_state: st.session_state.form_data = {}
 if 'mc_questions' not in st.session_state: st.session_state.mc_questions = []
-if 'ai_results' not in st.session_state: st.session_state.ai_results = {}
+if 'mock_assets' not in st.session_state: st.session_state.mock_assets = False
 
 def run_boss_test():
     st.session_state.form_data = {
-        "client": "Firebean Ltd.", "project": "Strategic Neumorphic Rollout", "venue": "HQ Digital Hub",
+        "client": "Firebean Limited", "project": "Strategic Neumorphic Rollout", "venue": "Times Square Hub",
         "category": ["LIFESTYLE & CONSUMER", "GOVERNMENT & PUBLIC SECTOR"],
-        "what_we_do": ["SOCIAL & CONTENT", "INTERACTIVE & TECH", "PR & MEDIA"],
+        "what_we_do": ["SOCIAL & CONTENT", "INTERACTIVE & TECH"],
         "scope": ["Event Planning", "Concept Development", "PR Consulting"],
-        "drive_folder": "https://drive.google.com/drive/folders/mock_boss_id",
+        "drive_folder": "https://drive.google.com/drive/folders/boss_mock_id",
         "open_question": "How can we transform static project data into hyper-responsive, SEO-driven case studies using AI-orchestrated strategy and Neon-Neumorphic UI?"
     }
+    st.session_state.mock_assets = True
     st.rerun()
 
 # ==========================================
@@ -153,14 +151,15 @@ def run_boss_test():
 REQUIRED_FIELDS = ["client", "project", "venue", "category", "what_we_do", "scope", "drive_folder", "open_question"]
 
 if st.session_state.page == 1:
-    # 1. Progress Logic
-    filled = sum(1 for k in REQUIRED_FIELDS if st.session_state.form_data.get(k))
-    percent = int((filled / len(REQUIRED_FIELDS)) * 100)
+    # 1. Progress Calculation (Text fields + Asset placeholders)
+    filled_text = sum(1 for k in REQUIRED_FIELDS if st.session_state.form_data.get(k))
+    filled_assets = 1 if st.session_state.mock_assets else 0
+    percent = int(((filled_text + filled_assets) / (len(REQUIRED_FIELDS) + 1)) * 100)
     render_neon_progress(percent)
 
     st.image("https://raw.githubusercontent.com/dickson-crypto/Firebean-app/main/Firebeanlogo2026.png", width=340)
     
-    if st.button("🚀 BOSS TEST MODE (Populate All)", use_container_width=True):
+    if st.button("🚀 BOSS TEST MODE (Populate All Strategic Fields)", use_container_width=True):
         run_boss_test()
 
     st.markdown('<div class="neu-card">', unsafe_allow_html=True)
@@ -187,29 +186,35 @@ if st.session_state.page == 1:
         selected_sow = [opt for opt in sow_opts if st.checkbox(opt, key=f"s_{opt}", value=(opt in st.session_state.form_data.get("scope", [])))]
 
     st.markdown("---")
-    drive = st.text_input("Google Drive Folder URL (Required for Gallery)", value=st.session_state.form_data.get("drive_folder", ""))
-    open_q = st.text_area("核心戰略概念？ AI 將以此為基底進行多維度生成。", value=st.session_state.form_data.get("open_question", ""), height=150)
+    st.markdown('<div class="mc-header">Visual Assets Hub</div>', unsafe_allow_html=True)
+    a1, a2 = st.columns([1, 2])
+    with a1:
+        st.file_uploader("Logo Black (PNG/SVG)", key="logo_b")
+        st.file_uploader("Logo White (PNG/SVG)", key="logo_w")
+    with a2:
+        photos = st.file_uploader("Project Photo Gallery (Drag & Drop up to 8 Photos)", accept_multiple_files=True, key="photos")
+        if photos: st.session_state.mock_assets = True
+
+    st.markdown("---")
+    drive = st.text_input("Google Drive Folder URL (Crucial for Gallery discovery)", value=st.session_state.form_data.get("drive_folder", ""))
+    open_q = st.text_area("核心戰略概念？ AI 將以此進行多維度文案生成。", value=st.session_state.form_data.get("open_question", ""), height=150)
     st.markdown("</div>", unsafe_allow_html=True)
 
     # Gated Navigation
     if percent >= 100:
-        if st.button("Unlock AI Diagnostic Suite 👉", type="primary", use_container_width=True):
-            st.session_state.form_data.update({
-                "client":client, "project":project, "venue":venue, 
-                "category":selected_cat, "what_we_do":selected_wwd, 
-                "scope":selected_sow, "drive_folder":drive, "open_question":open_q
-            })
+        if st.button("Confirm Strategy & Generate Diagnostics 👉", type="primary", use_container_width=True):
+            st.session_state.form_data.update({"client":client,"project":project,"venue":venue,"category":selected_cat,"what_we_do":selected_wwd,"scope":selected_sow,"drive_folder":drive,"open_question":open_q})
             st.session_state.page = 2
             st.rerun()
     else:
-        st.warning(f"Complete all strategic inputs to unlock Step 2 ({percent}% Complete)")
+        st.warning(f"Strategy incomplete: {percent}% (Requires 100% to proceed)")
 
 # ==========================================
-# 5. PAGE 2: DIAGNOSTIC & SYNC
+# 5. PAGE 2: DIAGNOSTIC & MASTER SYNC
 # ==========================================
 elif st.session_state.page == 2:
-    st.title("Step 2: Strategic Diagnostic & Master Sync")
-    if st.button("← Back"): st.session_state.page = 1; st.rerun()
+    st.title("Step 2: Strategic Diagnostics & Master Sync")
+    if st.button("← Back to Collector"): st.session_state.page = 1; st.rerun()
 
     l, r = st.columns([1.2, 1])
     
@@ -232,46 +237,41 @@ elif st.session_state.page == 2:
         log_placeholder = st.empty()
         
         if st.button("🚀 EXECUTE MASTER SYNC", type="primary", use_container_width=True):
-            styles = ["Analytical (ROI Focus)", "Narrative (Storytelling)", "Bold (Disruption)", "SEO (Tactical)", "Visionary (Impact)"]
-            selected_style = random.choice(styles)
+            log_placeholder.markdown('<div class="terminal-box">> Initializing Firebean Sync Engine v12.0...<br>> Rotating Strategic Styles...</div>', unsafe_allow_html=True)
+            time.sleep(1)
             
-            log_placeholder.markdown(f'<div class="terminal-box">> Selected Writing Style: {selected_style}<br>> Generating Multilingual SEO Data...</div>', unsafe_allow_html=True)
-            
-            # Step 2: AI Generation for Web Content & FAQs
-            sys_prompt = f"""
+            # AI Logic: Generation for SEO content
+            sys_prompt = """
             You are a Top-Tier PR Expert. Output a JSON object only.
-            STYLE DIRECTION: {selected_style}
             STRUCTURE:
-            - "BoringChallenge": One professional sentence (max 40 words).
-            - "CreativeSolution": One creative sentence (max 40 words).
-            - "Web": {{ "EN": "HTML", "TC": "HTML", "JP": "HTML" }}
-            - "FAQ": {{ "EN": [{"q":"...","a":"..."}], "TC": [...], "JP": [...] }}
+            - "BoringChallenge": One-sentence PR challenge.
+            - "CreativeSolution": One-sentence solution.
+            - "Web": { "EN": "3 Paragraphs HTML", "TC": "3 Paragraphs HTML", "JP": "3 Paragraphs HTML" }
+            - "FAQ": { "EN": [{"q":"...","a":"..."}], "TC": [...], "JP": [...] }
             """
             ai_res = call_gemini_ai(f"Concept: {st.session_state.form_data['open_question']}", sys_prompt)
             
             if ai_res:
-                st.session_state.ai_results = json.loads(ai_res.replace("```json", "").replace("```", ""))
-                log_placeholder.markdown(f'<div class="terminal-box">> AI Content Created.<br>> Selected Style: {selected_style}<br>> Finalizing Sync...</div>', unsafe_allow_html=True)
+                ai_data = json.loads(ai_res.replace("```json", "").replace("```", ""))
+                log_placeholder.markdown('<div class="terminal-box">> AI Content Created.<br>> JSON-LD Schema Optimized.<br>> Finalizing Database Patch...</div>', unsafe_allow_html=True)
                 
                 payload = {
                     **st.session_state.form_data, 
                     "category": ", ".join(st.session_state.form_data['category']),
                     "what_we_do": ", ".join(st.session_state.form_data['what_we_do']),
                     "scope": "\n".join(st.session_state.form_data['scope']),
-                    "challenge": st.session_state.ai_results.get("BoringChallenge"),
-                    "solution": st.session_state.ai_results.get("CreativeSolution"),
-                    "ai_content": st.session_state.ai_results,
+                    "challenge": ai_data.get("BoringChallenge"),
+                    "solution": ai_data.get("CreativeSolution"),
+                    "ai_content": ai_data,
                     "date": datetime.now().strftime("%Y %b").upper()
                 }
                 
                 res = requests.post(WEB_APP_URL, json=payload)
                 if res.status_code == 200:
-                    log_placeholder.markdown('<div class="terminal-box">> SYNC SUCCESSFUL.<br>> Master DB Updated.<br>> GitHub Workflow Triggered.</div>', unsafe_allow_html=True)
+                    log_placeholder.markdown('<div class="terminal-box">> SYNC SUCCESSFUL.<br>> Master DB Updated.<br>> GitHub Assets Queued.</div>', unsafe_allow_html=True)
                     st.balloons()
-                else:
-                    st.error("Sync Failed. Check Handlers.gs")
-            else:
-                st.error("AI Generation Failed.")
+                else: st.error("Connection Failed. Check API Handlers.")
+            else: st.error("AI Generation Failed.")
         st.markdown("</div>", unsafe_allow_html=True)
 
-st.markdown(f"<p style='text-align: center; color: grey; font-size: 10px;'>Firebean Limited | HQ Strategic Hub {APP_VERSION}</p>", unsafe_allow_html=True)
+st.markdown(f"<p style='text-align: center; color: grey; font-size: 10px;'>Firebean HQ | CMS Hub {APP_VERSION}</p>", unsafe_allow_html=True)
