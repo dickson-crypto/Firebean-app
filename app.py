@@ -19,7 +19,7 @@ except ImportError:
 # ==========================================
 WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyCfSfjgYi7yQFpqBDshjYQ1Zye4VjaT-U4_0nfF9c5oYF1Pr0CrGI38Is4BS3KigIz/exec"
 apiKey = st.secrets.get("GEMINI_API_KEY", "")
-APP_VERSION = "v16.0.0"
+APP_VERSION = "v16.1.0"
 
 # Strategic Model Tiering (Pro Account Priority)
 MODELS_TO_TEST = [
@@ -27,6 +27,15 @@ MODELS_TO_TEST = [
     "gemini-2.5-flash",       # High Performance
     "gemini-2.5-pro",         # Strategic Reasoning
     "gemini-2.0-flash"        # Stable Standard
+]
+
+# Scope of Work Catalog (Restored)
+SOW_OPTS = [
+    "Concept Development", "Branding Strategy", "PR Consulting", "Media Relations", 
+    "Theme Design", "Visual Identity", "UI/UX Design", "Social Media Content", 
+    "Influencer Seeding", "Video Production", "Motion Graphics", "Interactive Installation", 
+    "Event Planning", "Event Production", "RSVP Management", "Talent Management", 
+    "On-site Operation", "Technical Support"
 ]
 
 st.set_page_config(
@@ -51,12 +60,13 @@ if 'full_assets' not in st.session_state: st.session_state.full_assets = None
 if 'ai_status' not in st.session_state: st.session_state.ai_status = "🟡 INITIALIZING"
 if 'active_model' not in st.session_state: st.session_state.active_model = MODELS_TO_TEST[0]
 if 'terminal_logs' not in st.session_state: 
-    st.session_state.terminal_logs = [f"> System Initialized: v{APP_VERSION}", "> Handshaking with Pro Strategic Engines..."]
+    st.session_state.terminal_logs = [f"> System Initialized: v{APP_VERSION}", "> Validating Handshake..."]
 
 def add_log(msg):
     ts = datetime.now().strftime("%H:%M:%S")
     st.session_state.terminal_logs.append(f"[{ts}] {msg}")
-    if len(st.session_state.terminal_logs) > 15: st.session_state.terminal_logs.pop(0)
+    if len(st.session_state.terminal_logs) > 15:
+        st.session_state.terminal_logs.pop(0)
 
 # ==========================================
 # 3. CONNECTION HANDSHAKES
@@ -67,7 +77,7 @@ def verify_ai_connection():
         add_log("Security: GEMINI_API_KEY missing from Streamlit Secrets.")
         return
     for model_name in MODELS_TO_TEST:
-        add_log(f"Handshake: Testing {model_name}...")
+        add_log(f"Probe: Testing {model_name}...")
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={apiKey}"
         payload = {"contents": [{"role": "user", "parts": [{"text": "hi"}]}], "generationConfig": {"maxOutputTokens": 1}}
         try:
@@ -79,11 +89,11 @@ def verify_ai_connection():
                 return
             elif res.status_code == 429:
                 st.session_state.ai_status = "🔴 BUSY (429)"
-                add_log("Congestion: Pro limit reached. Retrying handshake...")
+                add_log("Congestion: Pro limit reached.")
                 return 
         except: add_log(f"Network: {model_name} unreachable.")
         time.sleep(1.0)
-    st.session_state.ai_status = "🔴 OFFLINE"; add_log("Critical: All Engines failed.")
+    st.session_state.ai_status = "🔴 OFFLINE"; add_log("Critical: Handshake Failed.")
 
 if st.session_state.ai_status == "🟡 INITIALIZING": verify_ai_connection()
 
@@ -162,7 +172,7 @@ if st.session_state.page == 1:
     with h_col3:
         st.markdown('<div style="margin-top: 35px;"></div>', unsafe_allow_html=True)
         if st.button("🚀 BOSS MODE", width="stretch"):
-            st.session_state.form_data = {"client": "Firebean Strategic", "project": "Multimodal CMS Launch", "venue": "Cyberport", "year": "2026", "month": "APR", "category": ["GOVERNMENT & PUBLIC SECTOR"], "what_we_do": ["INTERACTIVE & TECH"], "scope": "Multimodal Analysis\nStrategic Sync\nAutomated Drive Folder", "open_question": "Transforming raw project data into evergreen assets through AI."}
+            st.session_state.form_data = {"client": "Firebean Strategic", "project": "Multimodal CMS Launch", "venue": "Cyberport", "year": "2026", "month": "APR", "category": ["GOVERNMENT & PUBLIC SECTOR"], "what_we_do": ["INTERACTIVE & TECH"], "scope": ["Concept Development", "Interactive Installation", "Technical Support"], "open_question": "Transforming raw project data into evergreen assets through AI."}
             st.session_state.mock_assets = True; st.rerun()
     with h_col4:
         st.markdown('<div style="margin-top: 35px;"></div>', unsafe_allow_html=True)
@@ -170,7 +180,7 @@ if st.session_state.page == 1:
 
     st.markdown('<div class="dotted-sep"></div>', unsafe_allow_html=True)
 
-    # Forms
+    # Brand Identity
     st.markdown(f'<div class="sec-header">Brand Identity</div>', unsafe_allow_html=True)
     c1, c2, c3 = st.columns(3)
     client = c1.text_input("Client", value=st.session_state.form_data.get("client", ""), placeholder="e.g. Levi's")
@@ -181,6 +191,7 @@ if st.session_state.page == 1:
     month = d2.selectbox("Month", ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"], index=3)
     st.markdown('<div class="dotted-sep"></div>', unsafe_allow_html=True)
 
+    # Strategic Framework
     st.markdown(f'<div class="sec-header">Strategic Framework</div>', unsafe_allow_html=True)
     cat_opts = ["GOVERNMENT & PUBLIC SECTOR", "LIFESTYLE & CONSUMER", "F&B & HOSPITALITY", "MALLS & VENUES"]
     cat_cols = st.columns(4)
@@ -190,6 +201,15 @@ if st.session_state.page == 1:
     sel_wwd = [opt for i, opt in enumerate(wwd_opts) if wwd_cols[i%3].checkbox(opt, key=f"w_{opt}", value=(opt in st.session_state.form_data.get("what_we_do", [])))]
 
     st.markdown('<div class="dotted-sep"></div>', unsafe_allow_html=True)
+
+    # Restored Scope of Work Grid
+    st.markdown(f'<div class="sec-header">Scope of Work</div>', unsafe_allow_html=True)
+    sow_cols = st.columns(3)
+    sel_sow = [opt for i, opt in enumerate(SOW_OPTS) if sow_cols[i%3].checkbox(opt, key=f"s_{opt}", value=(opt in st.session_state.form_data.get("scope", [])))]
+
+    st.markdown('<div class="dotted-sep"></div>', unsafe_allow_html=True)
+
+    # Visual Assets Hub
     st.markdown(f'<div class="sec-header">Visual Assets Hub</div>', unsafe_allow_html=True)
     a1, a2, a3 = st.columns([1, 1, 2])
     logo_b = a1.file_uploader("Logo Black", key="logo_b")
@@ -208,13 +228,15 @@ if st.session_state.page == 1:
         st.session_state.photos_for_ai = img_previews
 
     st.markdown('<div class="dotted-sep"></div>', unsafe_allow_html=True)
+
+    # Strategic Core
     st.markdown(f'<div class="sec-header">Strategic Core</div>', unsafe_allow_html=True)
     u1, u2 = st.columns([1, 2])
     youtube = u1.text_input("YouTube URL (Optional)")
     open_q = u2.text_area("Conceptual Project Goal?", value=st.session_state.form_data.get("open_question", ""), height=80)
 
     # --- PROGRESS TRACKING (9 text + 2 assets + 1 AI MC = 12 total) ---
-    pts = sum([bool(client), bool(project), bool(venue), bool(year), bool(month), bool(sel_cat), bool(sel_wwd), bool(open_q)]) + 1 # Scope
+    pts = sum([bool(client), bool(project), bool(venue), bool(year), bool(month), (1 if len(sel_cat)>0 else 0), (1 if len(sel_wwd)>0 else 0), (1 if len(sel_sow)>0 else 0), bool(open_q)])
     pts += 2 if st.session_state.mock_assets else (bool(logo_b or logo_w) + bool(photos))
     ans_mc = False
     if st.session_state.mc_questions:
@@ -225,6 +247,8 @@ if st.session_state.page == 1:
     percent = int((pts / 12) * 100); render_progress(min(percent, 100))
 
     st.markdown('<div class="dotted-sep"></div>', unsafe_allow_html=True)
+
+    # AI Diagnostics
     st.markdown(f'<div class="sec-header">AI Diagnostics</div>', unsafe_allow_html=True)
     if pts >= 11 or st.session_state.mock_assets:
         if st.button("📝 GENERATE 15 MC ANALYSIS", width="stretch"):
@@ -234,17 +258,17 @@ if st.session_state.page == 1:
             for i, q in enumerate(st.session_state.mc_questions):
                 st.markdown(f'**Q{i+1}. {q["q"]}**')
                 for opt in q["opts"]: st.checkbox(opt, key=f"mc_{i}_{opt}")
-    else: st.info(f"Progress: {percent}% — Fill identity and visuals to unlock diagnostics.")
+    else: st.info(f"Progress: {percent}% — Fill identity, framework, and visuals to unlock diagnostics.")
 
     if percent >= 100:
         if st.button("PROCEED TO CONTENT REVIEW 👉", type="primary", width="stretch"):
             if not st.session_state.mock_assets:
                 st.session_state.full_assets = {"logo_black": process_image(logo_b), "logo_white": process_image(logo_w), "photos": [process_image(p) for p in photos[:8]], "hero_index": st.session_state.hero_index}
-            st.session_state.form_data.update({"client": client, "project": project, "venue": venue, "year": year, "month": month, "category": sel_cat, "what_we_do": sel_wwd, "open_question": open_q, "youtube": youtube})
+            st.session_state.form_data.update({"client": client, "project": project, "venue": venue, "year": year, "month": month, "category": sel_cat, "what_we_do": sel_wwd, "scope": sel_sow, "open_question": open_q, "youtube": youtube})
             st.session_state.page = 2; st.rerun()
 
     st.markdown('<div class="dotted-sep"></div>', unsafe_allow_html=True)
-    st.markdown('<div class="sec-header">Strategic Operations Center</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="sec-header">Strategic Operations Center</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="terminal-box">{"<br>".join(st.session_state.terminal_logs)}</div>', unsafe_allow_html=True)
     if st.button("🔄 RETRY HANDSHAKES", width="stretch"): st.session_state.ai_status = "🟡 INITIALIZING"; st.rerun()
 
@@ -254,7 +278,7 @@ if st.session_state.page == 1:
 elif st.session_state.page == 2:
     if not st.session_state.sync_complete:
         h_col1, h_col2 = st.columns([1, 4])
-        h_col1.image("https://raw.githubusercontent.com/dickson-crypto/Firebeanlogo2026.png", width="stretch")
+        h_col1.image("https://raw.githubusercontent.com/dickson-crypto/Firebean-app/main/Firebeanlogo2026.png", width="stretch")
         h_col2.markdown('<h1 class="hero-title" style="font-size: 72px !important;">Content<br>Review.</h1>', unsafe_allow_html=True)
         if st.button("← BACK"): st.session_state.page = 1; st.rerun()
         st.markdown('<div class="dotted-sep"></div>', unsafe_allow_html=True)
@@ -282,7 +306,9 @@ elif st.session_state.page == 2:
             if c1.button("🔄 REGENERATE Copy", width="stretch"): st.session_state.generated_content = None; st.rerun()
             if c2.button("🚀 EXECUTE MASTER SYNC", type="primary", width="stretch"):
                 add_log("Sync: Bundling payload for Master DB...")
-                payload = {**st.session_state.form_data, "category": ", ".join(st.session_state.form_data['category']), "what_we_do": ", ".join(st.session_state.form_data['what_we_do']), "challenge": gc.get("BoringChallenge"), "solution": gc.get("CreativeSolution"), "social_media": gc.get("SocialMedia"), "ai_content": {"Web": gc.get("Web"), "FAQ": gc.get("FAQ")}, "date": f"{st.session_state.form_data['year']} {st.session_state.form_data['month']}", "assets": st.session_state.full_assets}
+                # Format scope back to newline-separated string for GS
+                scope_str = "\n".join(st.session_state.form_data['scope'])
+                payload = {**st.session_state.form_data, "category": ", ".join(st.session_state.form_data['category']), "what_we_do": ", ".join(st.session_state.form_data['what_we_do']), "scope": scope_str, "challenge": gc.get("BoringChallenge"), "solution": gc.get("CreativeSolution"), "social_media": gc.get("SocialMedia"), "ai_content": {"Web": gc.get("Web"), "FAQ": gc.get("FAQ")}, "date": f"{st.session_state.form_data['year']} {st.session_state.form_data['month']}", "assets": st.session_state.full_assets}
                 res = requests.post(WEB_APP_URL, json=payload)
                 if res.status_code == 200: add_log("Sync: COMPLETE."); st.session_state.sync_complete = True; st.rerun()
                 else: add_log(f"Sync: ERROR ({res.status_code})")
@@ -296,4 +322,4 @@ elif st.session_state.page == 2:
     st.markdown('<div class="dotted-sep"></div>', unsafe_allow_html=True)
     st.markdown(f'<div class="terminal-box">{"<br>".join(st.session_state.terminal_logs)}</div>', unsafe_allow_html=True)
 
-st.markdown(f"<p style='text-align: center; color: grey; font-size: 10px; letter-spacing: 2px; text-transform: uppercase; margin-top: 40px;'>FIREBEAN LIMITED | SPEEDUP UI v16.0.0</p>", unsafe_allow_html=True)
+st.markdown(f"<p style='text-align: center; color: grey; font-size: 10px; letter-spacing: 2px; text-transform: uppercase; margin-top: 40px;'>FIREBEAN LIMITED | SPEEDUP UI v16.1.0</p>", unsafe_allow_html=True)
