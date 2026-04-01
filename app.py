@@ -1,5 +1,5 @@
-# VERSION: v18.4.5
-# TIMESTAMP: 2026-04-02 07:53:00 HKT
+# VERSION: v18.5.0
+# TIMESTAMP: 2026-04-02 07:56:00 HKT
 
 import streamlit as st
 import requests
@@ -17,7 +17,7 @@ except ImportError as e:
 
 class FirebeanPortal:
     def __init__(self):
-        self.VERSION = "v18.4.5 (Modular)"
+        self.VERSION = "v18.5.0 (Modular)"
         self.MODELS = ["gemini-2.5-flash-preview-09-2025", "gemini-2.5-pro-preview-09-2025"]
         self.init_session()
         self.apply_ui_theme()
@@ -37,32 +37,75 @@ class FirebeanPortal:
         if not st.session_state.apiKey:
             st.session_state.ai_status = "🔴 OFFLINE (No Key)"
             return
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key={st.session_state.apiKey}"
+        # Test connection with first model
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.MODELS[0]}:generateContent?key={st.session_state.apiKey}"
         try:
             res = requests.post(url, json={"contents": [{"parts": [{"text": "hi"}]}]}, timeout=10)
             if res.status_code == 200:
-                st.session_state.ai_status = "🟢 ONLINE"
-        except:
+                st.session_state.ai_status = f"🟢 ONLINE"
+                self.log(f"Handshake Successful: {self.MODELS[0]}")
+            else:
+                st.session_state.ai_status = "🔴 OFFLINE"
+                self.log(f"Handshake Failed: Status {res.status_code}")
+        except Exception as e:
             st.session_state.ai_status = "🔴 OFFLINE"
+            self.log(f"Connection Error: {str(e)}")
 
     def apply_ui_theme(self):
         S_RED, S_DARK, S_BG_DARK = "#E2231A", "#2A2A2A", "#121212"
         is_dark = st.session_state.get('dark_mode', False)
         bg = S_BG_DARK if is_dark else "#FFFFFF"
         txt = "#FFFFFF" if is_dark else S_DARK
+        
         st.markdown(f"""
             <style>
                 @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;700;900&display=swap');
                 .stApp {{ background-color: {bg}; color: {txt}; font-family: 'Montserrat', sans-serif; }}
-                .hero-title {{ font-size: 84px !important; font-weight: 900 !important; line-height: 0.85 !important; letter-spacing: -4px !important; margin: 0 !important; }}
+                
+                /* Global Visibility Fix for Light Mode */
+                .stApp p, .stApp label, .stApp span, .stApp .stMarkdown {{ 
+                    color: {txt} !important; 
+                }}
+                
+                /* Fix Checkbox Labels Specifically */
+                div[data-testid="stCheckbox"] label p {{
+                    color: {txt} !important;
+                    font-weight: 500 !important;
+                }}
+
+                .hero-title {{ font-size: 84px !important; font-weight: 900 !important; line-height: 0.85 !important; letter-spacing: -4px !important; margin: 0 !important; color: {txt} !important; }}
                 .sec-header {{ font-size: 16px; font-weight: 900; color: {S_RED} !important; text-transform: uppercase; letter-spacing: 2px; margin-top: 25px; }}
+                
                 .terminal-box {{ background: #000; color: #FFFFFF !important; font-family: 'Courier New', monospace; padding: 15px; border-radius: 8px; font-size: 11px; line-height: 1.5; border-left: 4px solid {S_RED}; height: 180px; overflow-y: auto; text-shadow: 0 0 1px rgba(255,255,255,0.2); }}
-                .status-badge {{ background: {S_RED}; color: white; padding: 4px 12px; border-radius: 4px; font-size: 9px; font-weight: 900; }}
+                .terminal-box p {{ color: #FFFFFF !important; margin: 0; }}
+
+                .status-badge {{ 
+                    background: {S_RED}; 
+                    color: white; 
+                    padding: 8px 15px; 
+                    border-radius: 4px; 
+                    font-size: 10px; 
+                    font-weight: 900; 
+                    display: inline-block;
+                    margin-top: 10px;
+                }}
+                
                 .sub-label {{ font-size: 14px; font-weight: 700; color: #777; margin-bottom: 10px; text-transform: uppercase; }}
+                
+                /* Styled Handshake Button to match red theme if needed, or default */
+                .stButton button {{
+                    border-radius: 4px !important;
+                }}
+
                 [data-testid="stSidebar"] {{display: none;}}
                 header, footer {{visibility: hidden;}}
             </style>
         """, unsafe_allow_html=True)
+
+    def log(self, msg):
+        ts = datetime.now().strftime("%H:%M:%S")
+        st.session_state.terminal_logs.append(f"[{ts}] {msg}")
+        if len(st.session_state.terminal_logs) > 12: st.session_state.terminal_logs.pop(0)
 
 if __name__ == "__main__":
     st.set_page_config(page_title="Firebean Portal", page_icon="🔥", layout="wide")
@@ -77,18 +120,31 @@ if __name__ == "__main__":
         portal.verify_ai()
 
     if st.session_state.page == 1:
-        # Header
+        # --- HEADER SECTION ---
         h1, h2, h3, h4 = st.columns([1.2, 4.5, 1.8, 1.8])
+        
         with h1: 
             st.image("https://raw.githubusercontent.com/dickson-crypto/Firebean-app/main/Firebeanlogo2026.png", width=120)
+        
         with h2: 
             st.markdown('<h1 class="hero-title">Project<br>Collector.</h1>', unsafe_allow_html=True)
-            st.markdown(f'<div class="status-badge">AI STATUS: {st.session_state.ai_status}</div>', unsafe_allow_html=True)
+            
+            # Handshake Button placed next to Status Badge
+            stat_col, hand_col = st.columns([2.5, 1.5])
+            with stat_col:
+                st.markdown(f'<div class="status-badge">AI STATUS: {st.session_state.ai_status}</div>', unsafe_allow_html=True)
+            with hand_col:
+                if st.button("⚡ HANDSHAKE", key="header_handshake", help="Retry connection", use_container_width=True):
+                    portal.log("Manual Handshake Triggered.")
+                    st.session_state.ai_status = "🟡 INITIALIZING"
+                    st.rerun()
+        
         with h3:
             st.write("<div style='height:35px'></div>", unsafe_allow_html=True)
             if st.button("🚀 BOSS MODE", use_container_width=True):
                 st.session_state.form_data = {"client": "Firebean Strategy", "project": "Strategic Modular Hub", "venue": "Cyberport", "year": "2026", "month": "APR", "category": ["GOVERNMENT & PUBLIC SECTOR"], "what_we_do": ["INTERACTIVE & TECH"], "scope": ["Concept Development"], "open_question": "A massive touring exhibition focused on occupational health (OSH) using innovative materials."}
                 st.session_state.mock_assets = True; st.rerun()
+        
         with h4:
             st.write("<div style='height:35px'></div>", unsafe_allow_html=True)
             if st.button("🌓 MODE", use_container_width=True):
@@ -134,7 +190,7 @@ if __name__ == "__main__":
                 st.session_state.form_data.update(current_data); st.session_state.form_data['youtube'] = youtube
                 st.session_state.page = 2; st.rerun()
 
-        st.markdown(f'<div class="terminal-box">{"<br>".join(st.session_state.terminal_logs)}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="terminal-box">' + "".join([f"<p>{log}</p>" for log in st.session_state.terminal_logs]) + '</div>', unsafe_allow_html=True)
 
     elif st.session_state.page == 2:
         # Unit 4: Synthesis & Sync
