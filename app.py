@@ -25,7 +25,7 @@ try:
 except:
     apiKey = ""
 
-APP_VERSION = "v14.5.0"
+APP_VERSION = "v14.6.0"
 
 # Official stable model strings for Pro Accounts
 MODELS_TO_TEST = [
@@ -74,9 +74,8 @@ def verify_ai_connection():
         return
     
     for model_name in MODELS_TO_TEST:
-        add_log(f"Handshake: Testing {model_name}...")
+        add_log(f"Probe: Testing {model_name}...")
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={apiKey}"
-        # Lightweight payload to test connectivity
         payload = {
             "contents": [{"role": "user", "parts": [{"text": "hi"}]}],
             "generationConfig": {"maxOutputTokens": 1}
@@ -90,7 +89,7 @@ def verify_ai_connection():
                 add_log(f"Success: Connected to {model_name}.")
                 return
             elif res.status_code == 404:
-                add_log(f"Notice: {model_name} not available for this key/region.")
+                add_log(f"Notice: {model_name} not available.")
             else:
                 add_log(f"Error: {model_name} responded with status {res.status_code}.")
         except Exception as e:
@@ -233,17 +232,17 @@ def run_boss_test():
 if st.session_state.page == 1:
     h_col1, h_col2, h_col3, h_col4 = st.columns([1.2, 4.5, 1.8, 1.8])
     with h_col1: 
-        st.image("https://raw.githubusercontent.com/dickson-crypto/Firebeanlogo2026.png", use_container_width=True)
+        st.image("https://raw.githubusercontent.com/dickson-crypto/Firebean-app/main/Firebeanlogo2026.png", width="stretch")
     with h_col2: 
         st.markdown('<h1 class="hero-title">Project<br>Collector.</h1>', unsafe_allow_html=True)
         st.markdown(f'<div class="status-badge">SYSTEM HEARTBEAT: {st.session_state.ai_status} | {st.session_state.active_model.upper()}</div>', unsafe_allow_html=True)
     with h_col3:
         st.markdown('<div style="margin-top: 35px;"></div>', unsafe_allow_html=True)
-        if st.button("🚀 BOSS MODE", use_container_width=True): run_boss_test()
+        if st.button("🚀 BOSS MODE", width="stretch"): run_boss_test()
     with h_col4:
         st.markdown('<div style="margin-top: 35px;"></div>', unsafe_allow_html=True)
         btn_label = "☀️ LIGHT" if st.session_state.dark_mode else "🌙 DARK"
-        if st.button(btn_label, use_container_width=True):
+        if st.button(btn_label, width="stretch"):
             st.session_state.dark_mode = not st.session_state.dark_mode
             st.rerun()
 
@@ -285,7 +284,7 @@ if st.session_state.page == 1:
         for idx, p in enumerate(photos[:8]):
             with p_cols[idx % 4]:
                 img = Image.open(p)
-                st.image(img, use_container_width=True)
+                st.image(img, width="stretch")
                 if st.checkbox("HERO", key=f"hero_{idx}", value=(st.session_state.hero_index == idx)): st.session_state.hero_index = idx
                 buf = io.BytesIO()
                 img.save(buf, format='PNG')
@@ -316,7 +315,7 @@ if st.session_state.page == 1:
     st.markdown(f'<div class="sec-header">AI Diagnostics</div>', unsafe_allow_html=True)
     if pts >= 11 or st.session_state.mock_assets:
         if "ONLINE" in st.session_state.ai_status:
-            if st.button("📝 GENERATE 15 MC ANALYSIS", use_container_width=True):
+            if st.button("📝 GENERATE 15 MC ANALYSIS", width="stretch"):
                 res = call_gemini_ai(f"Client: {client}. Strategy: {open_q}", "Output JSON array of 15 diagnostic MC questions [{'q':'...', 'opts':['A','B','C']}]", st.session_state.get('photos_for_ai'))
                 if res: 
                     try: st.session_state.mc_questions = json.loads(res.replace("```json", "").replace("```", ""))
@@ -333,7 +332,7 @@ if st.session_state.page == 1:
         st.info(f"Progress: {percent}% — Provide project details and visuals to unlock diagnostics.")
 
     if percent >= 100:
-        if st.button("PROCEED TO CONTENT REVIEW 👉", type="primary", use_container_width=True):
+        if st.button("PROCEED TO CONTENT REVIEW 👉", type="primary", width="stretch"):
             add_log("Data validation complete. Packaging assets...")
             if not st.session_state.mock_assets:
                 st.session_state.full_assets = {"logo_black": process_image_for_payload(logo_b), "logo_white": process_image_for_payload(logo_w), "photos": [process_image_for_payload(p) for p in photos[:8]], "hero_index": st.session_state.hero_index}
@@ -345,7 +344,7 @@ if st.session_state.page == 1:
     st.markdown('<div class="sec-header">Strategic Operations Center</div>', unsafe_allow_html=True)
     log_content = "<br>".join(st.session_state.terminal_logs)
     st.markdown(f'<div class="terminal-box">{log_content}</div>', unsafe_allow_html=True)
-    if st.button("🔄 RETRY HANDSHAKE", use_container_width=True):
+    if st.button("🔄 RETRY HANDSHAKE", width="stretch"):
         st.session_state.ai_status = "🟡 INITIALIZING"
         st.rerun()
 
@@ -355,7 +354,7 @@ if st.session_state.page == 1:
 elif st.session_state.page == 2:
     if not st.session_state.sync_complete:
         h_col1, h_col2 = st.columns([1, 4])
-        h_col1.image("https://raw.githubusercontent.com/dickson-crypto/Firebeanlogo2026.png", use_container_width=True)
+        h_col1.image("https://raw.githubusercontent.com/dickson-crypto/Firebean-app/main/Firebeanlogo2026.png", width="stretch")
         h_col2.markdown('<h1 class="hero-title" style="font-size: 72px !important;">Content<br>Review.</h1>', unsafe_allow_html=True)
         
         if st.button("← BACK"): st.session_state.page = 1; st.rerun()
@@ -368,15 +367,15 @@ elif st.session_state.page == 2:
 
         if st.session_state.generated_content:
             gc = st.session_state.generated_content
-            st.write(f"**Challenge:** {gc.get('BoringChallenge')}")
-            st.write(f"**Solution:** {gc.get('CreativeSolution')}")
+            st.write(f"**Challenge:** {gc.get('BoringChallenge', '')}")
+            st.write(f"**Solution:** {gc.get('CreativeSolution', '')}")
             sm = gc.get('SocialMedia', {})
             st.text_area("LinkedIn Copy", sm.get('LI', ''), height=100)
             st.text_area("Facebook Copy", sm.get('FB', ''), height=100)
             
             c1, c2 = st.columns(2)
-            if c1.button("🔄 REGENERATE Copy", use_container_width=True): st.session_state.generated_content = None; st.rerun()
-            if c2.button("🚀 EXECUTE MASTER SYNC", type="primary", use_container_width=True):
+            if c1.button("🔄 REGENERATE Copy", width="stretch"): st.session_state.generated_content = None; st.rerun()
+            if c2.button("🚀 EXECUTE MASTER SYNC", type="primary", width="stretch"):
                 add_log("Sync: Initiating Master DB handshake...")
                 payload = {**st.session_state.form_data, "category": ", ".join(st.session_state.form_data['category']), "what_we_do": ", ".join(st.session_state.form_data['what_we_do']), "scope": "\n".join(st.session_state.form_data['scope']), "challenge": gc.get("BoringChallenge"), "solution": gc.get("CreativeSolution"), "ai_content": {"Web": gc.get("Web"), "FAQ": gc.get("FAQ")}, "date": f"{st.session_state.form_data['year']} {st.session_state.form_data['month']}", "assets": st.session_state.full_assets}
                 res = requests.post(WEB_APP_URL, json=payload)
@@ -387,7 +386,7 @@ elif st.session_state.page == 2:
 
     else:
         st.markdown(f'<div class="success-box" style="margin-top:100px;"><h1 style="color:{S_RED} !important; font-size:48px;">SYNC SUCCESSFUL</h1><p>Master DB Updated. Automation logic complete.</p></div>', unsafe_allow_html=True)
-        if st.button("➕ START NEW PROFILE", type="primary", use_container_width=True):
+        if st.button("➕ START NEW PROFILE", type="primary", width="stretch"):
             for key in list(st.session_state.keys()): del st.session_state[key]
             st.rerun()
 
@@ -395,4 +394,4 @@ elif st.session_state.page == 2:
     log_content = "<br>".join(st.session_state.terminal_logs)
     st.markdown(f'<div class="terminal-box">{log_content}</div>', unsafe_allow_html=True)
 
-st.markdown(f"<p style='text-align: center; color: grey; font-size: 10px; letter-spacing: 2px; text-transform: uppercase; margin-top: 40px;'>FIREBEAN LIMITED | SPEEDUP UI v14.5.0</p>", unsafe_allow_html=True)
+st.markdown(f"<p style='text-align: center; color: grey; font-size: 10px; letter-spacing: 2px; text-transform: uppercase; margin-top: 40px;'>FIREBEAN LIMITED | SPEEDUP UI v14.6.0</p>", unsafe_allow_html=True)
