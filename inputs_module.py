@@ -1,5 +1,5 @@
-# VERSION: v18.4.1
-# TIMESTAMP: 2026-04-02 07:46:00 HKT
+# VERSION: v18.4.2
+# TIMESTAMP: 2026-04-02 07:48:00 HKT
 
 import streamlit as st
 from PIL import Image, ImageOps
@@ -23,6 +23,15 @@ class InputEngine:
 
     def render_identity(self):
         st.markdown('<div class="sec-header">Brand Identity</div>', unsafe_allow_html=True)
+        
+        # 🤝 AI Handshake / Failover Trigger
+        # This allows the user to manually trigger the verify_ai loop in app.py
+        h_col1, h_col2 = st.columns([5, 1])
+        with h_col2:
+            if st.button("⚡ HANDSHAKE", help="Retry AI Model Connection & Failover", use_container_width=True):
+                st.session_state.ai_status = "🟡 INITIALIZING"
+                st.rerun()
+                
         c1, c2, c3 = st.columns(3)
         cl = c1.text_input("Client", value=st.session_state.form_data.get("client", ""), placeholder="e.g. Levi's")
         pr = c2.text_input("Project", value=st.session_state.form_data.get("project", ""), placeholder="e.g. Launch")
@@ -44,7 +53,7 @@ class InputEngine:
         st.markdown('<div class="sub-label">What we do</div>', unsafe_allow_html=True)
         wwds = ["ROVING EXHIBITIONS", "SOCIAL & CONTENT", "INTERACTIVE & TECH", "PR & MEDIA", "EVENTS & CEREMONIES"]
         w_cols = st.columns(3)
-        sel_wwd = [o for i, o in enumerate(wwds) if w_cols[i%3].checkbox(o, key=f"wwd_{o}", value=(o in st.session_state.form_data.get("what_we_do", [])))]
+        sel_wwd = [o for i, o in enumerate(wwds) if w_cols[i%3].checkbox(o, key=f"w_{o}", value=(o in st.session_state.form_data.get("what_we_do", [])))]
         
         st.markdown('<div class="sec-header">Scope of Work (18-Point Matrix)</div>', unsafe_allow_html=True)
         s_cols = st.columns(3)
