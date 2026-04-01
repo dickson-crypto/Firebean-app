@@ -1,3 +1,6 @@
+# VERSION: v18.4.5
+# TIMESTAMP: 2026-04-02 07:53:00 HKT
+
 import streamlit as st
 import requests
 import json
@@ -14,7 +17,7 @@ except ImportError as e:
 
 class FirebeanPortal:
     def __init__(self):
-        self.VERSION = "v18.4.0 (Modular)"
+        self.VERSION = "v18.4.5 (Modular)"
         self.MODELS = ["gemini-2.5-flash-preview-09-2025", "gemini-2.5-pro-preview-09-2025"]
         self.init_session()
         self.apply_ui_theme()
@@ -77,7 +80,6 @@ if __name__ == "__main__":
         # Header
         h1, h2, h3, h4 = st.columns([1.2, 4.5, 1.8, 1.8])
         with h1: 
-            # Fixed Logo Path
             st.image("https://raw.githubusercontent.com/dickson-crypto/Firebean-app/main/Firebeanlogo2026.png", width=120)
         with h2: 
             st.markdown('<h1 class="hero-title">Project<br>Collector.</h1>', unsafe_allow_html=True)
@@ -137,7 +139,6 @@ if __name__ == "__main__":
     elif st.session_state.page == 2:
         # Unit 4: Synthesis & Sync
         h_l, h_t = st.columns([1, 4])
-        # Fixed Logo Path here too
         h_l.image("https://raw.githubusercontent.com/dickson-crypto/Firebean-app/main/Firebeanlogo2026.png", width=120)
         h_t.markdown('<h1 class="hero-title" style="font-size:72px !important;">Content<br>Review.</h1>', unsafe_allow_html=True)
         if st.button("← BACK"): st.session_state.page = 1; st.rerun()
