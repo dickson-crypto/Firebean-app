@@ -1,11 +1,10 @@
-# VERSION: v18.4.4
-# TIMESTAMP: 2026-04-02 07:52:00 HKT
+# VERSION: v18.5.0
+# TIMESTAMP: 2026-04-02 07:59:00 HKT
 
 import streamlit as st
 from PIL import Image, ImageOps
 import io
 import base64
-from datetime import datetime
 
 try:
     from pillow_heif import register_heif_opener
@@ -22,47 +21,36 @@ class InputEngine:
             "On-site Operation", "Technical Support"
         ]
 
-    def _apply_theme_correction(self):
-        """Injects dynamic CSS to fix visibility issues in Light Mode."""
+    def _apply_module_css(self):
+        """Internal module fix to ensure labels are visible in Light Mode."""
         is_dark = st.session_state.get('dark_mode', False)
         text_color = "#FFFFFF" if is_dark else "#121212"
-        sub_color = "#AAAAAA" if is_dark else "#555555"
+        sub_color = "#AAAAAA" if is_dark else "#777777"
         
         st.markdown(f"""
             <style>
-                .sec-header {{ color: #E2231A !important; font-weight: 900; }}
-                .sub-label {{ color: {sub_color} !important; font-size: 14px; font-weight: 700; margin-bottom: 10px; text-transform: uppercase; }}
-                /* Force Streamlit widget labels to follow theme */
-                label[data-testid="stWidgetLabel"] p {{ color: {text_color} !important; font-weight: 500; }}
-                .stTextInput input, .stTextArea textarea, .stSelectbox div {{ color: {text_color} !important; }}
+                .sub-label {{ 
+                    color: {sub_color} !important; 
+                    font-size: 14px; 
+                    font-weight: 700; 
+                    margin-bottom: 10px; 
+                    text-transform: uppercase; 
+                }}
+                /* Secondary safety for Light Mode labels */
+                label[data-testid="stWidgetLabel"] p {{ color: {text_color} !important; }}
             </style>
         """, unsafe_allow_html=True)
 
     def render_identity(self):
-        self._apply_theme_correction()
-        
-        # Header Row for Identity & Manual Handshake
-        h_col1, h_col2 = st.columns([4, 1])
-        with h_col1:
-            st.markdown('<div class="sec-header">Brand Identity</div>', unsafe_allow_html=True)
-        
-        with h_col2:
-            # 🤝 AI Handshake / Failover Trigger
-            # To align perfectly with Boss Mode, this should ideally be moved to app.py header columns.
-            if st.button("⚡ HANDSHAKE", help="Retry AI Model Connection & Failover", use_container_width=True):
-                ts = datetime.now().strftime("%H:%M:%S")
-                log_msg = f"[{ts}] ⚡ Manual Handshake: Re-probing AI Engines..."
-                if 'terminal_logs' in st.session_state:
-                    st.session_state.terminal_logs.append(log_msg)
-                    if len(st.session_state.terminal_logs) > 12: st.session_state.terminal_logs.pop(0)
-                
-                st.session_state.ai_status = "🟡 INITIALIZING"
-                st.rerun()
+        """Renders Identity Section without Handshake button (now in app.py)."""
+        self._apply_module_css()
+        st.markdown('<div class="sec-header">Brand Identity</div>', unsafe_allow_html=True)
                 
         c1, c2, c3 = st.columns(3)
         cl = c1.text_input("Client", value=st.session_state.form_data.get("client", ""), placeholder="e.g. Levi's")
         pr = c2.text_input("Project", value=st.session_state.form_data.get("project", ""), placeholder="e.g. Launch")
         vn = c3.text_input("Venue", value=st.session_state.form_data.get("venue", ""), placeholder="Location")
+        
         d1, d2 = st.columns(2)
         yr = d1.selectbox("Year", [str(y) for y in range(2026, 2011, -1)], index=0)
         mo = d2.selectbox("Month", ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"], index=3)
