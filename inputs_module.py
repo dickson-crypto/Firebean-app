@@ -31,12 +31,18 @@ class InputEngine:
 
     def render_framework(self):
         st.markdown('<div class="sec-header">Strategic Framework</div>', unsafe_allow_html=True)
+        
+        # New Subtitle for Who we help
+        st.markdown('<div class="sub-label">Who we help</div>', unsafe_allow_html=True)
         cats = ["GOVERNMENT & PUBLIC SECTOR", "LIFESTYLE & CONSUMER", "F&B & HOSPITALITY", "MALLS & VENUES"]
         c_cols = st.columns(4)
         sel_cat = [o for i, o in enumerate(cats) if c_cols[i%4].checkbox(o, key=f"cat_{o}", value=(o in st.session_state.form_data.get("category", [])))]
+        
+        st.markdown('<div class="sub-label">What we do</div>', unsafe_allow_html=True)
         wwds = ["ROVING EXHIBITIONS", "SOCIAL & CONTENT", "INTERACTIVE & TECH", "PR & MEDIA", "EVENTS & CEREMONIES"]
         w_cols = st.columns(3)
         sel_wwd = [o for i, o in enumerate(wwds) if w_cols[i%3].checkbox(o, key=f"wwd_{o}", value=(o in st.session_state.form_data.get("what_we_do", [])))]
+        
         st.markdown('<div class="sec-header">Scope of Work (18-Point Matrix)</div>', unsafe_allow_html=True)
         s_cols = st.columns(3)
         sel_sow = [o for i, o in enumerate(self.SOW) if s_cols[i%3].checkbox(o, key=f"sow_{o}", value=(o in st.session_state.form_data.get("scope", [])))]
