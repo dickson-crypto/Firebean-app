@@ -11,7 +11,7 @@ from synthesis_sync import SynthesisSync
 
 class FirebeanPortal:
     def __init__(self):
-        self.VERSION = "v18.0.0 (Modular)"
+        self.VERSION = "v18.1.0 (Modular)"
         self.MODELS = ["gemini-3-flash", "gemini-2.5-flash", "gemini-2.5-pro"]
         self.init_session()
         self.apply_ui_theme()
@@ -26,6 +26,22 @@ class FirebeanPortal:
         if 'ai_status' not in st.session_state: st.session_state.ai_status = "🟡 INITIALIZING"
         if 'apiKey' not in st.session_state:
             st.session_state.apiKey = st.secrets.get("GEMINI_API_KEY", "")
+
+    def verify_ai(self):
+        """Verifies connection to Gemini Pro models."""
+        if not st.session_state.apiKey:
+            st.session_state.ai_status = "🔴 OFFLINE (Key Missing)"
+            return
+        for m in self.MODELS:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent?key={st.session_state.apiKey}"
+            try:
+                res = requests.post(url, json={"contents": [{"role": "user", "parts": [{"text": "hi"}]}], "generationConfig": {"maxOutputTokens": 1}}, timeout=8)
+                if res.status_code == 200:
+                    st.session_state.ai_status = "🟢 ONLINE"
+                    st.session_state.active_model = m
+                    return
+            except: pass
+        st.session_state.ai_status = "🔴 OFFLINE"
 
     def apply_ui_theme(self):
         S_RED, S_DARK, S_BG_DARK = "#E2231A", "#2A2A2A", "#121212"
@@ -61,8 +77,7 @@ if __name__ == "__main__":
     sync = SynthesisSync()
 
     if st.session_state.ai_status == "🟡 INITIALIZING":
-        # Check connection once
-        st.session_state.ai_status = "🟢 ONLINE"
+        portal.verify_ai()
 
     if st.session_state.page == 1:
         # Header Section
