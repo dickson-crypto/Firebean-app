@@ -265,4 +265,97 @@ if st.session_state.page == 1:
     open_q = u2.text_area("Concept Goal?", value=st.session_state.form_data.get("open_question", ""), height=80)
 
     # --- PROGRESS TRACKING ---
-    pts = sum([bool(client), bool(project), bool(venue
+    pts = sum([bool(client), bool(project), bool(venue), bool(year), bool(month), bool(sel_cat), bool(sel_wwd), bool(sel_sow), bool(open_q)])
+    pts += 2 if st.session_state.mock_assets else (bool(logo_b or logo_w) + bool(photos))
+    
+    ans_mc = False
+    if st.session_state.mc_questions:
+        for i, q in enumerate(st.session_state.mc_questions):
+            for opt in q["opts"]:
+                if st.session_state.get(f"mc_{i}_{opt}", False): ans_mc = True
+    if ans_mc: pts += 1
+    
+    percent = int((pts / 12) * 100) 
+    render_speedup_progress(min(percent, 100))
+
+    st.markdown('<div class="dotted-sep"></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="sec-header">AI Diagnostics</div>', unsafe_allow_html=True)
+    if pts >= 11 or st.session_state.mock_assets:
+        # Block button if AI is offline
+        if "ONLINE" in st.session_state.ai_status:
+            if st.button("📝 GENERATE 15 MC ANALYSIS", use_container_width=True):
+                res = call_gemini_ai(f"Client: {client}. Core Strategy: {open_q}", "Output JSON array of 15 diagnostic MC questions [{'q':'...', 'opts':['A','B','C']}]", st.session_state.get('photos_for_ai'))
+                if res: 
+                    try: st.session_state.mc_questions = json.loads(res.replace("```json", "").replace("```", ""))
+                    except: st.error("AI returned invalid JSON. Retrying...")
+                st.rerun()
+        else:
+            st.error("AI Strategic Engine is currently OFFLINE. Cannot generate diagnostics.")
+
+        if st.session_state.mc_questions:
+            for i, q in enumerate(st.session_state.mc_questions):
+                st.markdown(f'**Q{i+1}. {q["q"]}**')
+                for opt in q["opts"]: st.checkbox(opt, key=f"mc_{i}_{opt}")
+    else:
+        st.info(f"Progress: {percent}% — Complete fields and assets to unlock.")
+
+    if percent >= 100:
+        if st.button("PROCEED TO CONTENT REVIEW 👉", type="primary", use_container_width=True):
+            add_log("Finalizing data package. Compressing assets...")
+            if not st.session_state.mock_assets:
+                st.session_state.full_assets = {"logo_black": process_image_for_payload(logo_b), "logo_white": process_image_for_payload(logo_w), "photos": [process_image_for_payload(p) for p in photos[:8]], "hero_index": st.session_state.hero_index}
+            st.session_state.form_data.update({"client": client, "project": project, "venue": venue, "year": year, "month": month, "category": sel_cat, "what_we_do": sel_wwd, "scope": sel_sow, "open_question": open_q, "youtube": youtube})
+            st.session_state.page = 2; st.rerun()
+
+    st.markdown('<div class="dotted-sep"></div>', unsafe_allow_html=True)
+    st.markdown('<div class="sec-header">Strategic Operations Center</div>', unsafe_allow_html=True)
+    log_content = "<br>".join(st.session_state.terminal_logs)
+    st.markdown(f'<div class="terminal-box">{log_content}</div>', unsafe_allow_html=True)
+
+# ==========================================
+# 6. PAGE 2: CONTENT REVIEW
+# ==========================================
+elif st.session_state.page == 2:
+    if not st.session_state.sync_complete:
+        h_col1, h_col2 = st.columns([1, 4])
+        h_col1.image("https://raw.githubusercontent.com/dickson-crypto/Firebeanlogo2026.png", use_container_width=True)
+        h_col2.markdown('<h1 class="hero-title" style="font-size: 72px !important;">Content<br>Review.</h1>', unsafe_allow_html=True)
+        
+        if st.button("← BACK TO COLLECTOR"): st.session_state.page = 1; st.rerun()
+        st.markdown('<div class="dotted-sep"></div>', unsafe_allow_html=True)
+
+        if st.session_state.generated_content is None:
+            ctx = f"Project: {st.session_state.form_data['project']}. Core Strategy: {st.session_state.form_data['open_question']}"
+            res = call_gemini_ai(ctx, "Output JSON structure: {'BoringChallenge':'...', 'CreativeSolution':'...', 'SocialMedia':{'FB':'...', 'LI':'...'}, 'Web':{'EN':'...', 'TC':'...', 'JP':'...'}, 'FAQ':{'EN':[{'q':'','a':''}]}}")
+            if res: st.session_state.generated_content = json.loads(res.replace("```json", "").replace("```", ""))
+
+        if st.session_state.generated_content:
+            gc = st.session_state.generated_content
+            st.write(f"**Challenge:** {gc.get('BoringChallenge')}")
+            st.write(f"**Solution:** {gc.get('CreativeSolution')}")
+            sm = gc.get('SocialMedia', {})
+            st.text_area("LinkedIn Copy", sm.get('LI'), height=100)
+            st.text_area("Facebook Copy", sm.get('FB'), height=100)
+            
+            c1, c2 = st.columns(2)
+            if c1.button("🔄 REGENERATE", use_container_width=True): st.session_state.generated_content = None; st.rerun()
+            if c2.button("🚀 EXECUTE MASTER SYNC", type="primary", use_container_width=True):
+                add_log("Connecting to Handlers.gs API...")
+                payload = {**st.session_state.form_data, "category": ", ".join(st.session_state.form_data['category']), "what_we_do": ", ".join(st.session_state.form_data['what_we_do']), "scope": "\n".join(st.session_state.form_data['scope']), "challenge": gc.get("BoringChallenge"), "solution": gc.get("CreativeSolution"), "ai_content": {"Web": gc.get("Web"), "FAQ": gc.get("FAQ")}, "date": f"{st.session_state.form_data['year']} {st.session_state.form_data['month']}", "assets": st.session_state.full_assets}
+                res = requests.post(WEB_APP_URL, json=payload)
+                if res.status_code == 200:
+                    add_log("SYNC SUCCESSFUL.")
+                    st.session_state.sync_complete = True; st.rerun()
+                else: add_log(f"Sync Failed: {res.status_code}")
+
+    else:
+        st.markdown(f'<div class="success-box" style="margin-top:100px;"><h1 style="color:{S_RED} !important; font-size:48px;">SYNC SUCCESSFUL</h1><p>Master DB Updated. Folder automation complete.</p></div>', unsafe_allow_html=True)
+        if st.button("➕ SUBMIT ANOTHER", type="primary", use_container_width=True):
+            for key in list(st.session_state.keys()): del st.session_state[key]
+            st.rerun()
+
+    st.markdown('<div class="dotted-sep"></div>', unsafe_allow_html=True)
+    log_content = "<br>".join(st.session_state.terminal_logs)
+    st.markdown(f'<div class="terminal-box">{log_content}</div>', unsafe_allow_html=True)
+
+st.markdown(f"<p style='text-align: center; color: grey; font-size: 10px; letter-spacing: 2px; text-transform: uppercase; margin-top: 40px;'>FIREBEAN LIMITED | SPEEDUP UI v14.2.0</p>", unsafe_allow_html=True)
