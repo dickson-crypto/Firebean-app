@@ -2,7 +2,6 @@ import streamlit as st
 import requests
 import json
 import time
-import random
 import base64
 import io
 from PIL import Image, ImageOps
@@ -20,7 +19,7 @@ except ImportError:
 # ==========================================
 WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyCfSfjgYi7yQFpqBDshjYQ1Zye4VjaT-U4_0nfF9c5oYF1Pr0CrGI38Is4BS3KigIz/exec"
 apiKey = "" 
-APP_VERSION = "v13.6.2"
+APP_VERSION = "v13.7.0"
 
 st.set_page_config(
     page_title=f"Firebean Brain Collector {APP_VERSION}",
@@ -40,6 +39,7 @@ if 'dark_mode' not in st.session_state: st.session_state.dark_mode = False
 if 'hero_index' not in st.session_state: st.session_state.hero_index = 0
 if 'generated_content' not in st.session_state: st.session_state.generated_content = None
 if 'sync_complete' not in st.session_state: st.session_state.sync_complete = False
+if 'full_assets' not in st.session_state: st.session_state.full_assets = None
 
 # SpeedUp Specification Palette
 S_RED = "#E2231A"
@@ -60,37 +60,18 @@ st.markdown(f"""
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;700;900&display=swap');
         
-        .stApp {{ 
-            background-color: {t['bg']}; 
-            color: {t['text']}; 
-            font-family: 'Montserrat', sans-serif;
-            transition: all 0.5s ease;
-        }}
-
+        .stApp {{ background-color: {t['bg']}; color: {t['text']}; font-family: 'Montserrat', sans-serif; transition: all 0.5s ease; }}
         h1, h2, h3, p, span, label, div, .stMarkdown {{ color: {t['text']} !important; }}
 
         .header-container {{ display: flex; align-items: center; gap: 25px; padding: 20px 0; margin-bottom: 10px; }}
-        
-        /* Enlarged, Left-Aligned Hero Title */
-        .hero-title {{ 
-            font-size: 84px !important; 
-            font-weight: 900 !important; 
-            line-height: 0.85 !important; 
-            letter-spacing: -3px !important; 
-            margin: 0 !important; 
-            text-align: left !important;
-        }}
+        .hero-title {{ font-size: 84px !important; font-weight: 900 !important; line-height: 0.85 !important; letter-spacing: -3px !important; margin: 0 !important; text-align: left !important; }}
         
         .dotted-sep {{ border-bottom: 1px dotted {t['border']}; margin: 25px 0; width: 100%; }}
 
         .stTextInput input, .stTextArea textarea, .stSelectbox div[data-baseweb="select"] {{
-            background-color: {t['input_bg']} !important;
-            border: 1px solid {t['border']} !important;
-            border-radius: 6px !important;
-            padding: 10px 14px !important;
-            font-size: 14px !important;
-            color: {t['text']} !important;
-            box-shadow: none !important;
+            background-color: {t['input_bg']} !important; border: 1px solid {t['border']} !important;
+            border-radius: 6px !important; padding: 10px 14px !important; font-size: 14px !important;
+            color: {t['text']} !important; box-shadow: none !important;
         }}
         
         .sec-header {{
@@ -100,17 +81,10 @@ st.markdown(f"""
 
         .progress-hub {{ position: fixed; top: 25px; right: 40px; z-index: 1000; }}
 
-        /* Unified Red Buttons */
         .stButton button {{
-            background-color: {S_RED} !important; 
-            color: white !important; 
-            border-radius: 50px !important; 
-            padding: 10px 20px !important; 
-            font-weight: 700 !important;
-            text-transform: uppercase; 
-            letter-spacing: 1px; 
-            border: none !important; 
-            font-size: 12px !important;
+            background-color: {S_RED} !important; color: white !important; border-radius: 50px !important; 
+            padding: 10px 20px !important; font-weight: 700 !important; text-transform: uppercase; 
+            letter-spacing: 1px; border: none !important; font-size: 12px !important;
         }}
         .next-btn button {{ font-size: 14px !important; padding: 12px 40px !important; }}
         .success-box {{ padding: 30px; border-radius: 12px; border: 2px solid {S_RED}; text-align: center; background: {t['input_bg']}; }}
@@ -123,7 +97,7 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 3. UTILITIES & VECTOR ICONS
+# 3. UTILITIES & DATA COMPRESSION
 # ==========================================
 def icon_svg(name):
     icons = {
@@ -162,8 +136,26 @@ def call_gemini_ai(prompt, sys_prompt, image_blobs=None):
         return res.json()['candidates'][0]['content']['parts'][0]['text']
     except: return None
 
+def process_image_for_payload(uploaded_file):
+    if not uploaded_file: return None
+    img = Image.open(uploaded_file)
+    img = ImageOps.exif_transpose(img)
+    img.thumbnail((1920, 1920)) # Safe compression for Apps Script payload limits
+    buf = io.BytesIO()
+    fmt = img.format if img.format else 'JPEG'
+    if fmt == 'PNG' and img.mode in ('RGBA', 'LA'): pass
+    else:
+        img = img.convert('RGB')
+        fmt = 'JPEG'
+    img.save(buf, format=fmt, quality=85)
+    return {
+        "data": base64.b64encode(buf.getvalue()).decode('utf-8'),
+        "mimeType": f"image/{fmt.lower()}",
+        "ext": fmt.lower()
+    }
+
 CAT_OPTS = ["GOVERNMENT & PUBLIC SECTOR", "LIFESTYLE & CONSUMER", "F&B & HOSPITALITY", "MALLS & VENUES"]
-WWD_OPTS = ["ROVING EXHIBITIONS", "SOCIAL & CONTENT", "INTERACTIVE & TECH", "PR & MEDIA", "EVENTS & CERেমONIES"]
+WWD_OPTS = ["ROVING EXHIBITIONS", "SOCIAL & CONTENT", "INTERACTIVE & TECH", "PR & MEDIA", "EVENTS & CEREMONIES"]
 SOW_OPTS = ["Concept Development", "Branding Strategy", "PR Consulting", "Media Relations", "Theme Design", "Visual Identity", "UI/UX Design", "Social Media Content", "Influencer Seeding", "Video Production", "Motion Graphics", "Interactive Installation", "Event Planning", "Event Production", "RSVP Management", "Talent Management", "On-site Operation", "Technical Support"]
 
 def run_boss_test():
@@ -172,7 +164,6 @@ def run_boss_test():
         "year": "2026", "month": "APR",
         "category": ["LIFESTYLE & CONSUMER"], "what_we_do": ["INTERACTIVE & TECH"],
         "scope": ["Concept Development", "Interactive Installation"],
-        "drive_folder": "https://drive.google.com/drive/folders/mock-folder-id",
         "open_question": "Redefining portfolio culture through AI synthesis."
     }
     st.session_state.mock_assets = True
@@ -181,9 +172,12 @@ def run_boss_test():
 # ==========================================
 # 4. PAGE 1: STRATEGIC COLLECTOR
 # ==========================================
+# Drive URL removed from required list since it is now automated
+STRATEGIC_REQUIRED = ["client", "project", "venue", "category", "what_we_do", "scope", "open_question"]
+
 if st.session_state.page == 1:
 
-    # Header Row - Adjusted Widths for single line buttons & larger title
+    # Header Row
     h_col1, h_col2, h_col3, h_col4 = st.columns([1.2, 4.5, 1.5, 1.5])
     with h_col1: 
         st.image("https://raw.githubusercontent.com/dickson-crypto/Firebean-app/main/Firebeanlogo2026.png", use_container_width=True)
@@ -239,8 +233,9 @@ if st.session_state.page == 1:
         logo_w = st.file_uploader("Logo White", key="logo_w")
         if logo_w: st.session_state.uploaded_logo = True
     with a3:
-        drive_folder = st.text_input("Drive Folder URL (Required for GitHub Sync)", value=st.session_state.form_data.get("drive_folder", ""), placeholder="https://drive.google.com/drive/folders/...")
-        photos = st.file_uploader("Project Photos (Used for AI Analysis)", accept_multiple_files=True, key="photos")
+        # Automated text notice instead of URL input
+        st.info("📂 Google Drive folder will be created automatically upon sync.")
+        photos = st.file_uploader("Project Photos (Used for AI Analysis & Final DB Sync)", accept_multiple_files=True, key="photos")
         if photos: 
             st.session_state.uploaded_photos = True
             p_cols = st.columns(4)
@@ -265,8 +260,7 @@ if st.session_state.page == 1:
 
     st.markdown('<div class="dotted-sep"></div>', unsafe_allow_html=True)
 
-    # --- REAL-TIME PROGRESS CALCULATION ---
-    # Moved calculation here so it evaluates the *current* state of variables instantly
+    # --- REAL-TIME PROGRESS CALCULATION (Max 10 Points) ---
     pts = 0
     if client: pts += 1
     if project: pts += 1
@@ -274,7 +268,6 @@ if st.session_state.page == 1:
     if sel_cat: pts += 1
     if sel_wwd: pts += 1
     if sel_sow: pts += 1
-    if drive_folder: pts += 1
     if open_q: pts += 1
 
     if st.session_state.mock_assets: 
@@ -292,12 +285,12 @@ if st.session_state.page == 1:
     if answered_mc or (st.session_state.mock_assets and st.session_state.mc_questions):
         pts += 1 
     
-    percent = int((pts / 11) * 100) 
+    percent = int((pts / 10) * 100) 
     render_speedup_progress(min(percent, 100))
 
     # --- SESSION: DIAGNOSTICS (Required for 100%) ---
     st.markdown(f'<div class="sec-header">AI Diagnostics</div>', unsafe_allow_html=True)
-    if pts >= 8 or st.session_state.mock_assets:
+    if pts >= 9 or st.session_state.mock_assets:
         if st.button("📝 GENERATE 15 MC FOR ANALYSIS", use_container_width=True):
             with st.spinner("Analyzing Project..."):
                 sys = "Output JSON array of 15 diagnostic questions. Format: [{'q':'...', 'opts':['A','B','C']}]"
@@ -318,10 +311,21 @@ if st.session_state.page == 1:
     if percent >= 100:
         st.markdown('<div class="next-btn" style="margin-top:40px;">', unsafe_allow_html=True)
         if st.button("PROCEED TO CONTENT REVIEW 👉", type="primary", use_container_width=True):
+            
+            # Secure base64 payloads to preserve files between pages
+            if not st.session_state.mock_assets:
+                with st.spinner("Compressing assets for Master DB sync..."):
+                    st.session_state.full_assets = {
+                        "logo_black": process_image_for_payload(logo_b) if logo_b else None,
+                        "logo_white": process_image_for_payload(logo_w) if logo_w else None,
+                        "photos": [process_image_for_payload(p) for p in photos[:8]] if photos else [],
+                        "hero_index": st.session_state.hero_index
+                    }
+
             st.session_state.form_data.update({
                 "client": client, "project": project, "venue": venue, "year": year, "month": month, "date": f"{year} {month}",
                 "category": sel_cat, "what_we_do": sel_wwd, "scope": sel_sow, 
-                "drive_folder": drive_folder, "open_question": open_q, "youtube": youtube
+                "open_question": open_q, "youtube": youtube
             })
             st.session_state.page = 2; st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
@@ -384,8 +388,9 @@ elif st.session_state.page == 2:
             with c2:
                 st.markdown('<div class="next-btn">', unsafe_allow_html=True)
                 if st.button("🚀 CONFIRM & MASTER SYNC", type="primary", use_container_width=True):
-                    with st.spinner("Executing Master Sync..."):
-                        # Perfect mapping to Main.gs requirements
+                    with st.spinner("Automating Google Drive Folder & Executing Master Sync..."):
+                        
+                        # Full payload including processed Base64 assets
                         payload = {
                             **st.session_state.form_data, 
                             "category": ", ".join(st.session_state.form_data['category']), 
@@ -393,13 +398,16 @@ elif st.session_state.page == 2:
                             "scope": "\n".join(st.session_state.form_data['scope']), 
                             "challenge": gc.get("BoringChallenge", ""),
                             "solution": gc.get("CreativeSolution", ""),
+                            "open_question": st.session_state.form_data.get("open_question", ""),
                             "ai_content": {"Web": gc.get("Web", {}), "FAQ": gc.get("FAQ", {})},
-                            "date": st.session_state.form_data.get("date", datetime.now().strftime("%Y %b").upper())
+                            "date": st.session_state.form_data.get("date", datetime.now().strftime("%Y %b").upper()),
+                            "assets": st.session_state.full_assets
                         }
+                        
                         res = requests.post(WEB_APP_URL, json=payload)
                         if res.status_code == 200:
                             st.session_state.sync_complete = True; st.rerun()
-                        else: st.error("Database Sync Failed.")
+                        else: st.error("Database Sync Failed. Check Payload Limits.")
                 st.markdown('</div>', unsafe_allow_html=True)
 
     else:
@@ -407,7 +415,7 @@ elif st.session_state.page == 2:
         st.markdown(f"""
             <div class="success-box" style="margin-top:100px;">
                 <h1 style="color:{S_RED} !important; font-size:48px;">SYNC SUCCESSFUL</h1>
-                <p>Profile data and AI content have been securely written to the Master DB.</p>
+                <p>Profile data, automated Drive Folder, and AI content have been securely written to the Master DB.</p>
             </div>
         """, unsafe_allow_html=True)
         st.balloons()
@@ -418,4 +426,4 @@ elif st.session_state.page == 2:
             st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
-st.markdown(f"<p style='text-align: center; color: grey; font-size: 10px; letter-spacing: 2px; text-transform: uppercase; margin-top: 40px;'>FIREBEAN LIMITED | SPEEDUP UI v13.6.2</p>", unsafe_allow_html=True)
+st.markdown(f"<p style='text-align: center; color: grey; font-size: 10px; letter-spacing: 2px; text-transform: uppercase; margin-top: 40px;'>FIREBEAN LIMITED | SPEEDUP UI v13.7.0</p>", unsafe_allow_html=True)
