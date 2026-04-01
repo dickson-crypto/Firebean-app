@@ -326,4 +326,20 @@ elif st.session_state.page == 2:
             if c2.button("🚀 EXECUTE MASTER SYNC", type="primary", use_container_width=True):
                 add_log("Connecting to Handlers.gs API v11.9.0...")
                 payload = {**st.session_state.form_data, "category": ", ".join(st.session_state.form_data['category']), "what_we_do": ", ".join(st.session_state.form_data['what_we_do']), "scope": "\n".join(st.session_state.form_data['scope']), "challenge": gc.get("BoringChallenge"), "solution": gc.get("CreativeSolution"), "ai_content": {"Web": gc.get("Web"), "FAQ": gc.get("FAQ")}, "date": f"{st.session_state.form_data['year']} {st.session_state.form_data['month']}", "assets": st.session_state.full_assets}
-                res =
+                res = requests.post(WEB_APP_URL, json=payload)
+                if res.status_code == 200:
+                    add_log("SYNC SUCCESSFUL.")
+                    st.session_state.sync_complete = True; st.rerun()
+                else: add_log(f"Sync Failed: {res.status_code}")
+
+    else:
+        st.markdown(f'<div class="success-box" style="margin-top:100px;"><h1 style="color:{S_RED} !important; font-size:48px;">SYNC SUCCESSFUL</h1><p>Master DB Updated. Automated folder created.</p></div>', unsafe_allow_html=True)
+        if st.button("➕ SUBMIT ANOTHER", type="primary", use_container_width=True):
+            for key in list(st.session_state.keys()): del st.session_state[key]
+            st.rerun()
+
+    st.markdown('<div class="dotted-sep"></div>', unsafe_allow_html=True)
+    log_content = "<br>".join(st.session_state.terminal_logs)
+    st.markdown(f'<div class="terminal-box">{log_content}</div>', unsafe_allow_html=True)
+
+st.markdown(f"<p style='text-align: center; color: grey; font-size: 10px; letter-spacing: 2px; text-transform: uppercase; margin-top: 40px;'>FIREBEAN LIMITED | SPEEDUP UI v13.9.0</p>", unsafe_allow_html=True)
