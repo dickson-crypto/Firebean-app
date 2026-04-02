@@ -1,5 +1,5 @@
-# VERSION: v18.6.3
-# TIMESTAMP: 2026-04-02 10:00:00 HKT
+# VERSION: v18.6.4
+# TIMESTAMP: 2026-04-02 10:10:00 HKT
 
 import streamlit as st
 import requests
@@ -18,7 +18,7 @@ except Exception as e:
 
 class FirebeanPortal:
     def __init__(self):
-        self.VERSION = "v18.6.3 (Dynamic Failover)"
+        self.VERSION = "v18.6.4 (Dynamic Failover & UI Fixed)"
         # Robust list of stable public models to test sequentially
         self.MODELS = [
             "gemini-2.5-flash",
@@ -88,13 +88,24 @@ class FirebeanPortal:
             <style>
                 @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;700;900&display=swap');
                 .stApp {{ background-color: {bg}; color: {txt}; font-family: 'Montserrat', sans-serif; }}
+                
+                /* Global visibility for text */
                 .stApp p, .stApp label, .stApp span, .stApp div, .stApp h1, .stApp h2, .stApp h3 {{ color: {txt} !important; }}
+                
+                /* FIX: Aggressively target all button content to remain white */
+                .stButton button p, .stButton button span, .stButton button div {{ 
+                    color: #FFFFFF !important; 
+                    font-weight: 600 !important; 
+                }}
+                
                 div[data-testid="stCheckbox"] label p {{ color: {txt} !important; font-weight: 600 !important; }}
+                
                 .hero-title {{ font-size: 84px !important; font-weight: 900 !important; line-height: 0.85 !important; letter-spacing: -4px !important; margin: 0 !important; color: {txt} !important; }}
                 .sec-header {{ font-size: 16px; font-weight: 900; color: {S_RED} !important; text-transform: uppercase; letter-spacing: 2px; margin-top: 25px; }}
                 .terminal-box {{ background: #000; color: #FFFFFF !important; font-family: 'Courier New', monospace; padding: 15px; border-radius: 8px; font-size: 11px; line-height: 1.5; border-left: 4px solid {S_RED}; height: 180px; overflow-y: auto; text-shadow: 0 0 1px rgba(255,255,255,0.2); }}
                 .terminal-box p {{ color: #FFFFFF !important; margin: 0; }}
                 .status-badge {{ background: {S_RED}; color: white; padding: 8px 15px; border-radius: 4px; font-size: 10px; font-weight: 900; display: inline-block; }}
+                
                 [data-testid="stSidebar"] {{display: none;}}
                 header, footer {{visibility: hidden;}}
             </style>
@@ -164,7 +175,6 @@ if __name__ == "__main__":
         if percent >= 90:
             if st.button("📝 GENERATE STRATEGIC HYPOTHESIS", use_container_width=True):
                 with st.status(f"Analyzing with {st.session_state.active_model}..."):
-                    # Pass the dynamically locked model to the diagnostic engine
                     res = ai_mc.get_questions(st.session_state.apiKey, st.session_state.active_model, project, open_q, encoded_photos)
                     if res: 
                         st.session_state.mc_questions = res
@@ -196,7 +206,6 @@ if __name__ == "__main__":
         
         if not st.session_state.get('generated_content'):
             with st.status(f"Synthesizing Content with {st.session_state.active_model}..."):
-                # Pass the dynamically locked model to the synthesis engine
                 res = sync.generate_ai_content(st.session_state.apiKey, st.session_state.active_model, st.session_state.form_data)
                 if res: 
                     st.session_state.generated_content = res
