@@ -1,5 +1,5 @@
-# VERSION: v18.6.5
-# TIMESTAMP: 2026-04-02 10:15:00 HKT
+# VERSION: v18.6.6
+# TIMESTAMP: 2026-04-02 10:20:00 HKT
 
 import streamlit as st
 import requests
@@ -18,7 +18,7 @@ except Exception as e:
 
 class FirebeanPortal:
     def __init__(self):
-        self.VERSION = "v18.6.5 (Failover & UI Fixed)"
+        self.VERSION = "v18.6.6 (Failover & Uploader UI Fixed)"
         # Robust list of stable public models to test sequentially
         self.MODELS = [
             "gemini-2.5-flash",
@@ -98,9 +98,20 @@ class FirebeanPortal:
                     font-weight: 600 !important; 
                 }}
                 
-                /* FIX: Target file uploader dropzone elements to remain white for contrast against dark grey */
-                [data-testid="stFileUploadDropzone"] * {{
+                /* FIX: High specificity for file uploader dropzone elements */
+                .stApp [data-testid="stFileUploadDropzone"] {{
+                    background-color: #2A2A2A !important;
+                    border: 1px solid #444 !important;
+                }}
+                .stApp [data-testid="stFileUploadDropzone"] div,
+                .stApp [data-testid="stFileUploadDropzone"] span,
+                .stApp [data-testid="stFileUploadDropzone"] small,
+                .stApp [data-testid="stFileUploadDropzone"] p,
+                .stApp [data-testid="stFileUploadDropzone"] button {{
                     color: #FFFFFF !important;
+                }}
+                .stApp [data-testid="stFileUploadDropzone"] svg {{
+                    fill: #FFFFFF !important;
                 }}
                 
                 div[data-testid="stCheckbox"] label p {{ color: {txt} !important; font-weight: 600 !important; }}
