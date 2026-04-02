@@ -1,19 +1,22 @@
-# VERSION: v18.6.0
-# TIMESTAMP: 2026-04-02 09:20:00 HKT
+# VERSION: v18.6.3
+# TIMESTAMP: 2026-04-02 10:00:00 HKT
 
 import requests
 import json
 
 class AIDiagnostic:
     @staticmethod
-    def get_questions(key, project, core_text, images):
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key={key}"
+    def get_questions(key, active_model, project, core_text, images):
+        # Fallback in case active_model wasn't passed correctly
+        if not active_model or active_model == "NONE":
+            active_model = "gemini-1.5-flash"
+            
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{active_model}:generateContent?key={key}"
         sys_prompt = "Role: Firebean Strategic Consultant. Task: Generate 15 MC questions based on the event brief and photos. Format: JSON array of 15 diagnostic questions: [{'q':'...', 'opts':['A','B','C']}]. Return RAW JSON only."
         
         parts = [{"text": f"Project: {project}. Brief: {core_text}"}]
         
         if images:
-            # FIXED: MimeType changed to image/jpeg to match our PIL compression settings
             for b in images[:4]: 
                 parts.append({"inlineData": {"mimeType": "image/jpeg", "data": b}})
         
