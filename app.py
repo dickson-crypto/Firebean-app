@@ -1,5 +1,5 @@
-# VERSION: v18.6.2
-# TIMESTAMP: 2026-04-02 09:50:00 HKT
+# VERSION: v18.6.3
+# TIMESTAMP: 2026-04-02 10:00:00 HKT
 
 import streamlit as st
 import requests
@@ -18,8 +18,14 @@ except Exception as e:
 
 class FirebeanPortal:
     def __init__(self):
-        self.VERSION = "v18.6.2 (API Optimized)"
-        self.MODEL = "gemini-2.5-flash-preview-09-2025"
+        self.VERSION = "v18.6.3 (Dynamic Failover)"
+        # Robust list of stable public models to test sequentially
+        self.MODELS = [
+            "gemini-2.5-flash",
+            "gemini-2.0-flash", 
+            "gemini-1.5-flash", 
+            "gemini-1.5-pro"
+        ]
         self.init_session()
         self.apply_ui_theme()
 
@@ -33,42 +39,44 @@ class FirebeanPortal:
         if 'ai_status' not in st.session_state: st.session_state.ai_status = "🟡 INITIALIZING"
         if 'active_model' not in st.session_state: st.session_state.active_model = "NONE"
         if 'apiKey' not in st.session_state:
-            # Deep clean the API key to prevent 400 Bad Request errors caused by stray quotes or spaces
             raw_key = st.secrets.get("GEMINI_API_KEY", "")
             st.session_state.apiKey = raw_key.replace('"', '').replace("'", "").strip()
 
     def verify_ai(self):
-        """Strictly formatted Handshake for Gemini API."""
+        """Dynamic Handshake: Probes models until a 200 OK is received."""
         if not st.session_state.apiKey:
             st.session_state.ai_status = "🔴 OFFLINE (No Key)"
             return
         
-        self.log(f"Handshake Probe: Calling {self.MODEL}...")
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.MODEL}:generateContent?key={st.session_state.apiKey}"
-        
-        try:
-            # Explicitly added role: "user" to prevent schema rejection
-            payload = {
-                "contents": [{"role": "user", "parts": [{"text": "System Ping. Respond with OK."}]}]
-            }
-            res = requests.post(url, json=payload, timeout=10)
+        working_model = None
+        for model in self.MODELS:
+            self.log(f"Probe: Testing {model}...")
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={st.session_state.apiKey}"
             
-            if res.status_code == 200:
-                st.session_state.ai_status = "🟢 ONLINE"
-                st.session_state.active_model = self.MODEL
-                self.log(f"SUCCESS: Connected to {self.MODEL}.")
-            else:
-                st.session_state.ai_status = f"🔴 OFFLINE ({res.status_code})"
-                # Parse Google's exact error message to show in the terminal
-                try:
-                    error_details = res.json().get('error', {}).get('message', 'Unknown API Error')
-                    self.log(f"API Error ({res.status_code}): {error_details}")
-                except Exception:
-                    self.log(f"FAILED: Status {res.status_code}. Response: {res.text}")
-        
-        except Exception as e:
-            st.session_state.ai_status = "🔴 OFFLINE"
-            self.log(f"Network Error: {str(e)}")
+            try:
+                payload = {
+                    "contents": [{"role": "user", "parts": [{"text": "System Ping. Respond with OK."}]}]
+                }
+                res = requests.post(url, json=payload, timeout=5)
+                
+                if res.status_code == 200:
+                    st.session_state.ai_status = "🟢 ONLINE"
+                    st.session_state.active_model = model
+                    self.log(f"SUCCESS: Locked onto {model}")
+                    working_model = model
+                    break # Stop testing once we find a working model
+                else:
+                    try:
+                        error_msg = res.json().get('error', {}).get('message', 'Unknown Error')
+                        self.log(f"Skip {model}: {res.status_code} - {error_msg.split('.')[0]}")
+                    except:
+                        self.log(f"Skip {model}: Status {res.status_code}")
+            except Exception as e:
+                self.log(f"Network Error on {model}")
+
+        if not working_model:
+            st.session_state.ai_status = "🔴 OFFLINE (All Failed)"
+            self.log("CRITICAL: All models returned 404 or failed. Check API key region/validity.")
 
     def apply_ui_theme(self):
         S_RED, S_DARK, S_BG_DARK = "#E2231A", "#2A2A2A", "#121212"
@@ -155,8 +163,9 @@ if __name__ == "__main__":
         st.markdown('<div class="sec-header">AI Strategic Diagnostics</div>', unsafe_allow_html=True)
         if percent >= 90:
             if st.button("📝 GENERATE STRATEGIC HYPOTHESIS", use_container_width=True):
-                with st.status("Analyzing Strategic Data..."):
-                    res = ai_mc.get_questions(st.session_state.apiKey, project, open_q, encoded_photos)
+                with st.status(f"Analyzing with {st.session_state.active_model}..."):
+                    # Pass the dynamically locked model to the diagnostic engine
+                    res = ai_mc.get_questions(st.session_state.apiKey, st.session_state.active_model, project, open_q, encoded_photos)
                     if res: 
                         st.session_state.mc_questions = res
                         st.rerun()
@@ -186,8 +195,9 @@ if __name__ == "__main__":
         if st.button("← BACK"): st.session_state.page = 1; st.rerun()
         
         if not st.session_state.get('generated_content'):
-            with st.status("Synthesizing Strategic Evergreen Content..."):
-                res = sync.generate_ai_content(st.session_state.apiKey, st.session_state.form_data)
+            with st.status(f"Synthesizing Content with {st.session_state.active_model}..."):
+                # Pass the dynamically locked model to the synthesis engine
+                res = sync.generate_ai_content(st.session_state.apiKey, st.session_state.active_model, st.session_state.form_data)
                 if res: 
                     st.session_state.generated_content = res
                     st.rerun()
