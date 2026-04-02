@@ -1,5 +1,5 @@
-# VERSION: v18.5.3
-# TIMESTAMP: 2026-04-02 08:07:00 HKT
+# VERSION: v18.5.4
+# TIMESTAMP: 2026-04-02 09:14:00 HKT
 
 import streamlit as st
 import requests
@@ -17,12 +17,9 @@ except ImportError as e:
 
 class FirebeanPortal:
     def __init__(self):
-        self.VERSION = "v18.5.3 (Modular)"
-        # Defined list of potential models for failover logic
-        self.MODELS = [
-            "gemini-2.5-flash-preview-09-2025", 
-            "gemini-2.5-pro-preview-09-2025"
-        ]
+        self.VERSION = "v18.5.4 (Modular)"
+        # Use strictly supported preview model
+        self.MODEL = "gemini-2.5-flash-preview-09-2025"
         self.init_session()
         self.apply_ui_theme()
 
@@ -36,56 +33,75 @@ class FirebeanPortal:
         if 'ai_status' not in st.session_state: st.session_state.ai_status = "🟡 INITIALIZING"
         if 'active_model' not in st.session_state: st.session_state.active_model = "NONE"
         if 'apiKey' not in st.session_state:
-            st.session_state.apiKey = st.secrets.get("GEMINI_API_KEY", "")
+            # .strip() prevents 400 errors from accidental spaces in Secrets
+            st.session_state.apiKey = st.secrets.get("GEMINI_API_KEY", "").strip()
 
     def verify_ai(self):
-        """Sequential Handshake Loop: Tries each model until one succeeds."""
+        """Standard Handshake: Verifies the 2.5 Flash Engine."""
         if not st.session_state.apiKey:
             st.session_state.ai_status = "🔴 OFFLINE (No Key)"
             return
         
-        success = False
-        for model_name in self.MODELS:
-            self.log(f"Handshake Probe: Calling {model_name}...")
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={st.session_state.apiKey}"
-            
-            try:
-                # Simple connectivity check
-                res = requests.post(url, json={"contents": [{"parts": [{"text": "hi"}]}]}, timeout=10)
-                
-                if res.status_code == 200:
-                    st.session_state.ai_status = "🟢 ONLINE"
-                    st.session_state.active_model = model_name
-                    self.log(f"SUCCESS: Connected to {model_name}.")
-                    success = True
-                    break # Stop looping once we find a working model
-                else:
-                    self.log(f"FAILED: {model_name} returned Status {res.status_code}")
-            
-            except Exception as e:
-                self.log(f"ERROR: Could not reach {model_name}. {str(e)}")
+        self.log(f"Handshake Probe: Calling {self.MODEL}...")
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.MODEL}:generateContent?key={st.session_state.apiKey}"
         
-        if not success:
-            st.session_state.ai_status = "🔴 OFFLINE (All Engines 404)"
-            self.log("CRITICAL: All strategic engines failed to respond.")
+        try:
+            # Standard request body
+            payload = {"contents": [{"parts": [{"text": "Handshake"}]}]}
+            res = requests.post(url, json=payload, timeout=10)
+            
+            if res.status_code == 200:
+                st.session_state.ai_status = "🟢 ONLINE"
+                st.session_state.active_model = self.MODEL
+                self.log(f"SUCCESS: Connected to {self.MODEL}.")
+            else:
+                st.session_state.ai_status = f"🔴 OFFLINE ({res.status_code})"
+                self.log(f"FAILED: {self.MODEL} returned Status {res.status_code}")
+                if res.status_code == 400:
+                    self.log("Hint: Status 400 usually means an invalid API Key or malformed request.")
+        
+        except Exception as e:
+            st.session_state.ai_status = "🔴 OFFLINE"
+            self.log(f"ERROR: {str(e)}")
 
     def apply_ui_theme(self):
         S_RED, S_DARK, S_BG_DARK = "#E2231A", "#2A2A2A", "#121212"
         is_dark = st.session_state.get('dark_mode', False)
         bg = S_BG_DARK if is_dark else "#FFFFFF"
-        txt = "#FFFFFF" if is_dark else S_DARK
+        txt = "#FFFFFF" if is_dark else "#121212"
         
         st.markdown(f"""
             <style>
                 @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;700;900&display=swap');
                 .stApp {{ background-color: {bg}; color: {txt}; font-family: 'Montserrat', sans-serif; }}
-                .stApp p, .stApp label, .stApp span, .stApp .stMarkdown {{ color: {txt} !important; }}
-                div[data-testid="stCheckbox"] label p {{ color: {txt} !important; font-weight: 500 !important; }}
+                
+                /* Aggressive Text Visibility Fix */
+                .stApp p, .stApp label, .stApp span, .stApp div, .stApp h1, .stApp h2, .stApp h3 {{ 
+                    color: {txt} !important; 
+                }}
+                
+                /* Explicit Checkbox Fix */
+                div[data-testid="stCheckbox"] label p {{
+                    color: {txt} !important;
+                    font-weight: 600 !important;
+                }}
+
                 .hero-title {{ font-size: 84px !important; font-weight: 900 !important; line-height: 0.85 !important; letter-spacing: -4px !important; margin: 0 !important; color: {txt} !important; }}
                 .sec-header {{ font-size: 16px; font-weight: 900; color: {S_RED} !important; text-transform: uppercase; letter-spacing: 2px; margin-top: 25px; }}
+                
                 .terminal-box {{ background: #000; color: #FFFFFF !important; font-family: 'Courier New', monospace; padding: 15px; border-radius: 8px; font-size: 11px; line-height: 1.5; border-left: 4px solid {S_RED}; height: 180px; overflow-y: auto; text-shadow: 0 0 1px rgba(255,255,255,0.2); }}
                 .terminal-box p {{ color: #FFFFFF !important; margin: 0; }}
-                .status-badge {{ background: {S_RED}; color: white; padding: 8px 15px; border-radius: 4px; font-size: 10px; font-weight: 900; display: inline-block; margin-top: 10px; }}
+
+                .status-badge {{ 
+                    background: {S_RED}; 
+                    color: white; 
+                    padding: 8px 15px; 
+                    border-radius: 4px; 
+                    font-size: 10px; 
+                    font-weight: 900; 
+                    display: inline-block;
+                }}
+                
                 [data-testid="stSidebar"] {{display: none;}}
                 header, footer {{visibility: hidden;}}
             </style>
@@ -109,7 +125,7 @@ if __name__ == "__main__":
         portal.verify_ai()
 
     if st.session_state.page == 1:
-        # Header
+        # --- HEADER SECTION ---
         h1, h2, h3, h4 = st.columns([1.2, 4.5, 1.8, 1.8])
         with h1: st.image("https://raw.githubusercontent.com/dickson-crypto/Firebean-app/main/Firebeanlogo2026.png", width=120)
         with h2: 
@@ -118,8 +134,8 @@ if __name__ == "__main__":
             with stat_col:
                 st.markdown(f'<div class="status-badge">AI STATUS: {st.session_state.ai_status}</div>', unsafe_allow_html=True)
             with hand_col:
-                if st.button("⚡ HANDSHAKE", key="header_handshake", help="Retry connection with failover", use_container_width=True):
-                    portal.log("Manual Handshake Triggered. Checking all engines...")
+                if st.button("⚡ HANDSHAKE", key="header_handshake", help="Retry connection", use_container_width=True):
+                    portal.log("Manual Handshake Triggered.")
                     st.session_state.ai_status = "🟡 INITIALIZING"
                     st.rerun()
         
@@ -135,7 +151,7 @@ if __name__ == "__main__":
 
         st.markdown('<hr style="border:0; border-bottom:1px dotted #555">', unsafe_allow_html=True)
 
-        # Unit 1: Data Inputs
+        # Logic Rendering
         client, project, venue, year, month = inputs.render_identity()
         sel_cat, sel_wwd, sel_sow = inputs.render_framework()
         logo_b, logo_w, photos, encoded_photos = inputs.render_assets()
@@ -144,7 +160,6 @@ if __name__ == "__main__":
         youtube = st.text_input("YouTube URL (Optional)")
         open_q = st.text_area("Event Brief & Strategic Review", value=st.session_state.form_data.get("open_question", ""), height=120)
 
-        # Progress Calculation
         current_data = {"client": client, "project": project, "venue": venue, "year": year, "month": month, "category": sel_cat, "what_we_do": sel_wwd, "scope": sel_sow, "open_question": open_q}
         assets_ok = st.session_state.get('mock_assets') or (bool(logo_b or logo_w) and bool(photos))
         mc_ok = len(st.session_state.mc_questions) > 0 and any(st.session_state.get(f"ans_{i}_0", False) for i in range(15))
