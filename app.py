@@ -1,5 +1,5 @@
-# VERSION: v18.6.4
-# TIMESTAMP: 2026-04-02 10:10:00 HKT
+# VERSION: v18.6.5
+# TIMESTAMP: 2026-04-02 10:15:00 HKT
 
 import streamlit as st
 import requests
@@ -18,7 +18,7 @@ except Exception as e:
 
 class FirebeanPortal:
     def __init__(self):
-        self.VERSION = "v18.6.4 (Dynamic Failover & UI Fixed)"
+        self.VERSION = "v18.6.5 (Failover & UI Fixed)"
         # Robust list of stable public models to test sequentially
         self.MODELS = [
             "gemini-2.5-flash",
@@ -98,6 +98,11 @@ class FirebeanPortal:
                     font-weight: 600 !important; 
                 }}
                 
+                /* FIX: Target file uploader dropzone elements to remain white for contrast against dark grey */
+                [data-testid="stFileUploadDropzone"] * {{
+                    color: #FFFFFF !important;
+                }}
+                
                 div[data-testid="stCheckbox"] label p {{ color: {txt} !important; font-weight: 600 !important; }}
                 
                 .hero-title {{ font-size: 84px !important; font-weight: 900 !important; line-height: 0.85 !important; letter-spacing: -4px !important; margin: 0 !important; color: {txt} !important; }}
@@ -144,10 +149,9 @@ if __name__ == "__main__":
                     st.rerun()
         
         with h3:
+            # Boss mode button hidden; spacing retained to preserve header layout
             st.write("<div style='height:35px'></div>", unsafe_allow_html=True)
-            if st.button("🚀 BOSS MODE", use_container_width=True):
-                st.session_state.form_data = {"client": "Firebean Strategy", "project": "Strategic Modular Hub", "venue": "Cyberport", "year": "2026", "month": "APR", "category": ["GOVERNMENT & PUBLIC SECTOR"], "what_we_do": ["INTERACTIVE & TECH"], "scope": ["Concept Development"], "open_question": "A massive touring exhibition focused on occupational health (OSH) using innovative materials."}
-                st.session_state.mock_assets = True; st.rerun()
+            
         with h4:
             st.write("<div style='height:35px'></div>", unsafe_allow_html=True)
             if st.button("🌓 MODE", use_container_width=True):
