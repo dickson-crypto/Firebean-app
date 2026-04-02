@@ -1,5 +1,5 @@
-# VERSION: v18.5.0
-# TIMESTAMP: 2026-04-02 07:59:00 HKT
+# VERSION: v18.5.1
+# TIMESTAMP: 2026-04-02 08:01:00 HKT
 
 import streamlit as st
 from PIL import Image, ImageOps
@@ -67,7 +67,7 @@ class InputEngine:
         st.markdown('<div class="sub-label">What we do</div>', unsafe_allow_html=True)
         wwds = ["ROVING EXHIBITIONS", "SOCIAL & CONTENT", "INTERACTIVE & TECH", "PR & MEDIA", "EVENTS & CEREMONIES"]
         w_cols = st.columns(3)
-        sel_wwd = [o for i, o in enumerate(wwds) if w_cols[i%3].checkbox(o, key=f"wwd_{o}", value=(o in st.session_state.form_data.get("what_we_do", [])))]
+        sel_wwd = [o for i, o in enumerate(wwds) if w_cols[i%3].checkbox(o, key=f"what_we_do", value=(o in st.session_state.form_data.get("what_we_do", [])))]
         
         st.markdown('<div class="sec-header">Scope of Work (18-Point Matrix)</div>', unsafe_allow_html=True)
         s_cols = st.columns(3)
