@@ -1,5 +1,5 @@
-# VERSION: v18.5.4
-# TIMESTAMP: 2026-04-02 09:14:00 HKT
+# VERSION: v18.6.0
+# TIMESTAMP: 2026-04-02 09:20:00 HKT
 
 import streamlit as st
 import requests
@@ -17,8 +17,7 @@ except ImportError as e:
 
 class FirebeanPortal:
     def __init__(self):
-        self.VERSION = "v18.5.4 (Modular)"
-        # Use strictly supported preview model
+        self.VERSION = "v18.6.0 (API Optimized)"
         self.MODEL = "gemini-2.5-flash-preview-09-2025"
         self.init_session()
         self.apply_ui_theme()
@@ -33,11 +32,12 @@ class FirebeanPortal:
         if 'ai_status' not in st.session_state: st.session_state.ai_status = "🟡 INITIALIZING"
         if 'active_model' not in st.session_state: st.session_state.active_model = "NONE"
         if 'apiKey' not in st.session_state:
-            # .strip() prevents 400 errors from accidental spaces in Secrets
-            st.session_state.apiKey = st.secrets.get("GEMINI_API_KEY", "").strip()
+            # Deep clean the API key to prevent 400 Bad Request errors caused by stray quotes or spaces
+            raw_key = st.secrets.get("GEMINI_API_KEY", "")
+            st.session_state.apiKey = raw_key.replace('"', '').replace("'", "").strip()
 
     def verify_ai(self):
-        """Standard Handshake: Verifies the 2.5 Flash Engine."""
+        """Strictly formatted Handshake for Gemini API."""
         if not st.session_state.apiKey:
             st.session_state.ai_status = "🔴 OFFLINE (No Key)"
             return
@@ -46,8 +46,10 @@ class FirebeanPortal:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.MODEL}:generateContent?key={st.session_state.apiKey}"
         
         try:
-            # Standard request body
-            payload = {"contents": [{"parts": [{"text": "Handshake"}]}]}
+            # Explicitly added role: "user" to prevent schema rejection
+            payload = {
+                "contents": [{"role": "user", "parts": [{"text": "System Ping. Respond with OK."}]}]
+            }
             res = requests.post(url, json=payload, timeout=10)
             
             if res.status_code == 200:
@@ -56,13 +58,16 @@ class FirebeanPortal:
                 self.log(f"SUCCESS: Connected to {self.MODEL}.")
             else:
                 st.session_state.ai_status = f"🔴 OFFLINE ({res.status_code})"
-                self.log(f"FAILED: {self.MODEL} returned Status {res.status_code}")
-                if res.status_code == 400:
-                    self.log("Hint: Status 400 usually means an invalid API Key or malformed request.")
+                # Parse Google's exact error message to show in the terminal
+                try:
+                    error_details = res.json().get('error', {}).get('message', 'Unknown API Error')
+                    self.log(f"API Error ({res.status_code}): {error_details}")
+                except Exception:
+                    self.log(f"FAILED: Status {res.status_code}. Response: {res.text}")
         
         except Exception as e:
             st.session_state.ai_status = "🔴 OFFLINE"
-            self.log(f"ERROR: {str(e)}")
+            self.log(f"Network Error: {str(e)}")
 
     def apply_ui_theme(self):
         S_RED, S_DARK, S_BG_DARK = "#E2231A", "#2A2A2A", "#121212"
@@ -74,34 +79,13 @@ class FirebeanPortal:
             <style>
                 @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;700;900&display=swap');
                 .stApp {{ background-color: {bg}; color: {txt}; font-family: 'Montserrat', sans-serif; }}
-                
-                /* Aggressive Text Visibility Fix */
-                .stApp p, .stApp label, .stApp span, .stApp div, .stApp h1, .stApp h2, .stApp h3 {{ 
-                    color: {txt} !important; 
-                }}
-                
-                /* Explicit Checkbox Fix */
-                div[data-testid="stCheckbox"] label p {{
-                    color: {txt} !important;
-                    font-weight: 600 !important;
-                }}
-
+                .stApp p, .stApp label, .stApp span, .stApp div, .stApp h1, .stApp h2, .stApp h3 {{ color: {txt} !important; }}
+                div[data-testid="stCheckbox"] label p {{ color: {txt} !important; font-weight: 600 !important; }}
                 .hero-title {{ font-size: 84px !important; font-weight: 900 !important; line-height: 0.85 !important; letter-spacing: -4px !important; margin: 0 !important; color: {txt} !important; }}
                 .sec-header {{ font-size: 16px; font-weight: 900; color: {S_RED} !important; text-transform: uppercase; letter-spacing: 2px; margin-top: 25px; }}
-                
                 .terminal-box {{ background: #000; color: #FFFFFF !important; font-family: 'Courier New', monospace; padding: 15px; border-radius: 8px; font-size: 11px; line-height: 1.5; border-left: 4px solid {S_RED}; height: 180px; overflow-y: auto; text-shadow: 0 0 1px rgba(255,255,255,0.2); }}
                 .terminal-box p {{ color: #FFFFFF !important; margin: 0; }}
-
-                .status-badge {{ 
-                    background: {S_RED}; 
-                    color: white; 
-                    padding: 8px 15px; 
-                    border-radius: 4px; 
-                    font-size: 10px; 
-                    font-weight: 900; 
-                    display: inline-block;
-                }}
-                
+                .status-badge {{ background: {S_RED}; color: white; padding: 8px 15px; border-radius: 4px; font-size: 10px; font-weight: 900; display: inline-block; }}
                 [data-testid="stSidebar"] {{display: none;}}
                 header, footer {{visibility: hidden;}}
             </style>
@@ -125,7 +109,7 @@ if __name__ == "__main__":
         portal.verify_ai()
 
     if st.session_state.page == 1:
-        # --- HEADER SECTION ---
+        # Header Section
         h1, h2, h3, h4 = st.columns([1.2, 4.5, 1.8, 1.8])
         with h1: st.image("https://raw.githubusercontent.com/dickson-crypto/Firebean-app/main/Firebeanlogo2026.png", width=120)
         with h2: 
@@ -151,7 +135,7 @@ if __name__ == "__main__":
 
         st.markdown('<hr style="border:0; border-bottom:1px dotted #555">', unsafe_allow_html=True)
 
-        # Logic Rendering
+        # Main Logic Units
         client, project, venue, year, month = inputs.render_identity()
         sel_cat, sel_wwd, sel_sow = inputs.render_framework()
         logo_b, logo_w, photos, encoded_photos = inputs.render_assets()
@@ -172,12 +156,17 @@ if __name__ == "__main__":
             if st.button("📝 GENERATE STRATEGIC HYPOTHESIS", use_container_width=True):
                 with st.status("Analyzing Strategic Data..."):
                     res = ai_mc.get_questions(st.session_state.apiKey, project, open_q, encoded_photos)
-                    if res: st.session_state.mc_questions = res; st.rerun()
+                    if res: 
+                        st.session_state.mc_questions = res
+                        st.rerun()
+                    else:
+                        portal.log("Diagnostics Generator Failed. Check Logs.")
+            
             if st.session_state.mc_questions:
                 for i, q in enumerate(st.session_state.mc_questions):
-                    st.markdown(f"**Q{i+1}. {q['q']}**")
-                    c_opts = st.columns(len(q['opts']))
-                    for j, opt in enumerate(q['opts']): c_opts[j].checkbox(opt, key=f"ans_{i}_{j}")
+                    st.markdown(f"**Q{i+1}. {q.get('q', '')}**")
+                    c_opts = st.columns(len(q.get('opts', [])))
+                    for j, opt in enumerate(q.get('opts', [])): c_opts[j].checkbox(opt, key=f"ans_{i}_{j}")
         else: st.info(f"Progress: {percent}% - Complete inputs to unlock AI analysis.")
 
         if percent >= 100:
@@ -198,7 +187,11 @@ if __name__ == "__main__":
         if not st.session_state.get('generated_content'):
             with st.status("Synthesizing Strategic Evergreen Content..."):
                 res = sync.generate_ai_content(st.session_state.apiKey, st.session_state.form_data)
-                if res: st.session_state.generated_content = res; st.rerun()
+                if res: 
+                    st.session_state.generated_content = res
+                    st.rerun()
+                else:
+                    st.error("Synthesis failed. Please try again.")
         
         if st.session_state.generated_content:
             sync.render_ui(st.session_state.generated_content)
@@ -206,3 +199,5 @@ if __name__ == "__main__":
                 with st.status("Syncing to Master DB..."):
                     if sync.push_to_gas(st.session_state.form_data, st.session_state.generated_content, st.session_state.get('full_assets')):
                         st.success("SYNC SUCCESSFUL"); st.session_state.clear(); st.rerun()
+                    else:
+                        st.error("GAS Synchronization Failed.")
