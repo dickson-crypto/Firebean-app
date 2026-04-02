@@ -1,12 +1,11 @@
-# VERSION: v18.5.5
-# TIMESTAMP: 2026-04-02 08:12:00 HKT
+# VERSION: v18.5.6
+# TIMESTAMP: 2026-04-02 09:14:00 HKT
 
 import streamlit as st
 from PIL import Image, ImageOps
 import io
 import base64
 
-# Safely attempt to register HEIF for iPhone photos
 try:
     from pillow_heif import register_heif_opener
     register_heif_opener()
@@ -14,13 +13,7 @@ except Exception:
     pass
 
 class InputEngine:
-    """
-    ENGINE: INPUTS & VISUALS
-    Handles all data entry and visual asset processing for the Firebean Portal.
-    Cleaned version: Handshake logic removed (now managed by Main Controller).
-    """
     def __init__(self):
-        # 18-Point Scope of Work Matrix
         self.SOW = [
             "Concept Development", "Branding Strategy", "PR Consulting", "Media Relations", 
             "Theme Design", "Visual Identity", "UI/UX Design", "Social Media Content", 
@@ -32,25 +25,28 @@ class InputEngine:
     def _apply_module_css(self):
         """Internal module fix to ensure labels are visible in Light Mode."""
         is_dark = st.session_state.get('dark_mode', False)
-        text_color = "#FFFFFF" if is_dark else "#121212"
-        sub_color = "#AAAAAA" if is_dark else "#777777"
+        # Force text colors based on mode
+        txt = "#FFFFFF" if is_dark else "#121212"
+        sub = "#AAAAAA" if is_dark else "#555555"
         
         st.markdown(f"""
             <style>
                 .sub-label {{ 
-                    color: {sub_color} !important; 
+                    color: {sub} !important; 
                     font-size: 14px; 
                     font-weight: 700; 
                     margin-bottom: 10px; 
                     text-transform: uppercase; 
                 }}
-                /* Secondary safety for Light Mode labels */
-                label[data-testid="stWidgetLabel"] p {{ color: {text_color} !important; }}
+                /* Force all Streamlit widget labels in this module */
+                label[data-testid="stWidgetLabel"] p {{ 
+                    color: {txt} !important; 
+                    font-weight: 500 !important; 
+                }}
             </style>
         """, unsafe_allow_html=True)
 
     def render_identity(self):
-        """Renders Identity Section (Client, Project, Venue, Date)."""
         self._apply_module_css()
         st.markdown('<div class="sec-header">Brand Identity</div>', unsafe_allow_html=True)
                 
@@ -65,7 +61,6 @@ class InputEngine:
         return cl, pr, vn, yr, mo
 
     def render_framework(self):
-        """Renders Categorization and Scope of Work checkboxes."""
         st.markdown('<div class="sec-header">Strategic Framework</div>', unsafe_allow_html=True)
         
         st.markdown('<div class="sub-label">Who we help</div>', unsafe_allow_html=True)
@@ -84,15 +79,13 @@ class InputEngine:
         return sel_cat, sel_wwd, sel_sow
 
     def render_assets(self):
-        """Renders Logo and Gallery uploaders with adaptive previews."""
         st.markdown('<div class="sec-header">Visual Assets Hub</div>', unsafe_allow_html=True)
         a1, a2, a3 = st.columns([1, 1, 2])
         
         with a1:
             st.markdown('<div class="sub-label">Logo Black</div>', unsafe_allow_html=True)
             lb = st.file_uploader("B", key="l_black", label_visibility="collapsed")
-            if lb: 
-                st.image(lb, use_container_width=True)
+            if lb: st.image(lb, use_container_width=True)
             
         with a2:
             st.markdown('<div class="sub-label">Logo White</div>', unsafe_allow_html=True)
@@ -114,22 +107,14 @@ class InputEngine:
                 with p_cols[idx%4]:
                     img = Image.open(p)
                     st.image(img, caption="Portrait" if img.height > img.width else "Landscape", use_container_width=True)
-                    if st.checkbox("HERO", key=f"hero_{idx}", value=(st.session_state.hero_index == idx)): 
-                        st.session_state.hero_index = idx
-                    buf = io.BytesIO()
-                    img.save(buf, format='PNG')
-                    encoded.append(base64.b64encode(buf.getvalue()).decode('utf-8'))
+                    if st.checkbox("HERO", key=f"hero_{idx}", value=(st.session_state.hero_index == idx)): st.session_state.hero_index = idx
+                    buf = io.BytesIO(); img.save(buf, format='PNG'); encoded.append(base64.b64encode(buf.getvalue()).decode('utf-8'))
         return lb, lw, ph, encoded
 
     def process_for_db(self, file):
-        """Processes and compresses images for Database storage."""
         if not file: return None
         try:
-            img = Image.open(file)
-            img = ImageOps.exif_transpose(img)
-            img.thumbnail((1200, 1200))
-            buf = io.BytesIO()
-            img.convert('RGB').save(buf, format='JPEG', quality=75)
+            img = Image.open(file); img = ImageOps.exif_transpose(img); img.thumbnail((1200, 1200))
+            buf = io.BytesIO(); img.convert('RGB').save(buf, format='JPEG', quality=75)
             return {"data": base64.b64encode(buf.getvalue()).decode('utf-8'), "mimeType": "image/jpeg", "ext": "jpg"}
-        except Exception: 
-            return None
+        except Exception: return None
