@@ -1,5 +1,5 @@
-# VERSION: v18.6.1
-# TIMESTAMP: 2026-04-02 09:45:00 HKT
+# VERSION: v18.6.3
+# TIMESTAMP: 2026-04-02 10:00:00 HKT
 
 import streamlit as st
 import requests
@@ -9,12 +9,15 @@ class SynthesisSync:
     def __init__(self):
         self.GAS_URL = "https://script.google.com/macros/s/AKfycbyCfSfjgYi7yQFpqBDshjYQ1Zye4VjaT-U4_0nfF9c5oYF1Pr0CrGI38Is4BS3KigIz/exec"
 
-    def generate_ai_content(self, key, form_data):
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key={key}"
+    def generate_ai_content(self, key, active_model, form_data):
+        # Fallback in case active_model wasn't passed correctly
+        if not active_model or active_model == "NONE":
+            active_model = "gemini-1.5-flash"
+            
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{active_model}:generateContent?key={key}"
         sys_msg = "Role: Firebean Content Director. Rules v2.2: LinkedIn (ROI Focus, EN), Facebook (粵語口吻, ~300 chars), Threads (Sharp), Web (3-4 Para, 2 H2, Bold Slogan), FAQ (JSON). Return RAW JSON."
         ctx = f"Client: {form_data.get('client', '')}. Project: {form_data.get('project', '')}. Core Strategy: {form_data.get('open_question', '')}"
         
-        # Explicitly added role: "user" to prevent schema rejection
         payload = {
             "contents": [{"role": "user", "parts": [{"text": ctx}]}],
             "systemInstruction": {"parts": [{"text": sys_msg}]},
