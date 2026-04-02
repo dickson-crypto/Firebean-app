@@ -1,5 +1,5 @@
-# VERSION: v18.6.6
-# TIMESTAMP: 2026-04-02 10:20:00 HKT
+# VERSION: v18.6.7
+# TIMESTAMP: 2026-04-02 10:25:00 HKT
 
 import streamlit as st
 import requests
@@ -18,7 +18,7 @@ except Exception as e:
 
 class FirebeanPortal:
     def __init__(self):
-        self.VERSION = "v18.6.6 (Failover & Uploader UI Fixed)"
+        self.VERSION = "v18.6.7 (Light Grey Uploader)"
         # Robust list of stable public models to test sequentially
         self.MODELS = [
             "gemini-2.5-flash",
@@ -84,6 +84,10 @@ class FirebeanPortal:
         bg = S_BG_DARK if is_dark else "#FFFFFF"
         txt = "#FFFFFF" if is_dark else "#121212"
         
+        # FIX: Dynamic background and border for the dropzone based on the theme
+        dropzone_bg = "#2A2A2A" if is_dark else "#F0F2F6"
+        dropzone_border = "#444444" if is_dark else "#CCCCCC"
+        
         st.markdown(f"""
             <style>
                 @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;700;900&display=swap');
@@ -98,20 +102,20 @@ class FirebeanPortal:
                     font-weight: 600 !important; 
                 }}
                 
-                /* FIX: High specificity for file uploader dropzone elements */
+                /* FIX: Dynamic background and text for file uploader dropzone */
                 .stApp [data-testid="stFileUploadDropzone"] {{
-                    background-color: #2A2A2A !important;
-                    border: 1px solid #444 !important;
+                    background-color: {dropzone_bg} !important;
+                    border: 1px dashed {dropzone_border} !important;
                 }}
                 .stApp [data-testid="stFileUploadDropzone"] div,
                 .stApp [data-testid="stFileUploadDropzone"] span,
                 .stApp [data-testid="stFileUploadDropzone"] small,
                 .stApp [data-testid="stFileUploadDropzone"] p,
                 .stApp [data-testid="stFileUploadDropzone"] button {{
-                    color: #FFFFFF !important;
+                    color: {txt} !important;
                 }}
                 .stApp [data-testid="stFileUploadDropzone"] svg {{
-                    fill: #FFFFFF !important;
+                    fill: {txt} !important;
                 }}
                 
                 div[data-testid="stCheckbox"] label p {{ color: {txt} !important; font-weight: 600 !important; }}
