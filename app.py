@@ -1,5 +1,5 @@
-# VERSION: v18.7.1
-# TIMESTAMP: 2026-04-04 12:25:00 HKT
+# VERSION: v18.7.2
+# TIMESTAMP: 2026-04-04 12:35:00 HKT
 
 import streamlit as st
 import requests
@@ -18,7 +18,7 @@ except Exception as e:
 
 class FirebeanPortal:
     def __init__(self):
-        self.VERSION = "v18.7.1 (Auto Key Rotation & Progress UI Fix)"
+        self.VERSION = "v18.7.2 (Chrome WebKit UI Fix)"
         # Robust list of stable public models to test sequentially
         self.MODELS = [
             "gemini-2.5-flash",
@@ -111,14 +111,29 @@ class FirebeanPortal:
         st.markdown(f"""
             <style>
                 @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;700;900&display=swap');
-                .stApp {{ background-color: {bg}; color: {txt}; font-family: 'Montserrat', sans-serif; }}
+                .stApp {{ background-color: {bg} !important; color: {txt} !important; font-family: 'Montserrat', sans-serif; }}
                 
-                /* Global visibility for text */
-                .stApp p, .stApp label, .stApp span, .stApp div, .stApp h1, .stApp h2, .stApp h3 {{ color: {txt} !important; }}
+                /* FIX FOR CHROME: Aggressive targeting of Streamlit components + webkit override */
+                [data-testid="stMarkdownContainer"] p, 
+                [data-testid="stMarkdownContainer"] h1, 
+                [data-testid="stMarkdownContainer"] h2, 
+                [data-testid="stMarkdownContainer"] h3,
+                [data-testid="stWidgetLabel"] p,
+                [data-testid="stWidgetLabel"] span,
+                [data-baseweb="checkbox"] label p {{ 
+                    color: {txt} !important; 
+                    -webkit-text-fill-color: {txt} !important;
+                }}
+                
+                /* Global visibility for unclassified text */
+                .stApp p, .stApp label, .stApp span, .stApp div, .stApp h1, .stApp h2, .stApp h3 {{ 
+                    color: {txt}; 
+                }}
                 
                 /* Aggressively target all button content to remain white */
                 .stButton button p, .stButton button span, .stButton button div {{ 
                     color: #FFFFFF !important; 
+                    -webkit-text-fill-color: #FFFFFF !important;
                     font-weight: 600 !important; 
                 }}
                 
@@ -133,17 +148,45 @@ class FirebeanPortal:
                 .stApp [data-testid="stFileUploadDropzone"] p,
                 .stApp [data-testid="stFileUploadDropzone"] button {{
                     color: {txt} !important;
+                    -webkit-text-fill-color: {txt} !important;
                 }}
                 .stApp [data-testid="stFileUploadDropzone"] svg {{
                     fill: {txt} !important;
                 }}
                 
-                div[data-testid="stCheckbox"] label p {{ color: {txt} !important; font-weight: 600 !important; }}
+                div[data-testid="stCheckbox"] label p {{ 
+                    color: {txt} !important; 
+                    -webkit-text-fill-color: {txt} !important;
+                    font-weight: 600 !important; 
+                }}
                 
-                .hero-title {{ font-size: 84px !important; font-weight: 900 !important; line-height: 0.85 !important; letter-spacing: -4px !important; margin: 0 !important; color: {txt} !important; }}
-                .sec-header {{ font-size: 16px; font-weight: 900; color: {S_RED} !important; text-transform: uppercase; letter-spacing: 2px; margin-top: 25px; }}
+                .hero-title {{ 
+                    font-size: 84px !important; 
+                    font-weight: 900 !important; 
+                    line-height: 0.85 !important; 
+                    letter-spacing: -4px !important; 
+                    margin: 0 !important; 
+                    color: {txt} !important; 
+                    -webkit-text-fill-color: {txt} !important;
+                }}
+                
+                .sec-header {{ 
+                    font-size: 16px; 
+                    font-weight: 900; 
+                    color: {S_RED} !important; 
+                    -webkit-text-fill-color: {S_RED} !important;
+                    text-transform: uppercase; 
+                    letter-spacing: 2px; 
+                    margin-top: 25px; 
+                }}
+                
                 .terminal-box {{ background: #000; color: #FFFFFF !important; font-family: 'Courier New', monospace; padding: 15px; border-radius: 8px; font-size: 11px; line-height: 1.5; border-left: 4px solid {S_RED}; height: 180px; overflow-y: auto; text-shadow: 0 0 1px rgba(255,255,255,0.2); }}
-                .terminal-box p {{ color: #FFFFFF !important; margin: 0; }}
+                .terminal-box p {{ 
+                    color: #FFFFFF !important; 
+                    -webkit-text-fill-color: #FFFFFF !important;
+                    margin: 0; 
+                }}
+                
                 .status-badge {{ background: {S_RED}; color: white; padding: 8px 15px; border-radius: 4px; font-size: 10px; font-weight: 900; display: inline-block; }}
                 
                 [data-testid="stSidebar"] {{display: none;}}
@@ -207,8 +250,9 @@ if __name__ == "__main__":
         mc_ok = len(st.session_state.mc_questions) > 0 and any(st.session_state.get(f"ans_{i}_0", False) for i in range(15))
         
         percent = logic.calculate(current_data, assets_ok, mc_ok)
-        # FIX: Added !important to the red color styling specifically for the percentage span to override global CSS
-        st.markdown(f'<div style="position:fixed; top:25px; right:40px; z-index:1000; width:90px; height:90px; background:#fff; border-radius:50%; display:flex; align-items:center; justify-content:center; box-shadow:0 10px 30px rgba(0,0,0,0.1); border:2px solid #E2231A"><span style="font-size:22px; font-weight:900; color:#E2231A !important;">{percent}%</span></div>', unsafe_allow_html=True)
+        
+        # FIX FOR CHROME: Added -webkit-text-fill-color inline to ensure the red progress text forces its way through Chrome's native styling overrides
+        st.markdown(f'<div style="position:fixed; top:25px; right:40px; z-index:1000; width:90px; height:90px; background:#fff; border-radius:50%; display:flex; align-items:center; justify-content:center; box-shadow:0 10px 30px rgba(0,0,0,0.1); border:2px solid #E2231A"><span style="font-size:22px; font-weight:900; color:#E2231A !important; -webkit-text-fill-color:#E2231A !important;">{percent}%</span></div>', unsafe_allow_html=True)
 
         st.markdown('<div class="sec-header">AI Strategic Diagnostics</div>', unsafe_allow_html=True)
         if percent >= 90:
@@ -257,4 +301,6 @@ if __name__ == "__main__":
             if st.button("🚀 EXECUTE MASTER SYNC", type="primary", use_container_width=True):
                 with st.status("Syncing to Master DB..."):
                     if sync.push_to_gas(st.session_state.form_data, st.session_state.generated_content, st.session_state.get('full_assets')):
-                        st.success("SYNC SUCCESSFUL"); st.session_state.clear(); st.rer
+                        st.success("SYNC SUCCESSFUL"); st.session_state.clear(); st.rerun()
+                    else:
+                        st.error("GAS Synchronization Failed.")
