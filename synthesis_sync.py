@@ -1,5 +1,5 @@
-# VERSION: v18.7.5
-# TIMESTAMP: 2026-04-04 18:30:00 HKT
+# VERSION: v18.7.6
+# TIMESTAMP: 2026-04-04 19:00:00 HKT
 
 import streamlit as st
 import requests
@@ -100,9 +100,13 @@ class SynthesisSync:
         st.json(faq)
 
     def push_to_gas(self, form, ai, assets):
-        # ADDED: Send Challenge and Solution as root variables so Handlers.gs can catch them effortlessly
+        # FIX: Combine year and month into the exact "date" format the Master DB expects (e.g., "2026 APR")
+        event_date = f"{form.get('year', '')} {form.get('month', '')}".strip()
+        
+        # Send everything, including the new correctly formatted "date"
         payload = {
             **form,
+            "date": event_date,
             "category": ", ".join(form.get('category', [])),
             "what_we_do": ", ".join(form.get('what_we_do', [])),
             "scope": "\n".join(form.get('scope', [])),
