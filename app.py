@@ -1,5 +1,5 @@
-# VERSION: v18.6.7
-# TIMESTAMP: 2026-04-02 10:25:00 HKT
+# VERSION: v18.7.0
+# TIMESTAMP: 2026-04-04 12:15:00 HKT
 
 import streamlit as st
 import requests
@@ -18,7 +18,7 @@ except Exception as e:
 
 class FirebeanPortal:
     def __init__(self):
-        self.VERSION = "v18.6.7 (Light Grey Uploader)"
+        self.VERSION = "v18.7.0 (Auto Key Rotation)"
         # Robust list of stable public models to test sequentially
         self.MODELS = [
             "gemini-2.5-flash",
@@ -38,45 +38,66 @@ class FirebeanPortal:
             st.session_state.terminal_logs = [f"> System Boot: {self.VERSION}", "> Logic Engines Synced."]
         if 'ai_status' not in st.session_state: st.session_state.ai_status = "🟡 INITIALIZING"
         if 'active_model' not in st.session_state: st.session_state.active_model = "NONE"
-        if 'apiKey' not in st.session_state:
-            raw_key = st.secrets.get("GEMINI_API_KEY", "")
-            st.session_state.apiKey = raw_key.replace('"', '').replace("'", "").strip()
+        if 'apiKey' not in st.session_state: st.session_state.apiKey = ""
+        
+        # KEY ROTATION LOGIC: Load multiple keys from Streamlit Secrets
+        if 'apiKeys' not in st.session_state:
+            keys_raw = st.secrets.get("GEMINI_API_KEYS", [])
+            # Fallback just in case you named it GEMINI_API_KEY instead of plural
+            if not keys_raw:
+                single = st.secrets.get("GEMINI_API_KEY", "")
+                if single: keys_raw = [single]
+            
+            # Clean all keys
+            st.session_state.apiKeys = [k.replace('"', '').replace("'", "").strip() for k in keys_raw if k]
 
     def verify_ai(self):
-        """Dynamic Handshake: Probes models until a 200 OK is received."""
-        if not st.session_state.apiKey:
-            st.session_state.ai_status = "🔴 OFFLINE (No Key)"
+        """Double-Failover: Probes API Keys, then probes Models until a 200 OK is received."""
+        if not st.session_state.apiKeys:
+            st.session_state.ai_status = "🔴 OFFLINE (No Keys Found)"
+            self.log("CRITICAL: No API keys found in Streamlit Secrets.")
             return
         
+        working_key = None
         working_model = None
-        for model in self.MODELS:
-            self.log(f"Probe: Testing {model}...")
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={st.session_state.apiKey}"
-            
-            try:
-                payload = {
-                    "contents": [{"role": "user", "parts": [{"text": "System Ping. Respond with OK."}]}]
-                }
-                res = requests.post(url, json=payload, timeout=5)
-                
-                if res.status_code == 200:
-                    st.session_state.ai_status = "🟢 ONLINE"
-                    st.session_state.active_model = model
-                    self.log(f"SUCCESS: Locked onto {model}")
-                    working_model = model
-                    break # Stop testing once we find a working model
-                else:
-                    try:
-                        error_msg = res.json().get('error', {}).get('message', 'Unknown Error')
-                        self.log(f"Skip {model}: {res.status_code} - {error_msg.split('.')[0]}")
-                    except:
-                        self.log(f"Skip {model}: Status {res.status_code}")
-            except Exception as e:
-                self.log(f"Network Error on {model}")
 
-        if not working_model:
-            st.session_state.ai_status = "🔴 OFFLINE (All Failed)"
-            self.log("CRITICAL: All models returned 404 or failed. Check API key region/validity.")
+        # Loop 1: Test each API Key
+        for idx, key in enumerate(st.session_state.apiKeys):
+            safe_key_name = f"Key {idx+1} (...{key[-4:]})"
+            self.log(f"Probe: Testing {safe_key_name}")
+            key_exhausted = False
+            
+            # Loop 2: Test models with the current key
+            for model in self.MODELS:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
+                
+                try:
+                    payload = {"contents": [{"role": "user", "parts": [{"text": "System Ping. Respond with OK."}]}]}
+                    res = requests.post(url, json=payload, timeout=5)
+                    
+                    if res.status_code == 200:
+                        st.session_state.ai_status = "🟢 ONLINE"
+                        st.session_state.active_model = model
+                        st.session_state.apiKey = key # Lock the winning key for the other modules to use!
+                        self.log(f"SUCCESS: {safe_key_name} locked onto {model}")
+                        working_key = key
+                        working_model = model
+                        break # Stop testing models
+                    elif res.status_code == 429:
+                        self.log(f"Skip {safe_key_name}: 429 Quota Exceeded.")
+                        key_exhausted = True
+                        break # Stop testing models for this key, move to the NEXT key
+                    else:
+                        self.log(f"Skip {model}: Status {res.status_code}")
+                except Exception as e:
+                    self.log(f"Network Error on {model}")
+            
+            if working_key:
+                break # A working Key+Model combo was found, stop checking other keys
+
+        if not working_key:
+            st.session_state.ai_status = "🔴 OFFLINE (All Quotas Empty)"
+            self.log("CRITICAL: All keys exhausted or models failed.")
 
     def apply_ui_theme(self):
         S_RED, S_DARK, S_BG_DARK = "#E2231A", "#2A2A2A", "#121212"
@@ -84,7 +105,6 @@ class FirebeanPortal:
         bg = S_BG_DARK if is_dark else "#FFFFFF"
         txt = "#FFFFFF" if is_dark else "#121212"
         
-        # FIX: Dynamic background and border for the dropzone based on the theme
         dropzone_bg = "#2A2A2A" if is_dark else "#F0F2F6"
         dropzone_border = "#444444" if is_dark else "#CCCCCC"
         
@@ -96,13 +116,13 @@ class FirebeanPortal:
                 /* Global visibility for text */
                 .stApp p, .stApp label, .stApp span, .stApp div, .stApp h1, .stApp h2, .stApp h3 {{ color: {txt} !important; }}
                 
-                /* FIX: Aggressively target all button content to remain white */
+                /* Aggressively target all button content to remain white */
                 .stButton button p, .stButton button span, .stButton button div {{ 
                     color: #FFFFFF !important; 
                     font-weight: 600 !important; 
                 }}
                 
-                /* FIX: Dynamic background and text for file uploader dropzone */
+                /* Dynamic background and text for file uploader dropzone */
                 .stApp [data-testid="stFileUploadDropzone"] {{
                     background-color: {dropzone_bg} !important;
                     border: 1px dashed {dropzone_border} !important;
@@ -164,7 +184,6 @@ if __name__ == "__main__":
                     st.rerun()
         
         with h3:
-            # Boss mode button hidden; spacing retained to preserve header layout
             st.write("<div style='height:35px'></div>", unsafe_allow_html=True)
             
         with h4:
