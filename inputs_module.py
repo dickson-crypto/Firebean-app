@@ -1,5 +1,5 @@
-# VERSION: v18.7.3
-# TIMESTAMP: 2026-04-04 16:30:00 HKT
+# VERSION: v18.9.0
+# TIMESTAMP: 2026-04-04 22:30:00 HKT
 
 import streamlit as st
 from PIL import Image, ImageOps
@@ -25,7 +25,6 @@ class InputEngine:
     def _apply_module_css(self):
         """Internal module fix to ensure labels are visible in Light Mode."""
         is_dark = st.session_state.get('dark_mode', False)
-        # Force text colors based on mode
         txt = "#FFFFFF" if is_dark else "#121212"
         sub = "#AAAAAA" if is_dark else "#555555"
         
@@ -38,10 +37,14 @@ class InputEngine:
                     margin-bottom: 10px; 
                     text-transform: uppercase; 
                 }}
-                /* Force all Streamlit widget labels in this module */
                 label[data-testid="stWidgetLabel"] p {{ 
                     color: {txt} !important; 
                     font-weight: 500 !important; 
+                }}
+                /* Ensure Radio button text is visible */
+                div[role="radiogroup"] label p {{
+                    color: {txt} !important;
+                    font-weight: 600 !important;
                 }}
             </style>
         """, unsafe_allow_html=True)
@@ -91,7 +94,6 @@ class InputEngine:
             st.markdown('<div class="sub-label">Logo White</div>', unsafe_allow_html=True)
             lw = st.file_uploader("W", key="l_white", label_visibility="collapsed")
             if lw:
-                # FIX FOR ISSUE 2: Converting the white logo to an HTML image tag forces it inside our dark #2A2A2A div perfectly
                 try:
                     img_w = Image.open(lw)
                     buf_w = io.BytesIO()
@@ -107,10 +109,33 @@ class InputEngine:
         
         encoded = []
         if ph:
-            st.markdown('<div style="margin-top:10px"></div>', unsafe_allow_html=True)
+            st.markdown('<div style="margin-top:20px"></div>', unsafe_allow_html=True)
+            
+            # --- FIX: SINGLE HERO SELECTION RADIO BUTTON ---
+            st.markdown('<div class="sub-label" style="color:#E2231A !important;">Select HERO Photo:</div>', unsafe_allow_html=True)
+            
+            num_photos = len(ph[:8])
+            hero_options = [f"Photo {i+1}" for i in range(num_photos)]
+            
+            # Safety reset if the session state index is out of bounds
+            if st.session_state.hero_index >= num_photos:
+                st.session_state.hero_index = 0
+            
+            # Streamlit Radio automatically restricts to exactly 1 choice
+            selected_hero_label = st.radio(
+                "Select Hero", 
+                options=hero_options, 
+                index=st.session_state.hero_index,
+                horizontal=True, 
+                label_visibility="collapsed"
+            )
+            
+            # Map the radio choice back to the correct index number
+            st.session_state.hero_index = hero_options.index(selected_hero_label)
+            # -----------------------------------------------
+
             p_cols = st.columns(4)
             
-            # FIX FOR ISSUE 1: State Caching prevents the massive lag/flashing when checkboxes are clicked
             if 'gallery_cache' not in st.session_state:
                 st.session_state.gallery_cache = {}
                 
@@ -122,24 +147,30 @@ class InputEngine:
                         try:
                             img = Image.open(p)
                             img = ImageOps.exif_transpose(img)
-                            img.thumbnail((500, 500)) # Smaller thumbnail for extreme speed
+                            img.thumbnail((500, 500)) 
                             buf = io.BytesIO()
                             img.convert('RGB').save(buf, format='JPEG', quality=65)
                             st.session_state.gallery_cache[p.name] = base64.b64encode(buf.getvalue()).decode('utf-8')
                         except Exception:
                             continue
                             
-                    # Use the extremely fast cached Base64 string for display
                     b64_str = st.session_state.gallery_cache.get(p.name, "")
                     if b64_str:
-                        st.markdown(f'<img src="data:image/jpeg;base64,{b64_str}" style="width:100%; border-radius:8px; margin-bottom:10px;">', unsafe_allow_html=True)
-                    
-                    if st.checkbox("HERO", key=f"hero_{idx}", value=(st.session_state.hero_index == idx)): 
-                        st.session_state.hero_index = idx
+                        # Add visual highlight for the selected hero photo
+                        if st.session_state.hero_index == idx:
+                            border_style = "border: 4px solid #E2231A; box-shadow: 0 0 15px rgba(226, 35, 26, 0.5);"
+                            label_color = "#E2231A"
+                            label_text = f"★ HERO (Photo {idx+1})"
+                        else:
+                            border_style = "border: 4px solid transparent;"
+                            label_color = "#AAAAAA"
+                            label_text = f"Photo {idx+1}"
+                            
+                        st.markdown(f'<img src="data:image/jpeg;base64,{b64_str}" style="width:100%; border-radius:8px; margin-bottom:5px; transition: all 0.3s; {border_style}">', unsafe_allow_html=True)
+                        st.markdown(f"<div style='text-align:center; font-size:12px; font-weight:bold; color:{label_color};'>{label_text}</div>", unsafe_allow_html=True)
                     
                     encoded.append(b64_str)
                     
-            # Cleanup cache for removed files
             keys_to_remove = [k for k in st.session_state.gallery_cache.keys() if k not in current_files]
             for k in keys_to_remove:
                 del st.session_state.gallery_cache[k]
