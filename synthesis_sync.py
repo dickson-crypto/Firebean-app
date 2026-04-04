@@ -1,5 +1,5 @@
-# VERSION: v18.8.4
-# TIMESTAMP: 2026-04-04 22:45:00 HKT
+# VERSION: v18.8.5
+# TIMESTAMP: 2026-04-04 23:15:00 HKT
 
 import streamlit as st
 import requests
@@ -7,6 +7,7 @@ import json
 
 class SynthesisSync:
     def __init__(self):
+        # Using your latest deployment URL
         self.GAS_URL = "https://script.google.com/macros/s/AKfycbycZnD493RrdTPwUJvXBiGNfg6hf0_AHGzo99ZkeeDtlM66TZFbObWbJVuEfOPe-6Fk/exec"
 
     def get_ci(self, d, default, *keys):
@@ -23,7 +24,7 @@ class SynthesisSync:
             
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{active_model}:generateContent?key={key}"
         
-        # UPGRADED PROMPT: Strictly enforces <h1> inclusion for Web Content
+        # RESTORED & UPGRADED PROMPT: Re-injecting social media rules (v1.9 Guidelines)
         sys_msg = """Role: Firebean Content Director.
         Output strictly as RAW JSON matching this exact structure:
         {
@@ -38,10 +39,13 @@ class SynthesisSync:
           "FAQ": { "EN": [], "TC": [], "JP": [] }
         }
         
-        CRITICAL RULES:
-        [Web Content]: Every language version MUST start with a <h1> tag containing a creative project title.
-        Followed by exactly 3-4 Paragraphs and 2 H2 tags as specified.
-        Must end with a <strong>Bold Slogan</strong>."""
+        CRITICAL CONTENT RULES:
+        [LinkedIn (LI)]: 200-300 words. Tone: Authoritative B2B/ROI. Language: English.
+        [Facebook (FB)]: ~300 Characters. Tone: Friendly storytelling. Language: Traditional Chinese (HK) with conversational Cantonese slang.
+        [Threads (TR)]: 100-200 Characters. Tone: Humorous/Sharp. Language: Authentic HK Cantonese slang. Start with a Hook.
+        [Instagram (IG)]: Max 150 Characters. First 2 lines are the slogan. Language: Traditional Chinese (HK). Exactly 20 professional hashtags at the end.
+        [Web Content]: Every language version MUST start with a <h1> tag. Followed by 3-4 Paragraphs and 2 H2 tags. End with a <strong>Bold Slogan</strong>.
+        [FAQ]: 3 SEO-optimized Q&As per language."""
         
         ctx = f"Client: {form_data.get('client', '')}. Project: {form_data.get('project', '')}. Core Strategy: {form_data.get('open_question', '')}"
         
@@ -62,7 +66,6 @@ class SynthesisSync:
             return None
 
     def render_ui(self, gc):
-        # UI rendering logic for the review page
         sm = gc.get('SocialMedia') or gc.get('social_media') or {}
         web = gc.get('Web') or gc.get('web') or {}
         
@@ -72,8 +75,8 @@ class SynthesisSync:
 
         st.markdown('<div class="sec-header">Social Media Suite</div>', unsafe_allow_html=True)
         st.text_area("LinkedIn", self.get_ci(sm, "", "LI", "linkedin"), height=150)
-        st.text_area("Facebook", self.get_ci(sm, "", "FB", "facebook"), height=100)
-        st.text_area("Threads", self.get_ci(sm, "", "TR", "threads"), height=100)
+        st.text_area("Facebook (HK Cantonese)", self.get_ci(sm, "", "FB", "facebook"), height=100)
+        st.text_area("Threads (HK Cantonese)", self.get_ci(sm, "", "TR", "threads"), height=100)
         st.text_area("Instagram", self.get_ci(sm, "", "IG", "instagram"), height=100)
 
         st.markdown('<div class="sec-header">Web Articles</div>', unsafe_allow_html=True)
@@ -90,7 +93,6 @@ class SynthesisSync:
         faq_data = ai.get("FAQ") or ai.get("faq") or {}
         sm_data = ai.get("SocialMedia") or ai.get("social_media") or {}
 
-        # Standardize the AI object to ensure GAS can find keys regardless of AI casing
         normalized_ai = {
             "Challenge": ai.get("Challenge", ""),
             "Solution": ai.get("Solution", ""),
