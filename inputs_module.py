@@ -1,5 +1,5 @@
-# VERSION: v18.9.0
-# TIMESTAMP: 2026-04-05 01:10:00 HKT
+# VERSION: v18.9.1
+# TIMESTAMP: 2026-04-05 03:10:00 HKT
 
 import streamlit as st
 from PIL import Image, ImageOps
@@ -8,7 +8,6 @@ import base64
 
 class InputEngine:
     def __init__(self):
-        # 18-Point Scope of Work Matrix
         self.SOW = ["Concept Development", "Branding Strategy", "PR Consulting", "Media Relations", "Theme Design", "Visual Identity", "UI/UX Design", "Social Media Content", "Influencer Seeding", "Video Production", "Motion Graphics", "Interactive Installation", "Event Planning", "Event Production", "RSVP Management", "Talent Management", "On-site Operation", "Technical Support"]
 
     def render_identity(self):
@@ -44,7 +43,6 @@ class InputEngine:
         
         encoded = []
         if ph:
-            # HERO SELECTOR RADIO BUTTONS
             st.markdown('<div style="color:#E2231A; font-weight:900; margin:10px 0;">Select HERO Photo:</div>', unsafe_allow_html=True)
             num = len(ph[:8])
             opts = [f"Photo {i+1}" for i in range(num)]
@@ -57,7 +55,6 @@ class InputEngine:
                     img = Image.open(p); img = ImageOps.exif_transpose(img); img.thumbnail((500, 500))
                     buf = io.BytesIO(); img.convert('RGB').save(buf, format='JPEG', quality=65)
                     b64 = base64.b64encode(buf.getvalue()).decode('utf-8')
-                    # Highlight selected Hero
                     border = "4px solid #E2231A" if st.session_state.hero_index == idx else "none"
                     st.markdown(f'<img src="data:image/jpeg;base64,{b64}" style="width:100%; border-radius:8px; border:{border};">', unsafe_allow_html=True)
                     encoded.append(b64)
