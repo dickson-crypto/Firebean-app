@@ -1,5 +1,5 @@
-# VERSION: v18.5.6
-# TIMESTAMP: 2026-04-02 09:14:00 HKT
+# VERSION: v18.7.3
+# TIMESTAMP: 2026-04-04 16:30:00 HKT
 
 import streamlit as st
 from PIL import Image, ImageOps
@@ -91,9 +91,15 @@ class InputEngine:
             st.markdown('<div class="sub-label">Logo White</div>', unsafe_allow_html=True)
             lw = st.file_uploader("W", key="l_white", label_visibility="collapsed")
             if lw:
-                st.markdown('<div style="background-color:#2A2A2A; padding:15px; border-radius:8px; display: flex; align-items: center; justify-content: center;">', unsafe_allow_html=True)
-                st.image(lw, use_container_width=True)
-                st.markdown('</div>', unsafe_allow_html=True)
+                # FIX FOR ISSUE 2: Converting the white logo to an HTML image tag forces it inside our dark #2A2A2A div perfectly
+                try:
+                    img_w = Image.open(lw)
+                    buf_w = io.BytesIO()
+                    img_w.save(buf_w, format='PNG')
+                    b64_w = base64.b64encode(buf_w.getvalue()).decode('utf-8')
+                    st.markdown(f'<div style="background-color:#2A2A2A; padding:20px; border-radius:8px; display:flex; align-items:center; justify-content:center;"><img src="data:image/png;base64,{b64_w}" style="max-width:100%; max-height:120px;"></div>', unsafe_allow_html=True)
+                except Exception:
+                    pass
             
         with a3:
             st.markdown('<div class="sub-label">Gallery (Max 8)</div>', unsafe_allow_html=True)
@@ -103,12 +109,41 @@ class InputEngine:
         if ph:
             st.markdown('<div style="margin-top:10px"></div>', unsafe_allow_html=True)
             p_cols = st.columns(4)
+            
+            # FIX FOR ISSUE 1: State Caching prevents the massive lag/flashing when checkboxes are clicked
+            if 'gallery_cache' not in st.session_state:
+                st.session_state.gallery_cache = {}
+                
+            current_files = [p.name for p in ph[:8]]
+            
             for idx, p in enumerate(ph[:8]):
                 with p_cols[idx%4]:
-                    img = Image.open(p)
-                    st.image(img, caption="Portrait" if img.height > img.width else "Landscape", use_container_width=True)
-                    if st.checkbox("HERO", key=f"hero_{idx}", value=(st.session_state.hero_index == idx)): st.session_state.hero_index = idx
-                    buf = io.BytesIO(); img.save(buf, format='PNG'); encoded.append(base64.b64encode(buf.getvalue()).decode('utf-8'))
+                    if p.name not in st.session_state.gallery_cache:
+                        try:
+                            img = Image.open(p)
+                            img = ImageOps.exif_transpose(img)
+                            img.thumbnail((500, 500)) # Smaller thumbnail for extreme speed
+                            buf = io.BytesIO()
+                            img.convert('RGB').save(buf, format='JPEG', quality=65)
+                            st.session_state.gallery_cache[p.name] = base64.b64encode(buf.getvalue()).decode('utf-8')
+                        except Exception:
+                            continue
+                            
+                    # Use the extremely fast cached Base64 string for display
+                    b64_str = st.session_state.gallery_cache.get(p.name, "")
+                    if b64_str:
+                        st.markdown(f'<img src="data:image/jpeg;base64,{b64_str}" style="width:100%; border-radius:8px; margin-bottom:10px;">', unsafe_allow_html=True)
+                    
+                    if st.checkbox("HERO", key=f"hero_{idx}", value=(st.session_state.hero_index == idx)): 
+                        st.session_state.hero_index = idx
+                    
+                    encoded.append(b64_str)
+                    
+            # Cleanup cache for removed files
+            keys_to_remove = [k for k in st.session_state.gallery_cache.keys() if k not in current_files]
+            for k in keys_to_remove:
+                del st.session_state.gallery_cache[k]
+                
         return lb, lw, ph, encoded
 
     def process_for_db(self, file):
