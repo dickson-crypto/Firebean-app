@@ -1,5 +1,5 @@
-# VERSION: v18.7.3
-# TIMESTAMP: 2026-04-04 16:30:00 HKT
+# VERSION: v18.7.5
+# TIMESTAMP: 2026-04-04 18:30:00 HKT
 
 import streamlit as st
 import requests
@@ -15,15 +15,17 @@ class SynthesisSync:
             
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{active_model}:generateContent?key={key}"
         
-        # FIX FOR ISSUE 4: Highly strict JSON prompt template forces AI to fill in every field accurately.
+        # UPGRADED PROMPT: Added Challenge and Solution generation logic based on the core strategy brief.
         sys_msg = """Role: Firebean Content Director.
         Output strictly as RAW JSON matching this exact structure:
         {
+          "Challenge": "Analyze the core problem or 'boring challenge' from the brief in 1-2 professional sentences.",
+          "Solution": "Outline the creative strategic solution in 1-2 professional sentences.",
           "SocialMedia": {
-            "LI": "LinkedIn post focusing on ROI and business impact...",
-            "FB": "Facebook post with emojis, written in Cantonese tone...",
-            "TR": "Threads post, sharp and short...",
-            "IG": "Instagram caption starting with a hook, followed by 20 hashtags..."
+            "LI": "...",
+            "FB": "...",
+            "TR": "...",
+            "IG": "..."
           },
           "Web": {
             "EN": "<h2>...</h2><p>...</p>",
@@ -36,7 +38,15 @@ class SynthesisSync:
             "JP": [{"q":"Question?", "a":"Answer."}]
           }
         }
-        Rules: Web must be 3-4 Paragraphs, 2 H2 tags, and a Bold Slogan at the end. FAQ must be exactly 3 Q&As per language."""
+        
+        CRITICAL CONTENT RULES:
+        [Challenge & Solution]: Language MUST be in English. Be sharp, strategic, and professional.
+        [SocialMedia.FB (Facebook)]: ~100-250 words. Tone: Friendly, storytelling, use "you". Language: Traditional Chinese (Hong Kong) with conversational Cantonese slang. Focus on pain points/solutions and MUST include a clear Call-To-Action (CTA) for event signup/details.
+        [SocialMedia.IG (Instagram)]: MAX 150 words. First 125 characters MUST be a strong hook. Tone: Visual, authentic, "behind-the-scenes" insider perspective. Language: Traditional Chinese (Hong Kong). MUST use many emojis and conclude with exactly 20 professional hashtags.
+        [SocialMedia.TR (Threads)]: MAX 50 words. Tone: Humorous, casual, conversational, slightly critical/meme-potential. Language: Highly authentic Hong Kong Cantonese slang. Start with a question or anti-traditional view to spark debate. NO broadcast/PR language.
+        [SocialMedia.LI (LinkedIn)]: ~150-300 words. Tone: Authoritative B2B, consulting style. Highlight data, ROI, thought leadership, and networking value. Explain WHY this matters to the industry. Language: English or Traditional Chinese (based on context).
+        [Web]: 3-4 Paragraphs, 2 H2 tags, and a Bold Slogan at the end.
+        [FAQ]: Exactly 3 SEO/AEO optimized Q&As per language, use conversational long-tail keyword questions and direct ROI-focused answers."""
         
         ctx = f"Client: {form_data.get('client', '')}. Project: {form_data.get('project', '')}. Core Strategy: {form_data.get('open_question', '')}"
         
@@ -58,38 +68,48 @@ class SynthesisSync:
             return None
 
     def render_ui(self, gc):
-        # Extremely robust dictionary fallback in case AI renames the JSON keys
+        # Fallback bindings
+        challenge = gc.get('Challenge', '')
+        solution = gc.get('Solution', '')
         sm = gc.get('SocialMedia') or gc.get('social_media') or gc.get('socialMedia') or {}
         web = gc.get('Web') or gc.get('web') or {}
         faq = gc.get('FAQ') or gc.get('faq') or {}
 
-        # FIX FOR ISSUE 4: Render UI fully opened vertically, without using tabs or drip-downs
+        # NEW: Display Challenge & Solution
+        st.markdown('<div class="sec-header">Strategic Analysis</div>', unsafe_allow_html=True)
+        st.text_area("Boring Challenge", challenge, height=80)
+        st.text_area("Creative Solution", solution, height=80)
+        st.markdown("<br>", unsafe_allow_html=True)
+
         st.markdown('<div class="sec-header">Social Media Suite</div>', unsafe_allow_html=True)
-        st.text_area("LinkedIn (English/ROI)", sm.get('LI', ''), height=150)
-        st.text_area("Facebook (粵語口吻)", sm.get('FB', ''), height=150)
-        st.text_area("Threads (Sharp)", sm.get('TR', ''), height=100)
-        st.text_area("Instagram (Hook+Tags)", sm.get('IG', ''), height=100)
+        st.text_area("LinkedIn (B2B Thought Leadership)", sm.get('LI', ''), height=200)
+        st.text_area("Facebook (廣泛觸及與資訊大本營)", sm.get('FB', ''), height=150)
+        st.text_area("Threads (實時客廳與觀點碰撞)", sm.get('TR', ''), height=100)
+        st.text_area("Instagram (視覺衝擊與真實幕後花絮)", sm.get('IG', ''), height=150)
         st.markdown("<br>", unsafe_allow_html=True)
 
         st.markdown('<div class="sec-header">Web Articles</div>', unsafe_allow_html=True)
         st.markdown("**English (EN)**")
-        st.markdown(f"<div style='background:#121212; padding:20px; border-radius:8px; border:1px solid #333;'>{web.get('EN', '')}</div>", unsafe_allow_html=True)
-        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown(f"{web.get('EN', '')}", unsafe_allow_html=True)
+        st.markdown("---")
         st.markdown("**Trad. Chinese (TC)**")
-        st.markdown(f"<div style='background:#121212; padding:20px; border-radius:8px; border:1px solid #333;'>{web.get('TC', '')}</div>", unsafe_allow_html=True)
-        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown(f"{web.get('TC', '')}", unsafe_allow_html=True)
+        st.markdown("---")
 
         st.markdown('<div class="sec-header">Strategic FAQ</div>', unsafe_allow_html=True)
         st.json(faq)
 
     def push_to_gas(self, form, ai, assets):
+        # ADDED: Send Challenge and Solution as root variables so Handlers.gs can catch them effortlessly
         payload = {
             **form,
             "category": ", ".join(form.get('category', [])),
             "what_we_do": ", ".join(form.get('what_we_do', [])),
             "scope": "\n".join(form.get('scope', [])),
             "ai_content": ai,
-            "assets": assets
+            "assets": assets,
+            "challenge": ai.get("Challenge", ""),
+            "solution": ai.get("Solution", "")
         }
         try:
             res = requests.post(self.GAS_URL, json=payload)
