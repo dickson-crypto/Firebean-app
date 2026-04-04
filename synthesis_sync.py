@@ -7,7 +7,8 @@ import json
 
 class SynthesisSync:
     def __init__(self):
-        self.GAS_URL = "https://script.google.com/macros/s/AKfycbyCfSfjgYi7yQFpqBDshjYQ1Zye4VjaT-U4_0nfF9c5oYF1Pr0CrGI38Is4BS3KigIz/exec"
+        # Updated to the new deployment URL you provided
+        self.GAS_URL = "https://script.google.com/macros/s/AKfycbycZnD493RrdTPwUJvXBiGNfg6hf0_AHGzo99ZkeeDtlM66TZFbObWbJVuEfOPe-6Fk/exec"
 
     def get_ci(self, d, default, *keys):
         """Case-insensitive and robust dictionary key lookup to prevent AI formatting errors."""
