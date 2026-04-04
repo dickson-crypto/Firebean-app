@@ -1,5 +1,5 @@
-# VERSION: v18.7.3
-# TIMESTAMP: 2026-04-04 16:30:00 HKT
+# VERSION: v18.8.0
+# TIMESTAMP: 2026-04-04 20:00:00 HKT
 
 import streamlit as st
 import requests
@@ -18,7 +18,7 @@ except Exception as e:
 
 class FirebeanPortal:
     def __init__(self):
-        self.VERSION = "v18.7.3 (Performance & Logic Fixes)"
+        self.VERSION = "v18.8.0 (Final Production Release)"
         # Robust list of stable public models to test sequentially
         self.MODELS = [
             "gemini-2.5-flash",
@@ -246,9 +246,9 @@ if __name__ == "__main__":
         open_q = st.text_area("Event Brief & Strategic Review", value=st.session_state.form_data.get("open_question", ""), height=120)
 
         current_data = {"client": client, "project": project, "venue": venue, "year": year, "month": month, "category": sel_cat, "what_we_do": sel_wwd, "scope": sel_sow, "open_question": open_q}
-        assets_ok = st.session_state.get('mock_assets') or (bool(logo_b or logo_w) and bool(photos))
+        assets_ok = (bool(logo_b or logo_w) and bool(photos))
         
-        # FIX FOR ISSUE 3: Precise calculation for MC diagnostics ensuring all 15 questions have an answer
+        # Precise calculation for MC diagnostics ensuring all 15 questions have an answer
         mc_answered = 0
         if st.session_state.mc_questions:
             for i, q in enumerate(st.session_state.mc_questions):
@@ -259,7 +259,7 @@ if __name__ == "__main__":
         
         percent = logic.calculate(current_data, assets_ok, mc_ok)
         
-        # Chrome fallback for red color
+        # Chrome fallback for red color progress circle
         st.markdown(f'<div style="position:fixed; top:25px; right:40px; z-index:1000; width:90px; height:90px; background:#fff; border-radius:50%; display:flex; align-items:center; justify-content:center; box-shadow:0 10px 30px rgba(0,0,0,0.1); border:2px solid #E2231A"><span style="font-size:22px; font-weight:900; color:#E2231A !important; -webkit-text-fill-color:#E2231A !important;">{percent}%</span></div>', unsafe_allow_html=True)
 
         st.markdown('<div class="sec-header">AI Strategic Diagnostics</div>', unsafe_allow_html=True)
@@ -284,8 +284,7 @@ if __name__ == "__main__":
 
         if percent >= 100:
             if st.button("PROCEED TO REVIEW 👉", type="primary", use_container_width=True):
-                if not st.session_state.get('mock_assets'):
-                    st.session_state.full_assets = {"logo_black": inputs.process_for_db(logo_b), "logo_white": inputs.process_for_db(logo_w), "photos": [inputs.process_for_db(p) for p in photos[:8]], "hero_index": st.session_state.hero_index}
+                st.session_state.full_assets = {"logo_black": inputs.process_for_db(logo_b), "logo_white": inputs.process_for_db(logo_w), "photos": [inputs.process_for_db(p) for p in photos[:8]], "hero_index": st.session_state.hero_index}
                 st.session_state.form_data.update(current_data); st.session_state.form_data['youtube'] = youtube
                 st.session_state.page = 2; st.rerun()
 
