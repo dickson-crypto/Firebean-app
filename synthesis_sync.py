@@ -1,5 +1,5 @@
-# VERSION: v18.6.3
-# TIMESTAMP: 2026-04-02 10:00:00 HKT
+# VERSION: v18.6.9
+# TIMESTAMP: 2026-04-03 12:30:00 HKT
 
 import streamlit as st
 import requests
@@ -15,7 +15,10 @@ class SynthesisSync:
             active_model = "gemini-1.5-flash"
             
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{active_model}:generateContent?key={key}"
-        sys_msg = "Role: Firebean Content Director. Rules v2.2: LinkedIn (ROI Focus, EN), Facebook (粵語口吻, ~300 chars), Threads (Sharp), Web (3-4 Para, 2 H2, Bold Slogan), FAQ (JSON). Return RAW JSON."
+        
+        # UPGRADED: SEO/AEO Optimized FAQ Prompt
+        # 強制 AI 使用長尾關鍵字 (long-tail keywords)、對話式提問 (conversational questions)，以及開門見山、強調 ROI 的回答方式。
+        sys_msg = "Role: Firebean Content Director. Rules v2.2: LinkedIn (ROI Focus, EN), Facebook (粵語口吻, ~300 chars), Threads (Sharp), Web (3-4 Para, 2 H2, Bold Slogan), FAQ (JSON, exactly 3 SEO/AEO optimized Q&As per language, use conversational long-tail keyword questions and direct ROI-focused answers). Return RAW JSON."
         ctx = f"Client: {form_data.get('client', '')}. Project: {form_data.get('project', '')}. Core Strategy: {form_data.get('open_question', '')}"
         
         payload = {
