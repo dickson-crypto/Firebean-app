@@ -1,5 +1,5 @@
-# VERSION: v18.7.6
-# TIMESTAMP: 2026-04-04 19:00:00 HKT
+# VERSION: v18.8.1
+# TIMESTAMP: 2026-04-04 20:30:00 HKT
 
 import streamlit as st
 import requests
@@ -15,7 +15,6 @@ class SynthesisSync:
             
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{active_model}:generateContent?key={key}"
         
-        # UPGRADED PROMPT: Added Challenge and Solution generation logic based on the core strategy brief.
         sys_msg = """Role: Firebean Content Director.
         Output strictly as RAW JSON matching this exact structure:
         {
@@ -68,14 +67,12 @@ class SynthesisSync:
             return None
 
     def render_ui(self, gc):
-        # Fallback bindings
         challenge = gc.get('Challenge', '')
         solution = gc.get('Solution', '')
         sm = gc.get('SocialMedia') or gc.get('social_media') or gc.get('socialMedia') or {}
         web = gc.get('Web') or gc.get('web') or {}
         faq = gc.get('FAQ') or gc.get('faq') or {}
 
-        # NEW: Display Challenge & Solution
         st.markdown('<div class="sec-header">Strategic Analysis</div>', unsafe_allow_html=True)
         st.text_area("Boring Challenge", challenge, height=80)
         st.text_area("Creative Solution", solution, height=80)
@@ -95,25 +92,37 @@ class SynthesisSync:
         st.markdown("**Trad. Chinese (TC)**")
         st.markdown(f"{web.get('TC', '')}", unsafe_allow_html=True)
         st.markdown("---")
+        
+        # FIX FOR ISSUE 1: Added missing Japanese UI render logic
+        st.markdown("**Japanese (JP)**")
+        st.markdown(f"{web.get('JP', '')}", unsafe_allow_html=True)
+        st.markdown("---")
 
         st.markdown('<div class="sec-header">Strategic FAQ</div>', unsafe_allow_html=True)
         st.json(faq)
 
     def push_to_gas(self, form, ai, assets):
-        # FIX: Combine year and month into the exact "date" format the Master DB expects (e.g., "2026 APR")
         event_date = f"{form.get('year', '')} {form.get('month', '')}".strip()
         
-        # Send everything, including the new correctly formatted "date"
+        # FIX FOR ISSUE 2: Normalize keys to ensure GAS strictly finds what it expects
+        normalized_ai = {
+            "Challenge": ai.get("Challenge", ""),
+            "Solution": ai.get("Solution", ""),
+            "SocialMedia": ai.get("SocialMedia") or ai.get("social_media") or ai.get("socialMedia") or {},
+            "Web": ai.get("Web") or ai.get("web") or {},
+            "FAQ": ai.get("FAQ") or ai.get("faq") or {}
+        }
+
         payload = {
             **form,
             "date": event_date,
             "category": ", ".join(form.get('category', [])),
             "what_we_do": ", ".join(form.get('what_we_do', [])),
             "scope": "\n".join(form.get('scope', [])),
-            "ai_content": ai,
+            "ai_content": normalized_ai,
             "assets": assets,
-            "challenge": ai.get("Challenge", ""),
-            "solution": ai.get("Solution", "")
+            "challenge": normalized_ai["Challenge"],
+            "solution": normalized_ai["Solution"]
         }
         try:
             res = requests.post(self.GAS_URL, json=payload)
