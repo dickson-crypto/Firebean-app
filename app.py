@@ -284,6 +284,12 @@ if __name__ == "__main__":
 
         if percent >= 100:
             if st.button("PROCEED TO REVIEW 👉", type="primary", use_container_width=True):
+                # FIX: Reset file pointers before processing to ensure images are not sent as blank/null
+                if logo_b: logo_b.seek(0)
+                if logo_w: logo_w.seek(0)
+                if photos:
+                    for p in photos: p.seek(0)
+                    
                 st.session_state.full_assets = {"logo_black": inputs.process_for_db(logo_b), "logo_white": inputs.process_for_db(logo_w), "photos": [inputs.process_for_db(p) for p in photos[:8]], "hero_index": st.session_state.hero_index}
                 st.session_state.form_data.update(current_data); st.session_state.form_data['youtube'] = youtube
                 st.session_state.page = 2; st.rerun()
