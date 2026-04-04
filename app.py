@@ -1,5 +1,5 @@
-# VERSION: v18.7.2
-# TIMESTAMP: 2026-04-04 12:35:00 HKT
+# VERSION: v18.7.3
+# TIMESTAMP: 2026-04-04 16:30:00 HKT
 
 import streamlit as st
 import requests
@@ -18,7 +18,7 @@ except Exception as e:
 
 class FirebeanPortal:
     def __init__(self):
-        self.VERSION = "v18.7.2 (Chrome WebKit UI Fix)"
+        self.VERSION = "v18.7.3 (Performance & Logic Fixes)"
         # Robust list of stable public models to test sequentially
         self.MODELS = [
             "gemini-2.5-flash",
@@ -247,11 +247,19 @@ if __name__ == "__main__":
 
         current_data = {"client": client, "project": project, "venue": venue, "year": year, "month": month, "category": sel_cat, "what_we_do": sel_wwd, "scope": sel_sow, "open_question": open_q}
         assets_ok = st.session_state.get('mock_assets') or (bool(logo_b or logo_w) and bool(photos))
-        mc_ok = len(st.session_state.mc_questions) > 0 and any(st.session_state.get(f"ans_{i}_0", False) for i in range(15))
+        
+        # FIX FOR ISSUE 3: Precise calculation for MC diagnostics ensuring all 15 questions have an answer
+        mc_answered = 0
+        if st.session_state.mc_questions:
+            for i, q in enumerate(st.session_state.mc_questions):
+                if any(st.session_state.get(f"ans_{i}_{j}", False) for j in range(len(q.get('opts', [])))):
+                    mc_answered += 1
+        
+        mc_ok = len(st.session_state.mc_questions) > 0 and mc_answered == len(st.session_state.mc_questions)
         
         percent = logic.calculate(current_data, assets_ok, mc_ok)
         
-        # FIX FOR CHROME: Added -webkit-text-fill-color inline to ensure the red progress text forces its way through Chrome's native styling overrides
+        # Chrome fallback for red color
         st.markdown(f'<div style="position:fixed; top:25px; right:40px; z-index:1000; width:90px; height:90px; background:#fff; border-radius:50%; display:flex; align-items:center; justify-content:center; box-shadow:0 10px 30px rgba(0,0,0,0.1); border:2px solid #E2231A"><span style="font-size:22px; font-weight:900; color:#E2231A !important; -webkit-text-fill-color:#E2231A !important;">{percent}%</span></div>', unsafe_allow_html=True)
 
         st.markdown('<div class="sec-header">AI Strategic Diagnostics</div>', unsafe_allow_html=True)
@@ -266,6 +274,8 @@ if __name__ == "__main__":
                         portal.log("Diagnostics Generator Failed. Check Logs.")
             
             if st.session_state.mc_questions:
+                # Add live progress text for how many questions are answered
+                st.markdown(f"**Diagnostics Progress: {mc_answered} / {len(st.session_state.mc_questions)} Answered**")
                 for i, q in enumerate(st.session_state.mc_questions):
                     st.markdown(f"**Q{i+1}. {q.get('q', '')}**")
                     c_opts = st.columns(len(q.get('opts', [])))
