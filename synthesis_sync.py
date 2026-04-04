@@ -1,5 +1,5 @@
-# VERSION: v18.8.1
-# TIMESTAMP: 2026-04-04 20:30:00 HKT
+# VERSION: v18.8.2
+# TIMESTAMP: 2026-04-04 21:00:00 HKT
 
 import streamlit as st
 import requests
@@ -8,6 +8,14 @@ import json
 class SynthesisSync:
     def __init__(self):
         self.GAS_URL = "https://script.google.com/macros/s/AKfycbyCfSfjgYi7yQFpqBDshjYQ1Zye4VjaT-U4_0nfF9c5oYF1Pr0CrGI38Is4BS3KigIz/exec"
+
+    def get_ci(self, d, default, *keys):
+        """Case-insensitive and robust dictionary key lookup to prevent AI formatting errors."""
+        if not isinstance(d, dict): return default
+        for k, v in d.items():
+            for key in keys:
+                if k.lower() == key.lower(): return v
+        return default
 
     def generate_ai_content(self, key, active_model, form_data):
         if not active_model or active_model == "NONE":
@@ -79,23 +87,21 @@ class SynthesisSync:
         st.markdown("<br>", unsafe_allow_html=True)
 
         st.markdown('<div class="sec-header">Social Media Suite</div>', unsafe_allow_html=True)
-        st.text_area("LinkedIn (B2B Thought Leadership)", sm.get('LI', ''), height=200)
-        st.text_area("Facebook (廣泛觸及與資訊大本營)", sm.get('FB', ''), height=150)
-        st.text_area("Threads (實時客廳與觀點碰撞)", sm.get('TR', ''), height=100)
-        st.text_area("Instagram (視覺衝擊與真實幕後花絮)", sm.get('IG', ''), height=150)
+        st.text_area("LinkedIn (B2B Thought Leadership)", self.get_ci(sm, "", "LI", "LinkedIn", "li"), height=200)
+        st.text_area("Facebook (廣泛觸及與資訊大本營)", self.get_ci(sm, "", "FB", "Facebook", "fb"), height=150)
+        st.text_area("Threads (實時客廳與觀點碰撞)", self.get_ci(sm, "", "TR", "Threads", "tr"), height=100)
+        st.text_area("Instagram (視覺衝擊與真實幕後花絮)", self.get_ci(sm, "", "IG", "Instagram", "ig"), height=150)
         st.markdown("<br>", unsafe_allow_html=True)
 
         st.markdown('<div class="sec-header">Web Articles</div>', unsafe_allow_html=True)
         st.markdown("**English (EN)**")
-        st.markdown(f"{web.get('EN', '')}", unsafe_allow_html=True)
+        st.markdown(f"{self.get_ci(web, '', 'EN', 'English', 'en')}", unsafe_allow_html=True)
         st.markdown("---")
         st.markdown("**Trad. Chinese (TC)**")
-        st.markdown(f"{web.get('TC', '')}", unsafe_allow_html=True)
+        st.markdown(f"{self.get_ci(web, '', 'TC', 'Traditional Chinese', 'tc')}", unsafe_allow_html=True)
         st.markdown("---")
-        
-        # FIX FOR ISSUE 1: Added missing Japanese UI render logic
         st.markdown("**Japanese (JP)**")
-        st.markdown(f"{web.get('JP', '')}", unsafe_allow_html=True)
+        st.markdown(f"{self.get_ci(web, '', 'JP', 'Japanese', 'jp')}", unsafe_allow_html=True)
         st.markdown("---")
 
         st.markdown('<div class="sec-header">Strategic FAQ</div>', unsafe_allow_html=True)
@@ -104,14 +110,34 @@ class SynthesisSync:
     def push_to_gas(self, form, ai, assets):
         event_date = f"{form.get('year', '')} {form.get('month', '')}".strip()
         
-        # FIX FOR ISSUE 2: Normalize keys to ensure GAS strictly finds what it expects
+        web_data = ai.get("Web") or ai.get("web") or {}
+        faq_data = ai.get("FAQ") or ai.get("faq") or {}
+        sm_data = ai.get("SocialMedia") or ai.get("social_media") or ai.get("socialMedia") or {}
+
+        # EXTREME NORMALIZATION: Forces AI output to exactly match Google Apps Script Keys
         normalized_ai = {
             "Challenge": ai.get("Challenge", ""),
             "Solution": ai.get("Solution", ""),
-            "SocialMedia": ai.get("SocialMedia") or ai.get("social_media") or ai.get("socialMedia") or {},
-            "Web": ai.get("Web") or ai.get("web") or {},
-            "FAQ": ai.get("FAQ") or ai.get("faq") or {}
+            "SocialMedia": {
+                "LI": self.get_ci(sm_data, "", "LI", "LinkedIn", "li"),
+                "FB": self.get_ci(sm_data, "", "FB", "Facebook", "fb"),
+                "TR": self.get_ci(sm_data, "", "TR", "Threads", "tr"),
+                "IG": self.get_ci(sm_data, "", "IG", "Instagram", "ig")
+            },
+            "Web": {
+                "EN": self.get_ci(web_data, "", "EN", "English", "en"),
+                "TC": self.get_ci(web_data, "", "TC", "Traditional Chinese", "tc"),
+                "JP": self.get_ci(web_data, "", "JP", "Japanese", "jp")
+            },
+            "FAQ": {
+                "EN": self.get_ci(faq_data, [], "EN", "English", "en"),
+                "TC": self.get_ci(faq_data, [], "TC", "Traditional Chinese", "tc"),
+                "JP": self.get_ci(faq_data, [], "JP", "Japanese", "jp")
+            }
         }
+
+        # SAFETY FALLBACK: Guarantee assets is a valid object so GAS always triggers Folder Creation
+        safe_assets = assets if assets else {"logo_black": None, "logo_white": None, "photos": [], "hero_index": 0}
 
         payload = {
             **form,
@@ -120,7 +146,7 @@ class SynthesisSync:
             "what_we_do": ", ".join(form.get('what_we_do', [])),
             "scope": "\n".join(form.get('scope', [])),
             "ai_content": normalized_ai,
-            "assets": assets,
+            "assets": safe_assets,
             "challenge": normalized_ai["Challenge"],
             "solution": normalized_ai["Solution"]
         }
