@@ -1,5 +1,5 @@
-# VERSION: v19.0.9
-# TIMESTAMP: 2026-04-05 04:00:00 HKT
+# VERSION: v19.1.0
+# TIMESTAMP: 2026-04-05 08:30:00 HKT
 
 import streamlit as st
 import requests
@@ -38,7 +38,7 @@ class SynthesisSync:
 
         ### SOCIAL MEDIA TONE & MANNER (STRICT LOCALIZATION):
         📱 Facebook (FB): ~150 words. Friendly storytelling. Language: Trad. Chinese (HK) with Cantonese slang. Use "you" (你).
-        📸 Instagram (IG): < 150 chars. Captivating hook in first 125 chars. Tone: Authentic, "Behind-the-scenes". 20 professional hashtags.
+        📸 Instagram (IG): < 150 chars. Captivating hook in first 125 chars. Tone: Authentic, "Behind-the-scenes". Language: Traditional Chinese (HK) with Cantonese slang. 20 professional hashtags.
         🧵 Threads (TR): < 50 chars. Humorous/Sharp.地道廣東話/網絡用語. Start with a question or anti-traditional view.
         💼 LinkedIn (LI): 150-300 words. Authoritative B2B English. Emphasis on ROI and industry leadership.
 
@@ -97,11 +97,12 @@ class SynthesisSync:
         st.text_area("Creative Solution (ROI Summary)", gc.get('Solution', ''), height=80)
 
         st.markdown('<div class="sec-header">Social Media Suite (Localized Tone)</div>', unsafe_allow_html=True)
-        t_li, t_fb, t_tr, t_ig = st.tabs(["LinkedIn", "Facebook (HK)", "Threads (HK)", "Instagram (HK)"])
+        # Tab names explicitly upgraded to highlight Cantonese requirement
+        t_li, t_fb, t_tr, t_ig = st.tabs(["LinkedIn", "Facebook (HK)", "Threads (HK)", "Instagram (HK Cantonese)"])
         with t_li: st.text_area("LinkedIn (B2B)", self.get_ci(sm, "", "LI", "linkedin"), height=250)
         with t_fb: st.text_area("Facebook (Story)", self.get_ci(sm, "", "FB", "facebook"), height=200)
         with t_tr: st.text_area("Threads (Slang)", self.get_ci(sm, "", "TR", "threads"), height=100)
-        with t_ig: st.text_area("Instagram (BTS)", self.get_ci(sm, "", "IG", "instagram"), height=200)
+        with t_ig: st.text_area("Instagram (BTS & Cantonese)", self.get_ci(sm, "", "IG", "instagram"), height=200)
 
         st.markdown('<div class="sec-header">Web Magazine Feature (500 Words)</div>', unsafe_allow_html=True)
         for lang in ['EN', 'TC', 'JP']:
@@ -122,7 +123,7 @@ class SynthesisSync:
         """Unified normalization to ensure perfect mapping to GAS Columns."""
         event_date = f"{form.get('year', '')} {form.get('month', '')}".strip()
         
-        # NEW: Construct sort_date in YYYY-MM-DD format for database sorting
+        # Construct sort_date in YYYY-MM-DD format for database sorting
         month_map = {
             "JAN": "01", "FEB": "02", "MAR": "03", "APR": "04",
             "MAY": "05", "JUN": "06", "JUL": "07", "AUG": "08",
