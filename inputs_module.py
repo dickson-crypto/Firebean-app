@@ -1,5 +1,5 @@
-# VERSION: v18.9.3
-# TIMESTAMP: 2026-04-05 10:45:00 HKT
+# VERSION: v18.9.6 (Inline Logo Previews)
+# TIMESTAMP: 2026-04-06 06:45:00 HKT
 
 import streamlit as st
 from PIL import Image, ImageOps
@@ -37,10 +37,27 @@ class InputEngine:
     def render_assets(self):
         st.markdown('<div class="sec-header">Visual Assets</div>', unsafe_allow_html=True)
         a1, a2, a3 = st.columns([1, 1, 2])
-        # Added SVG support to the file uploaders
+        
         lb = a1.file_uploader("Logo Black", key="l_black", type=['png', 'jpg', 'jpeg', 'svg'])
         lw = a2.file_uploader("Logo White", key="l_white", type=['png', 'jpg', 'jpeg', 'svg'])
         ph = a3.file_uploader("Gallery (Max 8)", accept_multiple_files=True, key="p_gallery", type=['png', 'jpg', 'jpeg'])
+        
+        # --- LOGO INLINE PREVIEWS ---
+        with a1:
+            if lb:
+                # Use getvalue() to avoid messing with the file stream pointer for PIL later
+                b64 = base64.b64encode(lb.getvalue()).decode('utf-8')
+                mime = "image/svg+xml" if lb.name.lower().endswith('.svg') else f"image/png"
+                st.markdown(f'<img src="data:{mime};base64,{b64}" style="max-height: 60px; object-fit: contain; margin-top: 5px; margin-bottom: 15px;">', unsafe_allow_html=True)
+
+        with a2:
+            if lw:
+                b64 = base64.b64encode(lw.getvalue()).decode('utf-8')
+                mime = "image/svg+xml" if lw.name.lower().endswith('.svg') else f"image/png"
+                st.markdown(f'<div style="background-color: #2A2A2A; padding: 10px; border-radius: 8px; display: inline-block; margin-top: 5px; margin-bottom: 15px;">'
+                            f'<img src="data:{mime};base64,{b64}" style="max-height: 60px; object-fit: contain;">'
+                            f'</div>', unsafe_allow_html=True)
+        # -----------------------------
         
         encoded = []
         if ph:
@@ -105,6 +122,5 @@ class InputEngine:
                 return {"data": base64.b64encode(buf.getvalue()).decode('utf-8'), "mimeType": "image/jpeg", "ext": "jpg"}
                 
         except Exception as e:
-            # Failsafe: If an image is corrupted, it gracefully skips it rather than crashing the Master Sync Payload
             print(f"Error processing visual asset: {e}")
             return None
