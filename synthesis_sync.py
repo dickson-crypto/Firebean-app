@@ -1,5 +1,5 @@
-# VERSION: v19.0.8
-# TIMESTAMP: 2026-04-05 03:00:00 HKT
+# VERSION: v19.0.9
+# TIMESTAMP: 2026-04-05 04:00:00 HKT
 
 import streamlit as st
 import requests
@@ -33,7 +33,7 @@ class SynthesisSync:
         1. The Thought Leadership Angle: Focus on industry shifts, the visionary blueprint, and why it matters.
         2. The Contrarian / Disruptor Angle: Start with a bold, counter-intuitive hook challenging industry norms.
         3. The Human-Centric / Emotional Angle: Focus on authentic human connection and relief from burnout/stress.
-        4. The Analytical Problem-Solver (PAS): Break down the pain point, agitate it, and reveal the cure.
+        4. The Analytical Problem-Solver (PAS): Break down the pain point, agitate it, and reveal the solution.
         5. The Insider / Behind-the-Scenes Angle: Exclusive VIP "fly-on-the-wall" perspective.
 
         ### SOCIAL MEDIA TONE & MANNER (STRICT LOCALIZATION):
@@ -121,6 +121,18 @@ class SynthesisSync:
     def push_to_gas(self, form, ai, assets):
         """Unified normalization to ensure perfect mapping to GAS Columns."""
         event_date = f"{form.get('year', '')} {form.get('month', '')}".strip()
+        
+        # NEW: Construct sort_date in YYYY-MM-DD format for database sorting
+        month_map = {
+            "JAN": "01", "FEB": "02", "MAR": "03", "APR": "04",
+            "MAY": "05", "JUN": "06", "JUL": "07", "AUG": "08",
+            "SEP": "09", "OCT": "10", "NOV": "11", "DEC": "12"
+        }
+        yr = form.get('year', '')
+        mo_str = form.get('month', '').upper()
+        mo_num = month_map.get(mo_str, "01")
+        sort_date = f"{yr}-{mo_num}-01" if yr else ""
+
         web_data = ai.get("Web") or ai.get("web") or {}
         faq_data = ai.get("FAQ") or ai.get("faq") or {}
         sm_data = ai.get("SocialMedia") or ai.get("social_media") or {}
@@ -149,6 +161,7 @@ class SynthesisSync:
         payload = {
             **form,
             "date": event_date,
+            "sort_date": sort_date, # Pass the YYYY-MM-DD string
             "category": ", ".join(form.get('category', [])),
             "what_we_do": ", ".join(form.get('what_we_do', [])),
             "scope": "\n".join(form.get('scope', [])),
