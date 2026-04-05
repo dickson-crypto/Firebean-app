@@ -1,5 +1,5 @@
-# VERSION: v18.8.4 (Dark Mode Asset & Circle Fix)
-# TIMESTAMP: 2026-04-06 07:30:00 HKT
+# VERSION: v18.8.5 (Button Hover & Tooltip Fix)
+# TIMESTAMP: 2026-04-06 07:45:00 HKT
 
 import streamlit as st
 import requests
@@ -18,7 +18,7 @@ except Exception as e:
 
 class FirebeanPortal:
     def __init__(self):
-        self.VERSION = "v18.8.4 (Production Release)"
+        self.VERSION = "v18.8.5 (Production Release)"
         self.MODELS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
         self.init_session()
         self.apply_ui_theme()
@@ -163,7 +163,22 @@ class FirebeanPortal:
                 .terminal-box {{ background: #000; color: #FFFFFF !important; font-family: 'Courier New', monospace; padding: 15px; border-radius: 8px; font-size: 11px; line-height: 1.5; border-left: 4px solid {S_RED}; height: 180px; overflow-y: auto; text-shadow: 0 0 1px rgba(255,255,255,0.2); }}
                 .terminal-box p {{ color: #FFFFFF !important; -webkit-text-fill-color: #FFFFFF !important; margin: 0; }}
                 
-                button[kind="primary"] {{ background-color: {S_RED} !important; color: white !important; border: 1px solid {S_RED} !important; height: 45px !important; border-radius: 8px !important; display: flex !important; justify-content: center !important; align-items: center !important; }}
+                /* PRIMARY BUTTONS: Adding Transition & Hover Effect */
+                button[kind="primary"] {{ 
+                    background-color: {S_RED} !important; 
+                    color: white !important; 
+                    border: 1px solid {S_RED} !important; 
+                    height: 45px !important; 
+                    border-radius: 8px !important; 
+                    display: flex !important; 
+                    justify-content: center !important; 
+                    align-items: center !important; 
+                    transition: background-color 0.2s ease, border-color 0.2s ease !important;
+                }}
+                button[kind="primary"]:hover {{
+                    background-color: #C81E16 !important; /* Darker Firebean Red */
+                    border-color: #C81E16 !important;
+                }}
                 button[kind="primary"] p {{ font-size: 14px !important; font-weight: 600 !important; }}
                 
                 [data-testid="stHorizontalBlock"] {{ align-items: center !important; }}
@@ -207,7 +222,8 @@ if __name__ == "__main__":
                 # Primary button acting as a status indicator
                 st.button(f"○ STATUS: {status_text}", key="btn_status", type="primary", use_container_width=True)
             with b2:
-                if st.button("↻ HANDSHAKE", key="header_handshake", type="primary", help="Retry connection", use_container_width=True):
+                # Removed 'help="Retry connection"' to kill the tooltip
+                if st.button("↻ HANDSHAKE", key="header_handshake", type="primary", use_container_width=True):
                     portal.log("Manual Handshake Triggered.")
                     st.session_state.ai_status = "🟡 INITIALIZING"; st.rerun()
             with b3:
