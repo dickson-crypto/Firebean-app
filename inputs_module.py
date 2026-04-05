@@ -1,12 +1,12 @@
-# VERSION: v18.9.1
-# TIMESTAMP: 2026-04-05 03:10:00 HKT
+# VERSION: v18.9.3
+# TIMESTAMP: 2026-04-05 10:45:00 HKT
 
 import streamlit as st
 from PIL import Image, ImageOps
 import io
 import base64
 
-class InputEngine:
+class InputEngine: 
     def __init__(self):
         self.SOW = ["Concept Development", "Branding Strategy", "PR Consulting", "Media Relations", "Theme Design", "Visual Identity", "UI/UX Design", "Social Media Content", "Influencer Seeding", "Video Production", "Motion Graphics", "Interactive Installation", "Event Planning", "Event Production", "RSVP Management", "Talent Management", "On-site Operation", "Technical Support"]
 
@@ -37,9 +37,10 @@ class InputEngine:
     def render_assets(self):
         st.markdown('<div class="sec-header">Visual Assets</div>', unsafe_allow_html=True)
         a1, a2, a3 = st.columns([1, 1, 2])
-        lb = a1.file_uploader("Logo Black", key="l_black")
-        lw = a2.file_uploader("Logo White", key="l_white")
-        ph = a3.file_uploader("Gallery (Max 8)", accept_multiple_files=True, key="p_gallery")
+        # Added SVG support to the file uploaders
+        lb = a1.file_uploader("Logo Black", key="l_black", type=['png', 'jpg', 'jpeg', 'svg'])
+        lw = a2.file_uploader("Logo White", key="l_white", type=['png', 'jpg', 'jpeg', 'svg'])
+        ph = a3.file_uploader("Gallery (Max 8)", accept_multiple_files=True, key="p_gallery", type=['png', 'jpg', 'jpeg'])
         
         encoded = []
         if ph:
@@ -60,8 +61,50 @@ class InputEngine:
                     encoded.append(b64)
         return lb, lw, ph, encoded
 
-    def process_for_db(self, file):
+    def process_for_db(self, file, is_logo=False):
+        """Processes images. Recognizes Logos vs Photos to preserve SVGs and Transparency."""
         if not file: return None
-        img = Image.open(file); img = ImageOps.exif_transpose(img); img.thumbnail((1200, 1200))
-        buf = io.BytesIO(); img.convert('RGB').save(buf, format='JPEG', quality=75)
-        return {"data": base64.b64encode(buf.getvalue()).decode('utf-8'), "mimeType": "image/jpeg", "ext": "jpg"}
+        
+        try:
+            # 1. Direct SVG Support (Bypass PIL entirely to keep it a pure vector graphic)
+            if file.name.lower().endswith('.svg') or file.type == 'image/svg+xml':
+                return {
+                    "data": base64.b64encode(file.getvalue()).decode('utf-8'),
+                    "mimeType": "image/svg+xml",
+                    "ext": "svg"
+                }
+                
+            # 2. Standard Raster Image Processing
+            img = Image.open(file)
+            img = ImageOps.exif_transpose(img)
+            
+            if is_logo:
+                # LOGOS: Fix to 800x400 Max bounds and preserve PNG transparency
+                img.thumbnail((800, 400), Image.Resampling.LANCZOS)
+                buf = io.BytesIO()
+                # Ensure it keeps Alpha (transparency) channel
+                if img.mode != 'RGBA':
+                    img = img.convert('RGBA')
+                img.save(buf, format='PNG')
+                return {"data": base64.b64encode(buf.getvalue()).decode('utf-8'), "mimeType": "image/png", "ext": "png"}
+            else:
+                # PHOTOS: Compress to 1200x1200 and remove transparency to save as JPEG
+                img.thumbnail((1200, 1200), Image.Resampling.LANCZOS)
+                buf = io.BytesIO()
+                
+                # If photo was PNG with transparency, fill background with white to prevent black boxes
+                if img.mode in ('RGBA', 'P'):
+                    bg = Image.new("RGB", img.size, (255, 255, 255))
+                    alpha = img.split()[3] if img.mode == 'RGBA' else img.convert('RGBA').split()[3]
+                    bg.paste(img, mask=alpha)
+                    img = bg
+                else:
+                    img = img.convert('RGB')
+                    
+                img.save(buf, format='JPEG', quality=75)
+                return {"data": base64.b64encode(buf.getvalue()).decode('utf-8'), "mimeType": "image/jpeg", "ext": "jpg"}
+                
+        except Exception as e:
+            # Failsafe: If an image is corrupted, it gracefully skips it rather than crashing the Master Sync Payload
+            print(f"Error processing visual asset: {e}")
+            return None
