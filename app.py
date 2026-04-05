@@ -1,5 +1,5 @@
-# VERSION: v18.8.2 (Frontend UI Retouch)
-# TIMESTAMP: 2026-04-06 07:00:00 HKT
+# VERSION: v18.8.3 (Dark Mode UI Fix)
+# TIMESTAMP: 2026-04-06 07:15:00 HKT
 
 import streamlit as st
 import requests
@@ -18,7 +18,7 @@ except Exception as e:
 
 class FirebeanPortal:
     def __init__(self):
-        self.VERSION = "v18.8.2 (Production Release)"
+        self.VERSION = "v18.8.3 (Production Release)"
         self.MODELS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
         self.init_session()
         self.apply_ui_theme()
@@ -107,16 +107,53 @@ class FirebeanPortal:
                 }}
                 
                 /* CHROME & SAFARI TEXT BOX FIX */
-                .stTextInput input, .stTextArea textarea, .stSelectbox div[data-baseweb="select"] {{
+                .stTextInput input, .stTextArea textarea {{
                     background-color: {dropzone_bg} !important;
                     border: 1px solid {dropzone_border} !important;
                     color: {txt} !important;
                     -webkit-text-fill-color: {txt} !important;
                 }}
                 
-                .stApp [data-testid="stFileUploadDropzone"] {{ background-color: {dropzone_bg} !important; border: 1px dashed {dropzone_border} !important; }}
-                .stApp [data-testid="stFileUploadDropzone"] div, .stApp [data-testid="stFileUploadDropzone"] span, .stApp [data-testid="stFileUploadDropzone"] small, .stApp [data-testid="stFileUploadDropzone"] p, .stApp [data-testid="stFileUploadDropzone"] button {{ color: {txt} !important; -webkit-text-fill-color: {txt} !important; }}
-                .stApp [data-testid="stFileUploadDropzone"] svg {{ fill: {txt} !important; }}
+                /* SELECTBOX / DROPDOWN FIX */
+                div[data-baseweb="select"] > div {{
+                    background-color: {dropzone_bg} !important;
+                    border: 1px solid {dropzone_border} !important;
+                    color: {txt} !important;
+                }}
+                div[data-baseweb="select"] span {{
+                    color: {txt} !important;
+                    -webkit-text-fill-color: {txt} !important;
+                }}
+                /* Fix for the pop-up dropdown list */
+                [data-baseweb="popover"] ul {{
+                    background-color: {dropzone_bg} !important;
+                    border: 1px solid {dropzone_border} !important;
+                }}
+                [data-baseweb="popover"] li {{
+                    color: {txt} !important;
+                }}
+                [data-baseweb="popover"] li:hover {{
+                    background-color: {S_RED} !important;
+                    color: #FFFFFF !important;
+                }}
+                
+                /* FILE UPLOADER THUMBNAIL BOX FIX */
+                [data-testid="stFileUploadDropzone"] {{ 
+                    background-color: {dropzone_bg} !important; 
+                    border: 1px dashed {dropzone_border} !important; 
+                }}
+                [data-testid="stFileUploadDropzone"] div, 
+                [data-testid="stFileUploadDropzone"] span, 
+                [data-testid="stFileUploadDropzone"] small, 
+                [data-testid="stFileUploadDropzone"] p, 
+                [data-testid="stFileUploadDropzone"] button {{ 
+                    color: {txt} !important; 
+                    -webkit-text-fill-color: {txt} !important; 
+                }}
+                [data-testid="stFileUploadDropzone"] svg {{ 
+                    fill: {txt} !important; 
+                }}
+                
                 div[data-testid="stCheckbox"] label p {{ color: {txt} !important; -webkit-text-fill-color: {txt} !important; font-weight: 600 !important; }}
                 .hero-title {{ font-size: 84px !important; font-weight: 900 !important; line-height: 0.85 !important; letter-spacing: -4px !important; margin: 0 !important; color: {txt} !important; -webkit-text-fill-color: {txt} !important; }}
                 .sec-header {{ font-size: 16px; font-weight: 900; color: {S_RED} !important; -webkit-text-fill-color: {S_RED} !important; text-transform: uppercase; letter-spacing: 2px; margin-top: 25px; }}
