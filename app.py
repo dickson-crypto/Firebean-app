@@ -1,9 +1,10 @@
-# VERSION: v18.8.5 (Button Hover & Tooltip Fix)
-# TIMESTAMP: 2026-04-06 07:45:00 HKT
+# VERSION: v18.8.6 (Immersive Loading Overlays)
+# TIMESTAMP: 2026-04-06 08:30:00 HKT
 
 import streamlit as st
 import requests
 import json
+import time
 from datetime import datetime
 
 # Import modular engines from your GitHub repository
@@ -18,10 +19,23 @@ except Exception as e:
 
 class FirebeanPortal:
     def __init__(self):
-        self.VERSION = "v18.8.5 (Production Release)"
+        self.VERSION = "v18.8.6 (Production Release)"
         self.MODELS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
         self.init_session()
         self.apply_ui_theme()
+        
+        # Clean line-art SVG icons for the Loading Overlays
+        self.ICONS = {
+            "PHOTO": '<svg width="120" height="120" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>',
+            "LIST": '<svg width="120" height="120" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>',
+            "BRAIN": '<svg width="120" height="120" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2" ry="2"></rect><rect x="9" y="9" width="6" height="6"></rect><line x1="9" y1="1" x2="9" y2="4"></line><line x1="15" y1="1" x2="15" y2="4"></line><line x1="9" y1="20" x2="9" y2="23"></line><line x1="15" y1="20" x2="15" y2="23"></line><line x1="20" y1="9" x2="23" y2="9"></line><line x1="20" y1="14" x2="23" y2="14"></line><line x1="1" y1="9" x2="4" y2="9"></line><line x1="1" y1="14" x2="4" y2="14"></line></svg>',
+            "TARGET": '<svg width="120" height="120" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="6"></circle><circle cx="12" cy="12" r="2"></circle></svg>',
+            "SOCIAL": '<svg width="120" height="120" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect><line x1="12" y1="18" x2="12.01" y2="18"></line></svg>',
+            "WEB": '<svg width="120" height="120" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>',
+            "LAYERS": '<svg width="120" height="120" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>',
+            "CLOUD": '<svg width="120" height="120" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"></path></svg>',
+            "DB": '<svg width="120" height="120" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path></svg>'
+        }
 
     def init_session(self):
         if 'page' not in st.session_state: st.session_state.page = 1
@@ -91,6 +105,12 @@ class FirebeanPortal:
             <style>
                 @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;700;900&display=swap');
                 .stApp {{ background-color: {bg} !important; color: {txt} !important; font-family: 'Montserrat', sans-serif; }}
+                
+                @keyframes redPulse {{
+                    0% {{ box-shadow: 0 0 0 0 rgba(226, 35, 26, 0.7); }}
+                    70% {{ box-shadow: 0 0 0 50px rgba(226, 35, 26, 0); }}
+                    100% {{ box-shadow: 0 0 0 0 rgba(226, 35, 26, 0); }}
+                }}
                 
                 [data-testid="stMarkdownContainer"] p, [data-testid="stMarkdownContainer"] h1, [data-testid="stMarkdownContainer"] h2, [data-testid="stMarkdownContainer"] h3, [data-testid="stWidgetLabel"] p, [data-testid="stWidgetLabel"] span, [data-baseweb="checkbox"] label p {{ color: {txt} !important; -webkit-text-fill-color: {txt} !important; }}
                 .stApp p, .stApp label, .stApp span, .stApp div, .stApp h1, .stApp h2, .stApp h3 {{ color: {txt}; }}
@@ -191,6 +211,31 @@ class FirebeanPortal:
         ts = datetime.now().strftime("%H:%M:%S")
         st.session_state.terminal_logs.append(f"[{ts}] {msg}")
         if len(st.session_state.terminal_logs) > 12: st.session_state.terminal_logs.pop(0)
+        
+    def run_with_overlay(self, steps, task_func, *args, **kwargs):
+        """Creates the immersive red circle popup overlay and steps through the loading phases."""
+        overlay = st.empty()
+        
+        for i, (icon, text) in enumerate(steps):
+            html = f"""
+            <div style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(18,18,18,0.92); z-index: 999999; display: flex; justify-content: center; align-items: center; backdrop-filter: blur(12px);">
+                <div style="width: 700px; height: 700px; background: #E2231A; border-radius: 50%; display: flex; flex-direction: column; justify-content: center; align-items: center; box-shadow: 0 0 100px rgba(226,35,26,0.6); text-align: center; padding: 40px; animation: redPulse 2s infinite;">
+                    <div style="margin-bottom: 25px;">{icon}</div>
+                    <h1 style="font-size: 72px; font-weight: 900; color: white !important; line-height: 0.9; margin: 0; letter-spacing: -3px; text-transform: uppercase;">{text}</h1>
+                </div>
+            </div>
+            """
+            overlay.markdown(html, unsafe_allow_html=True)
+            # Pause to show the user the step visually before proceeding
+            if i < len(steps) - 1:
+                time.sleep(1.2)
+                
+        # While the final overlay screen is showing, execute the heavy blocking task
+        result = task_func(*args, **kwargs)
+        
+        # Clear overlay once the task completes
+        overlay.empty()
+        return result
 
 if __name__ == "__main__":
     st.set_page_config(page_title="Firebean Portal", page_icon="🔥", layout="wide")
@@ -259,11 +304,17 @@ if __name__ == "__main__":
         st.markdown('<div class="sec-header">AI Strategic Diagnostics</div>', unsafe_allow_html=True)
         if percent >= 90:
             if st.button("Analysis photo for 15 MC", type="primary", use_container_width=True):
-                with st.status(f"Analyzing with {st.session_state.active_model}..."):
-                    res = ai_mc.get_questions(st.session_state.apiKey, st.session_state.active_model, project, open_q, encoded_photos)
-                    if res: 
-                        st.session_state.mc_questions = res; st.rerun()
-                    else: portal.log("Diagnostics Generator Failed. Check Logs.")
+                # IMMERSIVE OVERLAY 1: AI Diagnostics
+                loading_steps = [
+                    (portal.ICONS["PHOTO"], "ANALYZING<br>PHOTOS"),
+                    (portal.ICONS["LIST"], "SCANNING<br>S.O.W."),
+                    (portal.ICONS["BRAIN"], "THINKING<br>QUESTIONS")
+                ]
+                res = portal.run_with_overlay(loading_steps, ai_mc.get_questions, st.session_state.apiKey, st.session_state.active_model, project, open_q, encoded_photos)
+                
+                if res: 
+                    st.session_state.mc_questions = res; st.rerun()
+                else: portal.log("Diagnostics Generator Failed. Check Logs.")
             
             if st.session_state.mc_questions:
                 st.markdown(f"**Diagnostics Progress: {mc_answered} / {len(st.session_state.mc_questions)} Answered**")
@@ -298,11 +349,17 @@ if __name__ == "__main__":
         if st.button("← BACK"): st.session_state.page = 1; st.rerun()
         
         if not st.session_state.get('generated_content'):
-            with st.status(f"Synthesizing Content with {st.session_state.active_model}..."):
-                res = sync.generate_ai_content(st.session_state.apiKey, st.session_state.active_model, st.session_state.form_data)
-                if res: 
-                    st.session_state.generated_content = res; st.rerun()
-                else: st.error("Synthesis failed. Please try again.")
+            # IMMERSIVE OVERLAY 2: Generating Content
+            loading_steps = [
+                (portal.ICONS["TARGET"], "READING<br>STRATEGY"),
+                (portal.ICONS["SOCIAL"], "DRAFTING<br>CONTENT"),
+                (portal.ICONS["WEB"], "WRITING<br>WEB & FAQ")
+            ]
+            res = portal.run_with_overlay(loading_steps, sync.generate_ai_content, st.session_state.apiKey, st.session_state.active_model, st.session_state.form_data)
+            
+            if res: 
+                st.session_state.generated_content = res; st.rerun()
+            else: st.error("Synthesis failed. Please try again.")
         
         if st.session_state.generated_content:
             st.markdown('<div class="sec-header">Logo Previews</div>', unsafe_allow_html=True)
@@ -330,7 +387,14 @@ if __name__ == "__main__":
             sync.render_ui(st.session_state.generated_content)
             
             if st.button("🚀 EXECUTE MASTER SYNC", type="primary", use_container_width=True):
-                with st.status("Syncing to Master DB..."):
-                    if sync.push_to_gas(st.session_state.form_data, st.session_state.generated_content, st.session_state.get('full_assets')):
-                        st.success("SYNC SUCCESSFUL"); st.session_state.clear(); st.rerun()
-                    else: st.error("GAS Synchronization Failed.")
+                # IMMERSIVE OVERLAY 3: Master DB Sync
+                loading_steps = [
+                    (portal.ICONS["LAYERS"], "ENCODING<br>ASSETS"),
+                    (portal.ICONS["CLOUD"], "OPENING<br>DRIVE API"),
+                    (portal.ICONS["DB"], "WRITING TO<br>MASTER DB")
+                ]
+                success = portal.run_with_overlay(loading_steps, sync.push_to_gas, st.session_state.form_data, st.session_state.generated_content, st.session_state.get('full_assets'))
+                
+                if success:
+                    st.success("SYNC SUCCESSFUL"); st.session_state.clear(); st.rerun()
+                else: st.error("GAS Synchronization Failed.")
