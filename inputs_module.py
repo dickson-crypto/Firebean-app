@@ -1,5 +1,5 @@
-# VERSION: v18.9.6 (Inline Logo Previews)
-# TIMESTAMP: 2026-04-06 06:45:00 HKT
+# VERSION: v18.9.7 (Frontend UI Retouch)
+# TIMESTAMP: 2026-04-06 07:00:00 HKT
 
 import streamlit as st
 from PIL import Image, ImageOps
@@ -23,13 +23,20 @@ class InputEngine:
 
     def render_framework(self):
         st.markdown('<div class="sec-header">Strategic Framework</div>', unsafe_allow_html=True)
+        
+        # Added explicit subtitle for Categories
+        st.markdown('<p style="font-size:14px; font-weight:700; opacity:0.8; margin-bottom:8px;">WHO WE HELP</p>', unsafe_allow_html=True)
         cat_opts = ["GOVERNMENT & PUBLIC SECTOR", "LIFESTYLE & CONSUMER", "F&B & HOSPITALITY", "MALLS & VENUES"]
         c_cols = st.columns(4)
         sel_cat = [o for i, o in enumerate(cat_opts) if c_cols[i%4].checkbox(o, key=f"c_{o}", value=(o in st.session_state.form_data.get("category", [])))]
+        
+        # Added explicit subtitle for Actions
+        st.markdown('<p style="font-size:14px; font-weight:700; opacity:0.8; margin-top:15px; margin-bottom:8px;">WHAT WE DO</p>', unsafe_allow_html=True)
         wwd_opts = ["ROVING EXHIBITIONS", "SOCIAL & CONTENT", "INTERACTIVE & TECH", "PR & MEDIA", "EVENTS & CEREMONIES"]
         w_cols = st.columns(3)
         sel_wwd = [o for i, o in enumerate(wwd_opts) if w_cols[i%3].checkbox(o, key=f"w_{o}", value=(o in st.session_state.form_data.get("what_we_do", [])))]
-        st.markdown('<div class="sec-header">Scope of Work</div>', unsafe_allow_html=True)
+        
+        st.markdown('<div class="sec-header" style="margin-top: 25px;">Scope of Work</div>', unsafe_allow_html=True)
         s_cols = st.columns(3)
         sel_sow = [o for i, o in enumerate(self.SOW) if s_cols[i%3].checkbox(o, key=f"s_{o}", value=(o in st.session_state.form_data.get("scope", [])))]
         return sel_cat, sel_wwd, sel_sow
