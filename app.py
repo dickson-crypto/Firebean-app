@@ -1,5 +1,5 @@
-# VERSION: v18.8.3 (Dark Mode UI Fix)
-# TIMESTAMP: 2026-04-06 07:15:00 HKT
+# VERSION: v18.8.4 (Dark Mode Asset & Circle Fix)
+# TIMESTAMP: 2026-04-06 07:30:00 HKT
 
 import streamlit as st
 import requests
@@ -18,7 +18,7 @@ except Exception as e:
 
 class FirebeanPortal:
     def __init__(self):
-        self.VERSION = "v18.8.3 (Production Release)"
+        self.VERSION = "v18.8.4 (Production Release)"
         self.MODELS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
         self.init_session()
         self.apply_ui_theme()
@@ -137,7 +137,10 @@ class FirebeanPortal:
                     color: #FFFFFF !important;
                 }}
                 
-                /* FILE UPLOADER THUMBNAIL BOX FIX */
+                /* FILE UPLOADER THUMBNAIL BOX FIX (Targeting inner section) */
+                [data-testid="stFileUploader"] section {{
+                    background-color: {dropzone_bg} !important;
+                }}
                 [data-testid="stFileUploadDropzone"] {{ 
                     background-color: {dropzone_bg} !important; 
                     border: 1px dashed {dropzone_border} !important; 
@@ -231,7 +234,11 @@ if __name__ == "__main__":
                     mc_answered += 1
         mc_ok = len(st.session_state.mc_questions) > 0 and mc_answered == len(st.session_state.mc_questions)
         percent = logic.calculate(current_data, assets_ok, mc_ok)
-        st.markdown(f'<div style="position:fixed; top:25px; right:40px; z-index:1000; width:90px; height:90px; background:#fff; border-radius:50%; display:flex; align-items:center; justify-content:center; box-shadow:0 10px 30px rgba(0,0,0,0.1); border:2px solid #E2231A"><span style="font-size:22px; font-weight:900; color:#E2231A !important; -webkit-text-fill-color:#E2231A !important;">{percent}%</span></div>', unsafe_allow_html=True)
+        
+        # Adaptive Circle Background based on Dark Mode state
+        is_dark = st.session_state.get('dark_mode', False)
+        circle_bg = "#2A2A2A" if is_dark else "#FFFFFF"
+        st.markdown(f'<div style="position:fixed; top:25px; right:40px; z-index:1000; width:90px; height:90px; background:{circle_bg}; border-radius:50%; display:flex; align-items:center; justify-content:center; box-shadow:0 10px 30px rgba(0,0,0,0.1); border:2px solid #E2231A"><span style="font-size:22px; font-weight:900; color:#E2231A !important; -webkit-text-fill-color:#E2231A !important;">{percent}%</span></div>', unsafe_allow_html=True)
 
         st.markdown('<div class="sec-header">AI Strategic Diagnostics</div>', unsafe_allow_html=True)
         if percent >= 90:
