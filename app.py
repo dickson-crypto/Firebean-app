@@ -189,6 +189,18 @@ class FirebeanPortal:
                 
                 .status-badge {{ background: {S_RED}; color: white; padding: 8px 15px; border-radius: 4px; font-size: 10px; font-weight: 900; display: inline-block; }}
                 
+                /* Force primary buttons to be Firebean Red */
+                button[kind="primary"] {{
+                    background-color: {S_RED} !important;
+                    color: white !important;
+                    border: 1px solid {S_RED} !important;
+                    height: 45px !important;
+                }}
+                /* Vertically center the header columns */
+                [data-testid="stHorizontalBlock"] {{
+                    align-items: center !important;
+                }}
+                
                 [data-testid="stSidebar"] {{display: none;}}
                 header, footer {{visibility: hidden;}}
             </style>
@@ -213,26 +225,24 @@ if __name__ == "__main__":
 
     if st.session_state.page == 1:
         # Header Section
-        h1, h2, h3, h4 = st.columns([1.2, 4.5, 1.8, 1.8])
+        h1, h2, h3 = st.columns([1.2, 3.5, 5.3])
         with h1: st.image("https://raw.githubusercontent.com/dickson-crypto/Firebean-app/main/Firebeanlogo2026.png", width=120)
         with h2: 
             st.markdown('<h1 class="hero-title">Project<br>Collector.</h1>', unsafe_allow_html=True)
-            stat_col, hand_col = st.columns([2.5, 1.5])
+        
+        with h3:
+            st.write("<div style='height:40px'></div>", unsafe_allow_html=True)
+            stat_col, hand_col, mode_col = st.columns([2.5, 2, 2])
             with stat_col:
-                st.markdown(f'<div class="status-badge">AI STATUS: {st.session_state.ai_status}</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="status-badge" style="margin-top:8px;">AI STATUS: {st.session_state.ai_status}</div>', unsafe_allow_html=True)
             with hand_col:
-                if st.button("⚡ HANDSHAKE", key="header_handshake", help="Retry connection", use_container_width=True):
+                if st.button("⚡ HANDSHAKE", key="header_handshake", type="primary", help="Retry connection", use_container_width=True):
                     portal.log("Manual Handshake Triggered.")
                     st.session_state.ai_status = "🟡 INITIALIZING"
                     st.rerun()
-        
-        with h3:
-            st.write("<div style='height:35px'></div>", unsafe_allow_html=True)
-            
-        with h4:
-            st.write("<div style='height:35px'></div>", unsafe_allow_html=True)
-            if st.button("🌓 MODE", use_container_width=True):
-                st.session_state.dark_mode = not st.session_state.get('dark_mode', False); st.rerun()
+            with mode_col:
+                if st.button("🌓 MODE", type="primary", use_container_width=True):
+                    st.session_state.dark_mode = not st.session_state.get('dark_mode', False); st.rerun()
 
         st.markdown('<hr style="border:0; border-bottom:1px dotted #555">', unsafe_allow_html=True)
 
@@ -264,7 +274,7 @@ if __name__ == "__main__":
 
         st.markdown('<div class="sec-header">AI Strategic Diagnostics</div>', unsafe_allow_html=True)
         if percent >= 90:
-            if st.button("📝 GENERATE STRATEGIC HYPOTHESIS", use_container_width=True):
+            if st.button("Analysis photo for 15 MC", type="primary", use_container_width=True):
                 with st.status(f"Analyzing with {st.session_state.active_model}..."):
                     res = ai_mc.get_questions(st.session_state.apiKey, st.session_state.active_model, project, open_q, encoded_photos)
                     if res: 
@@ -312,6 +322,29 @@ if __name__ == "__main__":
                     st.error("Synthesis failed. Please try again.")
         
         if st.session_state.generated_content:
+            st.markdown('<div class="sec-header">Logo Previews</div>', unsafe_allow_html=True)
+            logo_col1, logo_col2 = st.columns(2)
+            
+            with logo_col1:
+                st.markdown("**Logo Black**")
+                if st.session_state.full_assets and st.session_state.full_assets.get("logo_black"):
+                    b64_black = st.session_state.full_assets["logo_black"]["data"]
+                    st.markdown(f'<img src="data:image/jpeg;base64,{b64_black}" style="max-height: 80px; object-fit: contain;">', unsafe_allow_html=True)
+                else:
+                    st.caption("No Black Logo uploaded")
+                    
+            with logo_col2:
+                st.markdown("**Logo White**")
+                if st.session_state.full_assets and st.session_state.full_assets.get("logo_white"):
+                    b64_white = st.session_state.full_assets["logo_white"]["data"]
+                    st.markdown(f'<div style="background-color: #333; padding: 10px; border-radius: 8px; display: inline-block;">'
+                                f'<img src="data:image/jpeg;base64,{b64_white}" style="max-height: 80px; object-fit: contain;">'
+                                f'</div>', unsafe_allow_html=True)
+                else:
+                    st.caption("No White Logo uploaded")
+            
+            st.markdown("<br>", unsafe_allow_html=True)
+            
             sync.render_ui(st.session_state.generated_content)
             if st.button("🚀 EXECUTE MASTER SYNC", type="primary", use_container_width=True):
                 with st.status("Syncing to Master DB..."):
