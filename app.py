@@ -187,15 +187,35 @@ class FirebeanPortal:
                     margin: 0; 
                 }}
                 
-                .status-badge {{ background: {S_RED}; color: white; padding: 8px 15px; border-radius: 4px; font-size: 10px; font-weight: 900; display: inline-block; }}
+                .status-badge {{ 
+                    background: {S_RED}; 
+                    color: white !important; 
+                    border-radius: 8px; 
+                    font-size: 14px; 
+                    font-weight: 600; 
+                    display: flex; 
+                    align-items: center; 
+                    justify-content: center; 
+                    height: 45px; 
+                    width: 100%; 
+                    border: 1px solid {S_RED}; 
+                    margin: 0; 
+                    box-sizing: border-box;
+                }}
                 
-                /* Force primary buttons to be Firebean Red */
+                /* Force primary buttons to be Firebean Red with exact matching styles */
                 button[kind="primary"] {{
                     background-color: {S_RED} !important;
                     color: white !important;
                     border: 1px solid {S_RED} !important;
                     height: 45px !important;
+                    border-radius: 8px !important;
                 }}
+                button[kind="primary"] p {{
+                    font-size: 14px !important;
+                    font-weight: 600 !important;
+                }}
+                
                 /* Vertically center the header columns */
                 [data-testid="stHorizontalBlock"] {{
                     align-items: center !important;
@@ -224,17 +244,17 @@ if __name__ == "__main__":
         portal.verify_ai()
 
     if st.session_state.page == 1:
-        # Header Section
-        h1, h2, h3 = st.columns([1.2, 3.5, 5.3])
-        with h1: st.image("https://raw.githubusercontent.com/dickson-crypto/Firebean-app/main/Firebeanlogo2026.png", width=120)
+        # Header Section - Aligned and Styled
+        h1, h2 = st.columns([1.2, 8.8])
+        with h1: 
+            st.image("https://raw.githubusercontent.com/dickson-crypto/Firebean-app/main/Firebeanlogo2026.png", width=120)
         with h2: 
-            st.markdown('<h1 class="hero-title">Project<br>Collector.</h1>', unsafe_allow_html=True)
-        
-        with h3:
-            st.write("<div style='height:40px'></div>", unsafe_allow_html=True)
-            stat_col, hand_col, mode_col = st.columns([2.5, 2, 2])
+            st.markdown('<h1 class="hero-title" style="margin-bottom: 15px !important;">Project<br>Collector.</h1>', unsafe_allow_html=True)
+            
+            # Left aligned 3-button box under the big title
+            stat_col, hand_col, mode_col, spacer = st.columns([2.5, 2, 2, 3.5])
             with stat_col:
-                st.markdown(f'<div class="status-badge" style="margin-top:8px;">AI STATUS: {st.session_state.ai_status}</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="status-badge">AI STATUS: {st.session_state.ai_status}</div>', unsafe_allow_html=True)
             with hand_col:
                 if st.button("⚡ HANDSHAKE", key="header_handshake", type="primary", help="Retry connection", use_container_width=True):
                     portal.log("Manual Handshake Triggered.")
@@ -244,7 +264,7 @@ if __name__ == "__main__":
                 if st.button("🌓 MODE", type="primary", use_container_width=True):
                     st.session_state.dark_mode = not st.session_state.get('dark_mode', False); st.rerun()
 
-        st.markdown('<hr style="border:0; border-bottom:1px dotted #555">', unsafe_allow_html=True)
+        st.markdown('<hr style="border:0; border-bottom:1px dotted #555; margin-top: 20px;">', unsafe_allow_html=True)
 
         # Main Logic Units
         client, project, venue, year, month = inputs.render_identity()
