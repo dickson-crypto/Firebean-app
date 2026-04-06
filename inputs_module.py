@@ -1,5 +1,5 @@
-# VERSION: v18.9.7 (Frontend UI Retouch)
-# TIMESTAMP: 2026-04-06 07:00:00 HKT
+# VERSION: v18.9.9 (Exact 1200x600 Canvas Logo Padding)
+# TIMESTAMP: 2026-04-06 10:00:00 HKT
 
 import streamlit as st
 from PIL import Image, ImageOps
@@ -103,14 +103,28 @@ class InputEngine:
             img = ImageOps.exif_transpose(img)
             
             if is_logo:
-                # LOGOS: Fix to 800x400 Max bounds and preserve PNG transparency
-                img.thumbnail((800, 400), Image.Resampling.LANCZOS)
+                # LOGOS: Create a guaranteed 1200x600 transparent canvas
+                # A. Shrink the logo to perfectly fit within the 1200x600 bounds
+                img.thumbnail((1200, 600), Image.Resampling.LANCZOS)
+                
+                # B. Ensure the image has an Alpha (transparency) channel for cleanly pasting
+                img = img.convert('RGBA')
+                
+                # C. Generate the blank 1200x600 transparent background
+                canvas = Image.new('RGBA', (1200, 600), (255, 255, 255, 0))
+                
+                # D. Mathematically center the resized logo onto the 1200x600 canvas
+                x_offset = (1200 - img.width) // 2
+                y_offset = (600 - img.height) // 2
+                
+                # E. Paste the logo (using itself as a transparent mask)
+                canvas.paste(img, (x_offset, y_offset), img)
+                
+                # F. Output the perfectly formatted image
                 buf = io.BytesIO()
-                # Ensure it keeps Alpha (transparency) channel
-                if img.mode != 'RGBA':
-                    img = img.convert('RGBA')
-                img.save(buf, format='PNG')
+                canvas.save(buf, format='PNG')
                 return {"data": base64.b64encode(buf.getvalue()).decode('utf-8'), "mimeType": "image/png", "ext": "png"}
+                
             else:
                 # PHOTOS: Compress to 1200x1200 and remove transparency to save as JPEG
                 img.thumbnail((1200, 1200), Image.Resampling.LANCZOS)
