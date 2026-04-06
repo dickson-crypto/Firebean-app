@@ -1,5 +1,5 @@
-# VERSION: v19.2.0 (PR Agency Perspective Update)
-# TIMESTAMP: 2026-04-06 08:00:00 HKT
+# VERSION: v19.2.1 (PR Agency Perspective & Brand Name Lock)
+# TIMESTAMP: 2026-04-06 08:15:00 HKT
 
 import streamlit as st
 import requests
@@ -32,6 +32,9 @@ class SynthesisSync:
         Every piece of content MUST position Firebean as the strategic partner behind the success. 
         DO NOT just describe the event as a journalist. You MUST highlight HOW Firebean solved the client's pain points, introduced unique features, and successfully executed our Scope of Work. 
         The narrative framework is always: "Client goal/pain point -> Firebean's strategic solution -> Flawless execution & results."
+
+        ### BRANDING RULE (CRITICAL):
+        NEVER translate the company name "Firebean" into Chinese, Japanese, or any other language (e.g., do NOT use 火鳳凰, 火豆, ファイアビーン, etc.). ALWAYS use the exact English word "Firebean" across all languages, articles, and platforms.
 
         ### WRITING PROTOCOL (Diversity Engine):
         RANDOMLY SELECT ONLY ONE writing style for this specific generation. COMMIT 100% to it:
