@@ -1,5 +1,5 @@
-# VERSION: v18.9.4 (Defensive Native Webhook & Strict Schema Matching)
-# TIMESTAMP: 2026-06-17 23:25:00 HKT
+# VERSION: v18.9.5 (Python String Padding Fix)
+# TIMESTAMP: 2026-06-17 23:45:00 HKT
 
 import streamlit as st
 import io
@@ -22,7 +22,7 @@ except Exception as e:
 
 class FirebeanPortal:
     def __init__(self):
-        self.VERSION = "v18.9.4 (Production Release)"
+        self.VERSION = "v18.9.5 (Production Release)"
         self.MODELS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
         self.init_session()
         self.apply_ui_theme()
@@ -254,7 +254,8 @@ class FirebeanPortal:
             res = requests.get(url, timeout=10)
             if res.status_code == 200 and res.text.isdigit():
                 next_index = int(res.text)
-                proj_id = f"FB{event_year}{str(next_index).padStart(3, '0')}"
+                # 💡 FIXED: Changed JS string padStart to Python native .zfill() method to prevent crash
+                proj_id = f"FB{event_year}{str(next_index).zfill(3)}"
                 sort_date = f"{event_year}-{event_month}-01"
                 self.log(f"Counter: Sync success. ID Assigned: {proj_id}")
                 return proj_id, sort_date
