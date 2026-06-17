@@ -1,5 +1,5 @@
-# VERSION: v18.9.2 (Syntax Cleanup & Error Resolution)
-# TIMESTAMP: 2026-06-17 23:05:00 HKT
+# VERSION: v18.9.3 (Persistent Sync State & Success Animation)
+# TIMESTAMP: 2026-06-17 23:20:00 HKT
 
 import streamlit as st
 import io
@@ -22,7 +22,7 @@ except Exception as e:
 
 class FirebeanPortal:
     def __init__(self):
-        self.VERSION = "v18.9.2 (Production Release)"
+        self.VERSION = "v18.9.3 (Production Release)"
         self.MODELS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
         self.init_session()
         self.apply_ui_theme()
@@ -50,6 +50,7 @@ class FirebeanPortal:
         if 'ai_status' not in st.session_state: st.session_state.ai_status = "🟡 INITIALIZING"
         if 'active_model' not in st.session_state: st.session_state.active_model = "NONE"
         if 'apiKey' not in st.session_state: st.session_state.apiKey = ""
+        if 'sync_success_flag' not in st.session_state: st.session_state.sync_success_flag = False
         
         # Core Configurations (Aligned with newly deployed Web App endpoint)
         if 'sheet_script_url' not in st.session_state:
@@ -274,6 +275,9 @@ if __name__ == "__main__":
         portal.verify_ai()
 
     if st.session_state.page == 1:
+        # Reset sync success indicator if we go back to page 1
+        st.session_state.sync_success_flag = False
+        
         # ADJUSTED LOGO RATIO (1.8 width to auto-enlarge logo flush with text)
         h1, h2 = st.columns([1.8, 8.2])
         with h1: 
@@ -387,7 +391,11 @@ if __name__ == "__main__":
         h_l, h_t = st.columns([1, 4])
         h_l.image("https://raw.githubusercontent.com/dickson-crypto/Firebean-app/main/Firebeanlogo2026.png", width=120)
         h_t.markdown('<h1 class="hero-title" style="font-size:72px !important;">Content<br>Review.</h1>', unsafe_allow_html=True)
-        if st.button("← BACK"): st.session_state.page = 1; st.rerun()
+        
+        # BACK button logic (removes success flag and goes back safely)
+        if st.button("← BACK"): 
+            st.session_state.sync_success_flag = False
+            st.session_state.page = 1; st.rerun()
         
         # Display the Assigned compliance keys
         proj_id = st.session_state.form_data.get('project_id', '')
@@ -437,6 +445,15 @@ if __name__ == "__main__":
             st.markdown("<br>", unsafe_allow_html=True)
             sync.render_ui(st.session_state.generated_content)
             
+            # Show a success notice if the sync flag has already been set
+            if st.session_state.sync_success_flag:
+                st.markdown("""
+                <div style='background-color: #1e3a1e; border: 1px solid #4CAF50; border-radius: 8px; padding: 15px; margin: 15px 0;'>
+                    <h4 style='color: #4CAF50; margin: 0 0 5px 0;'>🎉 SYNC SUCCESSFUL!</h4>
+                    <p style='color: #ffffff; margin: 0;'>Your project details, Drive folders, and media assets have been successfully pushed to the Master DB and deployed to GitHub! You can press Sync again if needed, or go Back to insert a new project.</p>
+                </div>
+                """, unsafe_allow_html=True)
+
             if st.button("🚀 EXECUTE MASTER SYNC", type="primary", use_container_width=True):
                 # IMMERSIVE OVERLAY 3: Master DB Sync
                 loading_steps = [
@@ -447,5 +464,9 @@ if __name__ == "__main__":
                 success = portal.run_with_overlay(loading_steps, sync.push_to_gas, st.session_state.form_data, st.session_state.generated_content, st.session_state.get('full_assets'))
                 
                 if success:
-                    st.success("SYNC SUCCESSFUL"); st.session_state.clear(); st.rerun()
-                else: st.error("GAS Synchronization Failed.")
+                    # Update status, trigger animation and re-render without clearing or resetting state!
+                    st.session_state.sync_success_flag = True
+                    st.balloons()
+                    st.rerun()
+                else: 
+                    st.error("GAS Synchronization Failed.")
