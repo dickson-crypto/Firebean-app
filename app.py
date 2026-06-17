@@ -1,10 +1,14 @@
-# VERSION: v18.8.6 (Immersive Loading Overlays)
-# TIMESTAMP: 2026-04-06 08:30:00 HKT
+# VERSION: v18.9.0 (Immersive Auto-ID Update)
+# TIMESTAMP: 2026-06-17 22:50:00 HKT
 
 import streamlit as st
-import requests
-import json
+import google.generativeai as genai
+import io
+import base64
 import time
+import requests
+import re
+from PIL import Image, ImageOps
 from datetime import datetime
 
 # Import modular engines from your GitHub repository
@@ -19,7 +23,7 @@ except Exception as e:
 
 class FirebeanPortal:
     def __init__(self):
-        self.VERSION = "v18.8.6 (Production Release)"
+        self.VERSION = "v18.9.0 (Production Release)"
         self.MODELS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
         self.init_session()
         self.apply_ui_theme()
@@ -47,6 +51,12 @@ class FirebeanPortal:
         if 'ai_status' not in st.session_state: st.session_state.ai_status = "🟡 INITIALIZING"
         if 'active_model' not in st.session_state: st.session_state.active_model = "NONE"
         if 'apiKey' not in st.session_state: st.session_state.apiKey = ""
+        
+        # Core Configurations (Aligned with newly deployed Web App endpoint)
+        if 'sheet_script_url' not in st.session_state:
+            st.session_state.sheet_script_url = "https://script.google.com/macros/s/AKfycbw6UuXZqhoFYtEiGYPJmFAWCis9IN-M-NVYN8hEo-Ux6UKKloihhv4yScS6ocGEJ9Em/exec"
+        if 'slide_script_url' not in st.session_state:
+            st.session_state.slide_script_url = "https://script.google.com/macros/s/AKfycbyZvtm8M8a5sLYF3vz9kLyAdimzzwpSlnTkzIeQ3DJxkklNYNlwSoJc5j5CkorM6w5V/exec"
         
         if 'apiKeys' not in st.session_state:
             keys_raw = st.secrets.get("GEMINI_API_KEYS", [])
@@ -237,9 +247,24 @@ class FirebeanPortal:
         overlay.empty()
         return result
 
+    def fetch_meta_details(self, event_year, event_month):
+        """Fetches sheet row count to dynamically generate compliance IDs and Sorting Date."""
+        try:
+            url = f"{st.session_state.sheet_script_url}?action=get_row_count"
+            res = requests.get(url, timeout=10)
+            if res.status_code == 200 and res.text.isdigit():
+                next_index = int(res.text)
+                proj_id = f"FB{event_year}{str(next_index).padStart(3, '0')}"
+                sort_date = f"{event_year}-{event_month}-01"
+                self.log(f"Counter: Sync success. ID Assigned: {proj_id}")
+                return proj_id, sort_date
+        except Exception as e:
+            self.log(f"Counter Connection Failed: {e}")
+        
+        # Safe Fallback values
+        return f"FB{event_year}999", f"{event_year}-{event_month}-01"
+
 if __name__ == "__main__":
-    st.set_page_config(page_title="Firebean Portal", page_icon="🔥", layout="wide")
-    
     portal = FirebeanPortal()
     inputs = InputEngine()
     logic = ProgressGate()
@@ -326,6 +351,18 @@ if __name__ == "__main__":
 
         if percent >= 100:
             if st.button("PROCEED TO REVIEW 👉", type="primary", use_container_width=True):
+                # [CORE RESTORATION] Dynamic Metadata Overlay before reviewing
+                metadata_steps = [
+                    (portal.ICONS["CLOUD"], "CONNECTING TO<br>MASTER DB"),
+                    (portal.ICONS["DB"], "GENERATING<br>COMPLIANCE METRICS")
+                ]
+                proj_id, sort_date = portal.run_with_overlay(
+                    metadata_steps, 
+                    portal.fetch_meta_details, 
+                    year, 
+                    month
+                )
+                
                 if logo_b: logo_b.seek(0)
                 if logo_w: logo_w.seek(0)
                 if photos:
@@ -337,7 +374,12 @@ if __name__ == "__main__":
                     "photos": [inputs.process_for_db(p, is_logo=False) for p in photos[:8]], 
                     "hero_index": st.session_state.hero_index
                 }
-                st.session_state.form_data.update(current_data); st.session_state.form_data['youtube'] = youtube
+                
+                st.session_state.form_data.update(current_data)
+                st.session_state.form_data['youtube'] = youtube
+                st.session_state.form_data['project_id'] = proj_id
+                st.session_state.form_data['sort_date'] = sort_date
+                
                 st.session_state.page = 2; st.rerun()
 
         st.markdown(f'<div class="terminal-box">' + "".join([f"<p>{log}</p>" for log in st.session_state.terminal_logs]) + '</div>', unsafe_allow_html=True)
@@ -347,6 +389,16 @@ if __name__ == "__main__":
         h_l.image("https://raw.githubusercontent.com/dickson-crypto/Firebean-app/main/Firebeanlogo2026.png", width=120)
         h_t.markdown('<h1 class="hero-title" style="font-size:72px !important;">Content<br>Review.</h1>', unsafe_allow_html=True)
         if st.button("← BACK"): st.session_state.page = 1; st.rerun()
+        
+        # Display the Assigned compliance keys
+        proj_id = st.session_state.form_data.get('project_id', '')
+        sort_date = st.session_state.form_data.get('sort_date', '')
+        st.markdown(f"""
+        <div class='card-box' style='border-left: 5px solid #E2231A;'>
+            <h4 style="margin: 0 0 5px 0;">🔑 自動生成之 Meta 數據</h4>
+            <p style="margin: 0;"><b>唯一專案編號 (Project_id):</b> <code style='font-size: 16px; color:#E2231A;'>{proj_id}</code> &nbsp;|&nbsp; <b>標準網頁排序日期 (Sort_date):</b> <code>{sort_date}</code></p>
+        </div>
+        """, unsafe_allow_html=True)
         
         if not st.session_state.get('generated_content'):
             # IMMERSIVE OVERLAY 2: Generating Content
