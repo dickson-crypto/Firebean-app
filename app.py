@@ -1,5 +1,5 @@
-# VERSION: v18.9.3 (Persistent Sync State & Success Animation)
-# TIMESTAMP: 2026-06-17 23:20:00 HKT
+# VERSION: v18.9.4 (Defensive Native Webhook & Strict Schema Matching)
+# TIMESTAMP: 2026-06-17 23:25:00 HKT
 
 import streamlit as st
 import io
@@ -22,7 +22,7 @@ except Exception as e:
 
 class FirebeanPortal:
     def __init__(self):
-        self.VERSION = "v18.9.3 (Production Release)"
+        self.VERSION = "v18.9.4 (Production Release)"
         self.MODELS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
         self.init_session()
         self.apply_ui_theme()
@@ -264,6 +264,83 @@ class FirebeanPortal:
         # Safe Fallback values
         return f"FB{event_year}999", f"{event_year}-{event_month}-01"
 
+    def push_to_gas_custom(self, form_data, generated_content, full_assets):
+        """
+        [CORE RESTORATION] 
+        Directly constructs the strictly nested JSON payload expected by Handlers.gs (v12.1.0)
+        and posts directly to st.session_state.sheet_script_url.
+        """
+        # Formulate strict multi-language Web Profile and Social structures
+        ai_content = {
+            "SocialMedia": {
+                "LI": generated_content.get("linkedin_post", ""),
+                "FB": generated_content.get("facebook_post", ""),
+                "TR": generated_content.get("threads_post", ""),
+                "IG": generated_content.get("instagram_post", "")
+            },
+            "Web": {
+                "EN": generated_content.get("website", {}).get("en", ""),
+                "TC": generated_content.get("website", {}).get("tc", ""),
+                "JP": generated_content.get("website", {}).get("jp", "")
+            },
+            "FAQ": {
+                "EN": generated_content.get("faq", {}).get("en", []),
+                "TC": generated_content.get("faq", {}).get("tc", []),
+                "JP": generated_content.get("faq", {}).get("jp", [])
+            }
+        }
+        
+        # Format binary media payload exactly mapping to "saveFile" requirements in Handlers.gs
+        assets = {
+            "hero_index": full_assets.get("hero_index", 0) if full_assets else 0,
+            "logo_black": full_assets.get("logo_black") if full_assets else None,
+            "logo_white": full_assets.get("logo_white") if full_assets else None,
+            "photos": full_assets.get("photos", []) if full_assets else []
+        }
+        
+        # Safe Helper to convert multiple values to comma strings
+        def join_vals(v):
+            if isinstance(v, list):
+                return ", ".join(v)
+            return str(v) if v is not None else ""
+
+        payload = {
+            "client": form_data.get("client", ""),
+            "project": form_data.get("project", ""),
+            "date": f"{form_data.get('year', '')} {form_data.get('month', '')}",
+            "venue": form_data.get("venue", ""),
+            "category": join_vals(form_data.get("category")),
+            "what_we_do": join_vals(form_data.get("what_we_do")),
+            "scope": join_vals(form_data.get("scope")),
+            "youtube": form_data.get("youtube", ""),
+            "open_question": form_data.get("open_question", ""),
+            "challenge": generated_content.get("challenge", ""),
+            "solution": generated_content.get("solution", ""),
+            "ai_content": ai_content,
+            "assets": assets,
+            "sort_date": form_data.get("sort_date", "")
+        }
+        
+        try:
+            url = st.session_state.sheet_script_url
+            self.log(f"HTTP: Sync initiated. Target URL -> {url[:50]}...")
+            
+            # Send the strict payload structure natively bypassed from synthesis_sync limits
+            res = requests.post(url, json=payload, timeout=60)
+            
+            self.log(f"HTTP: Status Code returned {res.status_code}")
+            self.log(f"HTTP: GAS Response Body -> {res.text[:120]}")
+            
+            if res.status_code == 200:
+                if "success" in res.text.lower():
+                    return True
+                else:
+                    self.log(f"CRITICAL: Handlers.gs failed internally: {res.text}", "error")
+            return False
+        except Exception as e:
+            self.log(f"CRITICAL: API connection timeout/exception: {e}", "error")
+            return False
+
 if __name__ == "__main__":
     portal = FirebeanPortal()
     inputs = InputEngine()
@@ -461,7 +538,15 @@ if __name__ == "__main__":
                     (portal.ICONS["CLOUD"], "OPENING<br>DRIVE API"),
                     (portal.ICONS["DB"], "WRITING TO<br>MASTER DB")
                 ]
-                success = portal.run_with_overlay(loading_steps, sync.push_to_gas, st.session_state.form_data, st.session_state.generated_content, st.session_state.get('full_assets'))
+                # [CORE RESTORATION] We now call our defensive local method "push_to_gas_custom"
+                # to bypass external module structural mismatches
+                success = portal.run_with_overlay(
+                    loading_steps, 
+                    portal.push_to_gas_custom, 
+                    st.session_state.form_data, 
+                    st.session_state.generated_content, 
+                    st.session_state.get('full_assets')
+                )
                 
                 if success:
                     # Update status, trigger animation and re-render without clearing or resetting state!
@@ -469,4 +554,7 @@ if __name__ == "__main__":
                     st.balloons()
                     st.rerun()
                 else: 
-                    st.error("GAS Synchronization Failed.")
+                    st.error("GAS Synchronization Failed. Please verify the logs in the console terminal below.")
+                    
+        # Always output logs at the bottom
+        st.markdown(f'<div class="terminal-box">' + "".join([f"<p>{log}</p>" for log in st.session_state.terminal_logs]) + '</div>', unsafe_allow_html=True)
