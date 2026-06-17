@@ -1,93 +1,61 @@
-import streamlit as st
-import io
-import base64
-import time
-import requests
-import re
-from datetime import datetime
+# VERSION: v18.9.6 (Production Release - Debug Enabled)
+# TIMESTAMP: 2026-06-17 23:58:00 HKT
 
-# --- YOUR EXISTING IMPORTS ---
-# Ensure these modules exist in your GitHub root
-try:
-    from inputs_module import InputEngine
-    from progress_logic import ProgressGate
-    from ai_diagnostics import AIDiagnostic
-    from synthesis_sync import SynthesisSync
-except:
-    pass
+import streamlit as st
+import requests
+import time
+from datetime import datetime
 
 class FirebeanPortal:
     def __init__(self):
-        self.init_session()
-        self.apply_ui_theme()
-        # [Icons omitted for brevity - same as before]
-
-    def init_session(self):
         if 'terminal_logs' not in st.session_state: 
             st.session_state.terminal_logs = ["> System Boot: Ready."]
-        if 'sheet_script_url' not in st.session_state:
-            st.session_state.sheet_script_url = "https://script.google.com/macros/s/AKfycbw6UuXZqhoFYtEiGYPJmFAWCis9IN-M-NVYN8hEo-Ux6UKKloihhv4yScS6ocGEJ9Em/exec"
+        self.sheet_script_url = "https://script.google.com/macros/s/AKfycbw6UuXZqhoFYtEiGYPJmFAWCis9IN-M-NVYN8hEo-Ux6UKKloihhv4yScS6ocGEJ9Em/exec"
 
     def log(self, msg):
         ts = datetime.now().strftime("%H:%M:%S")
         st.session_state.terminal_logs.append(f"[{ts}] {msg}")
-        # Automatically scroll by keeping last 15 entries
         if len(st.session_state.terminal_logs) > 15: st.session_state.terminal_logs.pop(0)
 
-    def push_to_gas_custom(self, form_data, generated_content, full_assets):
-        """
-        Debug-enhanced sync method.
-        """
-        self.log("DEBUG: Preparing Payload structure...")
-        
-        # Construct simplified payload for debugging
-        payload = {
-            "client": form_data.get("client", ""),
-            "project": form_data.get("project", ""),
-            "assets": full_assets
+    def test_sync_to_db(self):
+        """Pushes a fixed dummy payload to verify connectivity."""
+        dummy_data = {
+            "client": "TEST_CLIENT_001",
+            "project": "DUMMY_PROJECT_SYNC_TEST",
+            "date": "2026-06-17",
+            "venue": "Test Location",
+            "category": "Test Category",
+            "what_we_do": "Data Verification",
+            "scope": "Connectivity Check",
+            "sort_date": "2026-06-01"
         }
         
+        self.log("TEST: Initiating dummy payload sync...")
         try:
-            self.log(f"DEBUG: Connecting to GAS endpoint...")
-            # Added timeout=60 to prevent indefinite hanging
-            res = requests.post(st.session_state.sheet_script_url, json=payload, timeout=60)
-            
-            self.log(f"DEBUG: Response Code -> {res.status_code}")
-            self.log(f"DEBUG: Server says -> {res.text[:50]}")
-            
-            if res.status_code == 200:
-                self.log("SUCCESS: Data received by Master DB.")
-                return True
-            else:
-                self.log(f"ERROR: Server returned {res.status_code}")
-                return False
+            # 60-second timeout ensures the app doesn't hang
+            res = requests.post(self.sheet_script_url, json=dummy_data, timeout=60)
+            self.log(f"TEST: Status Code -> {res.status_code}")
+            self.log(f"TEST: Server Response -> {res.text[:100]}")
+            return res.status_code == 200
         except Exception as e:
-            self.log(f"CRITICAL ERROR: {str(e)}")
+            self.log(f"TEST CRITICAL: {str(e)}")
             return False
 
-    def apply_ui_theme(self):
-        # Your existing CSS styles
-        st.markdown("""
-            <style>
-                .terminal-box { background: #000; color: #0F0; font-family: monospace; padding: 10px; border-radius: 5px; height: 200px; overflow-y: auto; }
-            </style>
-        """, unsafe_allow_html=True)
+# --- UI Render ---
+portal = FirebeanPortal()
 
-# Main Execution Flow
-if __name__ == "__main__":
-    portal = FirebeanPortal()
-    
-    st.title("Firebean CMS Portal")
-    
-    # UI logic to trigger the sync
-    if st.button("EXECUTE MASTER SYNC"):
-        # The logic that previously got you stuck:
-        with st.spinner("Writing to Master DB..."):
-            # This triggers the debug logs to appear in the terminal box below
-            success = portal.push_to_gas_custom({"client": "test"}, {}, {})
+st.title("Firebean CMS v18.9.6")
+
+# Dedicated Test Section
+with st.expander("🛠️ Developer Tools"):
+    if st.button("🚀 PUSH DUMMY DATA TO MASTER DB"):
+        with st.spinner("Syncing..."):
+            success = portal.test_sync_to_db()
             if success:
-                st.success("Synced!")
-    
-    # Persistent Terminal Box for debugging
-    st.markdown("### System Logs")
-    st.markdown('<div class="terminal-box">' + "".join([f"<p>{log}</p>" for log in st.session_state.terminal_logs]) + '</div>', unsafe_allow_html=True)
+                st.success("Dummy data sent! Check your Google Sheet.")
+            else:
+                st.error("Sync failed. Check terminal logs.")
+
+# Terminal Display
+st.markdown("### System Logs")
+st.markdown(f'<div style="background:#000; color:#0F0; padding
