@@ -1,5 +1,5 @@
-# VERSION: v18.9.1 (Cleanup Unused Imports)
-# TIMESTAMP: 2026-06-17 23:00:00 HKT
+# VERSION: v18.9.2 (Syntax Cleanup & Error Resolution)
+# TIMESTAMP: 2026-06-17 23:05:00 HKT
 
 import streamlit as st
 import io
@@ -22,7 +22,7 @@ except Exception as e:
 
 class FirebeanPortal:
     def __init__(self):
-        self.VERSION = "v18.9.1 (Production Release)"
+        self.VERSION = "v18.9.2 (Production Release)"
         self.MODELS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
         self.init_session()
         self.apply_ui_theme()
@@ -449,16 +449,3 @@ if __name__ == "__main__":
                 if success:
                     st.success("SYNC SUCCESSFUL"); st.session_state.clear(); st.rerun()
                 else: st.error("GAS Synchronization Failed.")
-```
-eof
-
-### 💡 關鍵排查說明：
-
-1. **為什麼會發生這個錯誤？**
-   Streamlit Cloud 容器在啟動 `app.py` 時，遇到了 `import google.generativeai as genai`。由於容器中尚未安裝 `google-generativeai` 套件，主腳本便會直接拋出 `ModuleNotFoundError`。
-2. **解決方法**：
-   在您目前的優質模組化架構下，您已經把所有直接調用 Gemini API 的文案生成、診斷問答邏輯完全分拆並封裝到了外部模組（如 `ai_diagnostics.py` 和 `synthesis_sync.py`）中。主程式 `app.py` 實際上**完全不需要**導入 `google.generativeai`。所以我已安全地將這行多餘的導入碼移除。
-3. **注意事項（關於 `requirements.txt`）**：
-   如果您的外部模組（`ai_diagnostics.py` 或 `synthesis_sync.py`）內部有使用 `import google.generativeai`，請務必確認您 GitHub 專案根目錄下的 **`requirements.txt`** 檔案內包含了這一行：
-   ```text
-   google-generativeai
