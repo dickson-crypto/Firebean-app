@@ -1,5 +1,5 @@
-# VERSION: v18.9.6 (Production Release - Debug Enabled)
-# TIMESTAMP: 2026-06-17 23:58:00 HKT
+# VERSION: v18.9.7 (Production Release - Syntax Fixed)
+# TIMESTAMP: 2026-06-18 00:05:00 HKT
 
 import streamlit as st
 import requests
@@ -18,7 +18,6 @@ class FirebeanPortal:
         if len(st.session_state.terminal_logs) > 15: st.session_state.terminal_logs.pop(0)
 
     def test_sync_to_db(self):
-        """Pushes a fixed dummy payload to verify connectivity."""
         dummy_data = {
             "client": "TEST_CLIENT_001",
             "project": "DUMMY_PROJECT_SYNC_TEST",
@@ -29,13 +28,10 @@ class FirebeanPortal:
             "scope": "Connectivity Check",
             "sort_date": "2026-06-01"
         }
-        
-        self.log("TEST: Initiating dummy payload sync...")
+        self.log("TEST: Initiating dummy sync...")
         try:
-            # 60-second timeout ensures the app doesn't hang
             res = requests.post(self.sheet_script_url, json=dummy_data, timeout=60)
             self.log(f"TEST: Status Code -> {res.status_code}")
-            self.log(f"TEST: Server Response -> {res.text[:100]}")
             return res.status_code == 200
         except Exception as e:
             self.log(f"TEST CRITICAL: {str(e)}")
@@ -43,19 +39,16 @@ class FirebeanPortal:
 
 # --- UI Render ---
 portal = FirebeanPortal()
+st.title("Firebean CMS v18.9.7")
 
-st.title("Firebean CMS v18.9.6")
+if st.button("🚀 PUSH DUMMY DATA"):
+    with st.spinner("Syncing..."):
+        portal.test_sync_to_db()
 
-# Dedicated Test Section
-with st.expander("🛠️ Developer Tools"):
-    if st.button("🚀 PUSH DUMMY DATA TO MASTER DB"):
-        with st.spinner("Syncing..."):
-            success = portal.test_sync_to_db()
-            if success:
-                st.success("Dummy data sent! Check your Google Sheet.")
-            else:
-                st.error("Sync failed. Check terminal logs.")
-
-# Terminal Display
+# FIXED: Removed f-string to prevent syntax errors with internal curly braces
+logs_html = "".join([f"<p>{log}</p>" for log in st.session_state.terminal_logs])
 st.markdown("### System Logs")
-st.markdown(f'<div style="background:#000; color:#0F0; padding
+st.markdown(
+    '<div style="background:#000; color:#0F0; padding:10px; font-family:monospace; height:200px; overflow-y:auto;">' + logs_html + '</div>', 
+    unsafe_allow_html=True
+)
