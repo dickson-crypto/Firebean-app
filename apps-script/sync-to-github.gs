@@ -1,8 +1,13 @@
 /**
  * ============================================================
- * FIREBEAN CMS → GITHUB SYNC PIPELINE  v7.3 (CLEAN MENU — manual sync only)
+ * FIREBEAN CMS → GITHUB SYNC PIPELINE  v7.5 (auto-populate photo fields)
  * ============================================================
  * 
+ * v7.5: heroPhoto + galleryPhotos are now ALWAYS rebuilt from the actual files in the
+ *       project's Drive folder (the source of truth), on BOTH image and text-only syncs.
+ *       Removes the fragile dependency on the image-hash cache that left 79 projects
+ *       photo-less. Added a last-resort hero fallback (first gallery photo) so no card
+ *       or profile ever shows a broken image when photos exist in Drive.
  * v7.4: Fixed Drive folder creation — uses Project Name, parent = Firebean Projects folder
  *       Fixed hero photo missing when images[] not sent (now uses hero_photo_url fallback)
  *       Fixed Google Slide: always written from ai_content['1_google_slide']
@@ -499,7 +504,10 @@ function doSync(changedOnly, targetRowOnly) {
     var galleryFiles = [];
     var heroFileId = '';
 
-    if (driveFolderId && needsImageSync) {
+    // v7.5: ALWAYS list the Drive folder when one exists (not only on image sync).
+    // The Drive folder is the single source of truth for which photos a project has,
+    // so heroPhoto/galleryPhotos can always be populated even on text-only re-syncs.
+    if (driveFolderId && (needsImageSync || needsTextSync)) {
       try {
         var folder = DriveApp.getFolderById(driveFolderId);
         var files = folder.getFiles();
@@ -552,40 +560,47 @@ function doSync(changedOnly, targetRowOnly) {
     }
 
     var galleryPhotos = [];
-    if (driveFolderId) {
-      if (needsImageSync) {
-        for (var g = 0; g < galleryFiles.length; g++) {
-          var galleryPath = CONFIG.IMAGES_PATH + '/' + pid + '-gallery-' + g + '.webp';
-          galleryPhotos.push(galleryPath);
+    if (driveFolderId && galleryFiles.length > 0) {
+      // v7.5: Build galleryPhotos directly from the actual files in the Drive folder
+      // (source of truth). On a full image sync we (re)download/convert each one; on a
+      // text-only sync we keep the same paths and carry forward existing hashes so no
+      // re-download happens. Either way galleryPhotos is GUARANTEED non-empty when photos
+      // exist in Drive -- this is what prevents projects from going "photo-less" again.
+      for (var g = 0; g < galleryFiles.length; g++) {
+        var galleryPath = CONFIG.IMAGES_PATH + '/' + pid + '-gallery-' + g + '.webp';
+        galleryPhotos.push(galleryPath);
+        if (needsImageSync) {
           pushIfChanged_(imagesToPush, existingHashes, newHashes, galleryPath, galleryFiles[g].id, CONFIG.GALLERY_WIDTH);
-        }
-      } else {
-        // Restore gallery paths from hash cache OR from existing projects.json
-        var gIdx = 0;
-        while (true) {
-          var gPath = CONFIG.IMAGES_PATH + '/' + pid + '-gallery-' + gIdx + '.webp';
-          if (existingHashes[gPath]) {
-            galleryPhotos.push(gPath);
-            newHashes[gPath] = existingHashes[gPath];
-            gIdx++;
-          } else {
-            // Fallback: check if this gallery path exists in the existing JSON
-            var existsInJson = false;
-            if (existingProjects_) {
-              var ep = existingProjects_[pid];
-              if (ep && ep.galleryPhotos && ep.galleryPhotos.indexOf(gPath) !== -1) {
-                existsInJson = true;
-              }
-            }
-            if (existsInJson) {
-              galleryPhotos.push(gPath);
-              gIdx++;
-            } else {
-              break;
-            }
-          }
+        } else if (existingHashes[galleryPath]) {
+          newHashes[galleryPath] = existingHashes[galleryPath];
         }
       }
+    } else if (driveFolderId && !needsImageSync) {
+      // Fallback when the Drive folder could not be listed (e.g. transient API error):
+      // reconstruct gallery paths from the hash cache or the existing projects.json so a
+      // text-only sync never erases galleries that are already live.
+      var gIdx = 0;
+      while (true) {
+        var gPath = CONFIG.IMAGES_PATH + '/' + pid + '-gallery-' + gIdx + '.webp';
+        var keep = false;
+        if (existingHashes[gPath]) {
+          newHashes[gPath] = existingHashes[gPath];
+          keep = true;
+        } else if (existingProjects_ && existingProjects_[pid] &&
+                   existingProjects_[pid].galleryPhotos &&
+                   existingProjects_[pid].galleryPhotos.indexOf(gPath) !== -1) {
+          keep = true;
+        }
+        if (keep) { galleryPhotos.push(gPath); gIdx++; } else { break; }
+      }
+    }
+
+    // v7.5: Last-resort hero guarantee -- if no hero resolved but the project has gallery
+    // photos, point the hero at the first gallery image so the card/profile never shows a
+    // broken image.
+    if (!heroPath && galleryPhotos.length > 0) {
+      heroPath = galleryPhotos[0];
+      heroSmPath = galleryPhotos[0];
     }
 
     var project = {
