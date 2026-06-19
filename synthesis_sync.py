@@ -344,6 +344,9 @@ WEB FIELD RULE (must match the firebean.net website layout 100%): each Web langu
             "venue": form.get("venue", ""),
             "date": event_date,
             "sort_date": sort_date,
+            # Project YEAR drives the Project ID: FB<year><seq>. Handler uses this
+            # (not the current year) so a 2017 project becomes FB2017XXX.
+            "year": str(form.get("year", "")).strip(),
 
             # Framework (Handler reads data.what_we_do)
             "category": _join(form.get("category")),

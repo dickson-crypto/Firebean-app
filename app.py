@@ -120,10 +120,18 @@ def breathing_overlay(text):
     return o
 
 
-def generate_project_id(client, project):
-    base = re.sub(r'[^A-Za-z0-9]', '', f"{client}{project}").upper()[:8]
-    stamp = datetime.now().strftime("%y%m%d%H%M")
-    return f"FB{stamp}{base}" if base else f"FB{stamp}"
+def generate_project_id(year=None, client="", project=""):
+    """Provisional Project ID in the final format FB<year><seq>.
+    The front-end cannot read the Master DB, so the sequence here is only a
+    PLACEHOLDER (derived from the timestamp). The Handler regenerates the real,
+    DB-unique sequential ID on sync and returns it; the app then rewrites the
+    profile links with that real ID."""
+    yr = str(year).strip() if year else ""
+    if not re.fullmatch(r"\d{4}", yr):
+        yr = datetime.now().strftime("%Y")
+    # 3-digit placeholder from the clock so two quick projects don't collide locally.
+    seq = datetime.now().strftime("%H%M%S")[-3:]
+    return f"FB{yr}{seq}"
 
 
 def missing_inputs(fd, assets):
@@ -200,7 +208,7 @@ if __name__ == "__main__":
             "year": year, "month": month,
             "category": sel_cat, "what_we_do": sel_wwd, "scope": sel_sow,
             "open_question": open_q, "youtube": youtube,
-            "project_id": fd.get("project_id") or generate_project_id(client, project),
+            "project_id": fd.get("project_id") or generate_project_id(year, client, project),
         }
         fd = ss.form_data
 
@@ -377,6 +385,25 @@ if __name__ == "__main__":
             ov.empty()
             if isinstance(result, dict) and result.get("ok"):
                 portal.log(f"Sync OK (HTTP {result.get('status')}).")
+                # --- Two-phase Project ID reconciliation ---
+                # The Handler assigns the REAL, DB-unique ID (FB<year><seq>) and returns it.
+                # If it differs from the provisional one used while generating content,
+                # rewrite the profile.html links inside the social copy so they point to
+                # the correct project page.
+                resp = result.get("response") or {}
+                real_id = resp.get("project_id") if isinstance(resp, dict) else None
+                old_id = fd.get("project_id")
+                if real_id and real_id != old_id:
+                    fd["project_id"] = real_id
+                    ss.form_data["project_id"] = real_id
+                    old_url = f"https://firebean.net/profile.html?id={str(old_id).lower()}"
+                    new_url = f"https://firebean.net/profile.html?id={str(real_id).lower()}"
+                    sm = (ss.ai_result or {}).get("SocialMedia") or {}
+                    for k, v in list(sm.items()):
+                        if isinstance(v, str) and old_url in v:
+                            sm[k] = v.replace(old_url, new_url)
+                    portal.log(f"Project ID assigned by DB: {real_id} (was {old_id}). Profile links updated.")
+                    st.info(f"📌 Final Project ID: {real_id} (profile links updated to match).")
                 st.success("✅ Sync Complete — written to Master DB. Now run CMS Sync in the Sheet to push to GitHub.")
                 st.json(result.get("response"))
             else:
