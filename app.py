@@ -1,5 +1,5 @@
-# VERSION: v18.10.0 (Restored full collect -> AI -> real push pipeline)
-# TIMESTAMP: 2026-06-19 11:35:00 HKT
+# VERSION: v18.10.1 (Read Gemini key from Streamlit Secrets: GEMINI_API_KEYS)
+# TIMESTAMP: 2026-06-19 12:08:00 HKT
 #
 # WHAT CHANGED vs v18.9.12:
 #   - v18.9.12's "EXECUTE MASTER SYNC" button ran `run_with_overlay(steps, lambda: True)`
@@ -30,7 +30,7 @@ except ImportError as e:
 
 class FirebeanPortal:
     def __init__(self):
-        self.VERSION = "v18.10.0"
+        self.VERSION = "v18.10.1"
         self.MODELS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
         self.ICONS = {
             "DB": '<svg width="120" height="120" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>',
@@ -109,10 +109,25 @@ if __name__ == "__main__":
     if st.session_state.page == 1:
         # --- API key + model (required for AI generation) ---
         st.markdown('<div class="sec-header">AI Engine</div>', unsafe_allow_html=True)
+
+        # Read the key from Streamlit Secrets (Settings -> Secrets -> GEMINI_API_KEYS).
+        # Falls back to manual entry if the secret is not set.
+        secret_key = ""
+        try:
+            secret_key = st.secrets.get("GEMINI_API_KEYS", "") or st.secrets.get("GEMINI_API_KEY", "")
+        except Exception:
+            secret_key = ""
+
+        if secret_key:
+            st.success("🔐 Gemini API key loaded from Streamlit Secrets.")
+        else:
+            st.info("No secret found. Paste your Gemini API key below, or add it in "
+                    "Settings → Secrets as  GEMINI_API_KEYS = \"AIza...\"")
+
         k1, k2 = st.columns([2, 1])
         api_key = k1.text_input("Gemini API Key", type="password",
-                                value=st.session_state.get("api_key", ""),
-                                help="Your Google AI Studio key. Used only to generate the case study + social copy.")
+                                value=st.session_state.get("api_key", "") or secret_key,
+                                help="Loaded from Secrets if set. You can override it here for this session.")
         model = k2.selectbox("Model", portal.MODELS, index=0)
         st.session_state.api_key = api_key
 
