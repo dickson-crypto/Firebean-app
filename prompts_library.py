@@ -1,4 +1,4 @@
-# VERSION: v1.2.0 (Magazine/Web: FORMAL written register 書面語 + professional PR-commentary analysis angle)
+# VERSION: v1.3.0 (Web HTML structure locked to website: <h1> title + <h2> subtitle + >=4 <p> for photo-fit + <strong> punchline; LinkedIn hook/body/punchline)
 # TIMESTAMP: 2026-06-19 16:05:00 HKT
 #
 # Single source of truth for all AI prompts used by the app:
@@ -27,13 +27,21 @@ To ensure we have a diverse content library, you must RANDOMLY SELECT ONLY ONE o
 4. The Analytical Problem-Solver (Problem-Agitation-Solution): A highly structured, editorial deep-dive. Explicitly break down the [Pain Point], agitate the negative impact it has on businesses/individuals, and logically reveal the [Solution]/[Event] as the definitive, actionable cure.
 5. The Insider / Behind-the-Scenes Angle: Write from an exclusive "fly-on-the-wall" perspective. Make the reader feel like a VIP getting a sneak peek. Frame the [Pain Point] as a secret struggle the industry faces behind closed doors, and the [Event]/[Solution] as the exclusive reveal of the answer.
 
-### Format & Structure Requirements:
+### WEB ARTICLE HTML STRUCTURE (MUST MATCH THE WEBSITE EXACTLY — read carefully):
+The Web article is rendered on firebean.net/profile.html. The page already shows the PROJECT NAME as the giant page headline and "Client — Venue" as the page sub-line on its own, ABOVE your article. The website also auto-inserts the project photos by placing image pairs AFTER the 1st, 2nd and 3rd <p> paragraphs of your article body. To make every article hook readers AND fit the website layout 100%, produce the body in THIS exact order:
+
+1. TITLE — Start the body with ONE editorial headline wrapped in <h1>...</h1>. This is a compelling, curiosity-driven EDITORIAL HEADLINE for the story (NOT just the project name). Because the body already begins with <h1>, the system will NOT duplicate a title. Make it punchy and benefit/insight-led (a great magazine cover line).
+2. SUBTITLE (DECK / STANDFIRST) — Immediately after the <h1>, add ONE <h2>...</h2> that is a single-sentence subtitle expanding the headline and setting up the angle. This is the "deck" that raises interest before the reader commits.
+3. BODY — Then write the article as a sequence of clean <p>...</p> paragraphs. CRITICAL FORMATTING RULE FOR PHOTO FITTING: the body MUST contain AT LEAST 4 substantial standalone <p> paragraphs (ideally 4–6). The website inserts photos right after the 1st, 2nd and 3rd <p>, so each of the first three paragraphs should be a self-contained idea that reads well with an image after it. Do NOT cram the whole article into one or two giant <p> blocks — that breaks the photo layout. You MAY add <h3>...</h3> section subheadings between paragraphs, but section headings do NOT count as paragraphs and do NOT anchor photos — only real <p> tags do, so always keep at least 4 real <p> tags.
+4. PUNCHLINE — End the body with a single, highly memorable concluding sentence as its OWN final <p>, fully wrapped in <strong>...</strong> (e.g. <p><strong>...</strong></p>). This is the line readers remember and share.
+
+ADDITIONAL RULES:
 - Word Count: Approximately 500 words per language.
-- Structure: Use engaging editorial Subtitles (H2/H3) to break up the text. Use short, punchy paragraphs for easy online reading.
-- The Core Narrative: Seamlessly weave the [Basic Information], [Event Details], [Pain Point], and [Solution] into the chosen narrative angle.
-- The Punch Line: The final paragraph before the FAQ must be a single, bolded, highly memorable concluding sentence (wrap it in <strong> tags).
-- The Fast Recap FAQ: Provide a quick, 3-question FAQ that summarizes the pain point, the solution, and the event details for readers who skim.
-- CRITICAL: Do NOT put the FAQ text inside the Web HTML article body. The FAQ goes in the separate FAQ JSON field only.
+- Output VALID HTML only for the Web fields (<h1>, <h2>, <h3>, <p>, <strong> tags). Do NOT use Markdown (#, **). Do NOT wrap the article in <html>/<body>. No inline styles.
+- The Core Narrative: Seamlessly weave the [Basic Information], [Event Details], [Pain Point], and [Solution] into the chosen narrative angle, written as PR commentary/analysis.
+- The Fast Recap FAQ: Provide a quick, 3-question FAQ that summarizes the pain point, the solution, and the project value for readers who skim.
+- CRITICAL: Do NOT put the FAQ inside the Web HTML article body. The FAQ goes in the separate FAQ JSON field only.
+- CRITICAL: Do NOT put any <img> tags in the article — the website inserts the project photos automatically based on your paragraph breaks.
 
 ### BRANDING RULE (CRITICAL):
 NEVER translate the company name "Firebean" into Chinese, Japanese, or any other language (do NOT use 火鳳凰, 火豆, ファイアビーン, etc.). ALWAYS use the exact English word "Firebean" across all languages.
@@ -79,7 +87,10 @@ SOCIAL_PROMPT = """作為一間香港公關公司 (Firebean)，要為項目在�
 - 建議字數：約 150 - 300 字，段落分明。
 - 語氣：權威 B2B、專業顧問風格。強調數據、ROI 與行業領導地位。
 - 語文：權威 B2B English（必要時雙語，先英後中）。
-- 內容：思想領導力 — 分享項目初衷、克服的商業挑戰、為何對行業重要；突顯 Networking 價值。
+- 【結構】LinkedIn 貼文必須有清晰的三段式結構，令人想繼續看下去：
+  1. HOOK / TITLE（標題釘子）：第一行是一句強而有力、引起好奇心的開場白（LinkedIn 只先顯示頭 2-3 行，所以這句要抓住眼球，做「看更多」前的 hook）。
+  2. BODY（內文）：隨後用 2-3 個短段落展開思想領導力 — 項目初衷、克服的商業挑戰、Firebean 的策略洞察及為何對行業重要；突顯 Networking 價值。可用簡短 bullet 增加可讀性。
+  3. PUNCHLINE（金句結尾）：結尾一句令人難忘、值得轉發的金句 (thought-leadership punchline)，然後才接 hashtags 與連結。
 - 【必須】貼文結尾要加入 5-8 個專業 Hashtags（例如 #PublicRelations #Firebean #BrandStrategy 及相關行業標籤）。
 - 【必須】貼文結尾要加入導流連結：「Read the full project story 👉 {profile_url}」，引導受眾去 Firebean 的專屬項目頁。
 

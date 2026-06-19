@@ -1,4 +1,4 @@
-# VERSION: v20.0.0 (Realign push_to_gas payload to Handler.gs v12.1.0 read contract)
+# VERSION: v20.1.0 (Output contract: Web HTML structure <h1>title+<h2>subtitle+>=4<p>+<strong>punchline to fit website photo layout)
 # TIMESTAMP: 2026-06-19 15:55:00 HKT
 # CHANGE: Top-level keys client/project/what_we_do (not *_name/category_what);
 #         ai_content = {SocialMedia, Web, FAQ(arrays)}; assets nested under data.assets
@@ -60,7 +60,11 @@ Return ONLY a single RAW JSON object (no markdown, no code fences) with EXACTLY 
   "Challenge": "[short SEO summary of the client's pain point]",
   "Solution": "[short ROI summary of Firebean's solution]",
   "SocialMedia": { "LI": "...", "FB": "...", "TR": "...", "IG": "..." },
-  "Web": { "EN": "<~500w English article HTML, no FAQ inside>", "TC": "<繁體中文 HK article HTML>", "JP": "<日本語 article HTML>" },
+  "Web": {
+    "EN": "<h1>Editorial headline</h1><h2>One-sentence subtitle/deck</h2><p>Para 1</p><p>Para 2</p><p>Para 3</p><p>Para 4</p><p><strong>Punchline</strong></p>",
+    "TC": "<h1>標題</h1><h2>副標題</h2><p>段落一</p><p>段落二</p><p>段落三</p><p>段落四</p><p><strong>金句結尾</strong></p>",
+    "JP": "<h1>見出し</h1><h2>サブタイトル</h2><p>段落1</p><p>段落2</p><p>段落3</p><p>段落4</p><p><strong>パンチライン</strong></p>"
+  },
   "FAQ": {
     "EN": [{"q":"...","a":"..."},{"q":"...","a":"..."},{"q":"...","a":"..."}],
     "TC": [{"q":"...","a":"..."},{"q":"...","a":"..."},{"q":"...","a":"..."}],
@@ -68,6 +72,8 @@ Return ONLY a single RAW JSON object (no markdown, no code fences) with EXACTLY 
   }
 }
 SocialMedia keys map to: LI=LinkedIn, FB=Facebook, TR=Threads, IG=Instagram. Follow each platform's word count, tone and language rules from the guide above.
+
+WEB FIELD RULE (must match the firebean.net website layout 100%): each Web language value MUST be a valid HTML string that (1) STARTS with one <h1> editorial headline, (2) is followed by one <h2> subtitle/deck, (3) contains AT LEAST 4 standalone <p> paragraphs so the website can insert project photos after the 1st, 2nd and 3rd <p>, and (4) ENDS with the punchline as <p><strong>...</strong></p>. Do NOT include any <img> tags, do NOT put FAQ text in Web, do NOT use Markdown.
 """
         )
         
