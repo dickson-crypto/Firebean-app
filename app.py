@@ -1,23 +1,21 @@
-# VERSION: v18.10.2 (Surface real Gemini API errors + model auto-retry)
-# TIMESTAMP: 2026-06-19 12:23:00 HKT
+# VERSION: v19.0.0 (Full gated flow: validate -> 15 MC -> 100% -> generate -> sync)
+# TIMESTAMP: 2026-06-19 13:07:00 HKT
 #
-# WHAT CHANGED vs v18.9.12:
-#   - v18.9.12's "EXECUTE MASTER SYNC" button ran `run_with_overlay(steps, lambda: True)`
-#     and then printed "Sync Complete" WITHOUT ever calling sync.push_to_gas().
-#     The sync was a no-op. Nothing was ever sent to the Master DB.
-#   - It also never stored the form inputs into session_state, never collected a
-#     Gemini API key, never ran AI generation, and never collected the assets.
-#   - This version wires the full pipeline back together and calls the REAL
-#     synthesis_sync.SynthesisSync.push_to_gas(form, ai, assets), whose payload now
-#     matches the deployed doPost handler (apps-script/sync-to-github.gs).
+# FLOW (as specified by Dickson):
+#   STAGE 1  Collect + validate ALL inputs (client, project, scope, logo B/W, 1-8 photos, hero pick).
+#            The "Generate 15 MC" button stays DISABLED until every required input is present.
+#   STAGE 2  Generate 15 MC diagnostic questions (driven by the writing-skill styles + photos).
+#            User answers all 15 -> progress climbs -> 15/15 = 100%.
+#   STAGE 3  Only at 100% does "Generate AI Content" activate. MC answers steer the content.
+#            A BREATHING RED CIRCLE animation plays while the AI is processing.
+#   STAGE 4  "Execute Master Sync" stays BLOCKED until inputs + 15 MC + generated content are all done.
+#            Sync sends every field with the correct names so no Master DB column is left empty.
 
 import streamlit as st
-import requests
-import time
 import re
+import time
 from datetime import datetime
 
-# --- Modular Imports ---
 try:
     from inputs_module import InputEngine
     from progress_logic import ProgressGate
@@ -30,68 +28,84 @@ except ImportError as e:
 
 class FirebeanPortal:
     def __init__(self):
-        self.VERSION = "v18.10.2"
+        self.VERSION = "v19.0.0"
         self.MODELS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
-        self.ICONS = {
-            "DB": '<svg width="120" height="120" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>',
-            "BRAIN": '<svg width="120" height="120" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/></svg>',
-            "CLOUD": '<svg width="120" height="120" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>',
-        }
         self.init_session()
 
     def init_session(self):
-        if 'page' not in st.session_state:
-            st.session_state.page = 1
-        if 'terminal_logs' not in st.session_state:
-            st.session_state.terminal_logs = [f"> Boot: {self.VERSION}"]
-        if 'form_data' not in st.session_state:
-            st.session_state.form_data = {}
-        if 'hero_index' not in st.session_state:
-            st.session_state.hero_index = 0
-        if 'ai_result' not in st.session_state:
-            st.session_state.ai_result = None
-        if 'assets' not in st.session_state:
-            st.session_state.assets = {"logo_black": None, "logo_white": None, "photos": [], "hero_index": 0}
+        ss = st.session_state
+        ss.setdefault("page", 1)
+        ss.setdefault("terminal_logs", [f"> Boot: {self.VERSION}"])
+        ss.setdefault("form_data", {})
+        ss.setdefault("assets", {"logo_black": None, "logo_white": None, "photos": [], "hero_index": 0})
+        ss.setdefault("hero_index", 0)
+        ss.setdefault("mc_questions", None)     # list of {q, opts}
+        ss.setdefault("mc_answers", {})         # {index: chosen option}
+        ss.setdefault("ai_result", None)        # generated content dict
+        ss.setdefault("api_key", "")
 
     def log(self, msg):
         ts = datetime.now().strftime("%H:%M:%S")
         st.session_state.terminal_logs.append(f"[{ts}] {msg}")
-        if len(st.session_state.terminal_logs) > 12:
+        if len(st.session_state.terminal_logs) > 14:
             st.session_state.terminal_logs.pop(0)
 
-    def run_with_overlay(self, steps, task_func, *args):
-        """Show a fullscreen overlay while task_func runs, then return its result."""
-        overlay = st.empty()
-        for icon, text in steps:
-            overlay.markdown(f'''
-                <div style="position:fixed; top:0; left:0; width:100vw; height:100vh; background:#121212; z-index:9999; display:flex; justify-content:center; align-items:center;">
-                    <div style="text-align:center;">{icon}<h2 style="color:white;">{text}</h2></div>
-                </div>
-            ''', unsafe_allow_html=True)
-            time.sleep(0.6)
-        res = task_func(*args)
-        overlay.empty()
-        return res
+
+def breathing_overlay(text):
+    """Return an st.empty() showing a BREATHING RED CIRCLE fullscreen overlay."""
+    o = st.empty()
+    o.markdown(f"""
+        <style>
+        @keyframes fb-breathe {{
+            0%   {{ transform: scale(0.75); opacity: 0.55; box-shadow: 0 0 0 0 rgba(226,35,26,0.7); }}
+            50%  {{ transform: scale(1.15); opacity: 1;    box-shadow: 0 0 60px 30px rgba(226,35,26,0.45); }}
+            100% {{ transform: scale(0.75); opacity: 0.55; box-shadow: 0 0 0 0 rgba(226,35,26,0.7); }}
+        }}
+        .fb-overlay {{ position:fixed; top:0; left:0; width:100vw; height:100vh; background:#121212;
+                       z-index:9999; display:flex; flex-direction:column; justify-content:center; align-items:center; }}
+        .fb-circle {{ width:160px; height:160px; border-radius:50%; background:#E2231A;
+                      animation: fb-breathe 1.6s ease-in-out infinite; margin-bottom:40px; }}
+        </style>
+        <div class="fb-overlay">
+            <div class="fb-circle"></div>
+            <h2 style="color:white; letter-spacing:1px;">{text}</h2>
+            <p style="color:#888;">AI is processing... please wait</p>
+        </div>
+    """, unsafe_allow_html=True)
+    return o
 
 
 def generate_project_id(client, project):
-    """Lightweight FB-prefixed ID. The handler upper-cases and matches on this."""
     base = re.sub(r'[^A-Za-z0-9]', '', f"{client}{project}").upper()[:8]
     stamp = datetime.now().strftime("%y%m%d%H%M")
     return f"FB{stamp}{base}" if base else f"FB{stamp}"
 
 
-# --- APP EXECUTION ---
+def missing_inputs(fd, assets):
+    """Return a list of human-readable missing required items."""
+    missing = []
+    if not fd.get("client"):       missing.append("Client name")
+    if not fd.get("project"):      missing.append("Project name")
+    if not fd.get("scope"):        missing.append("Scope of Work (tick at least one)")
+    if not assets.get("logo_black"): missing.append("Logo Black")
+    if not assets.get("logo_white"): missing.append("Logo White")
+    if not assets.get("photos"):   missing.append("At least 1 photo (up to 8)")
+    return missing
+
+
+# ============================================================
 if __name__ == "__main__":
     st.set_page_config(page_title="Firebean Portal", layout="wide")
     portal = FirebeanPortal()
-    inputs, gate, ai_mc, sync = InputEngine(), ProgressGate(), AIDiagnostic(), SynthesisSync()
+    inputs, gate, diag, sync = InputEngine(), ProgressGate(), AIDiagnostic(), SynthesisSync()
+    ss = st.session_state
 
     st.markdown("""<style>
         .stApp { background-color: #121212; color: white; }
         .sec-header { font-size: 18px; font-weight: 900; color: #E2231A; text-transform: uppercase; letter-spacing: 1px; margin: 20px 0 10px; border-bottom: 1px solid #333; padding-bottom: 6px; }
-        .terminal-box { background: #000; padding: 15px; border-left: 4px solid #E2231A; height: 160px; overflow-y: auto; font-family: monospace; font-size: 12px; margin-top: 25px; }
-        .terminal-box p { margin: 2px 0; color: #4ade80; }
+        .terminal-box { background:#000; padding:15px; border-left:4px solid #E2231A; height:160px; overflow-y:auto; font-family:monospace; font-size:12px; margin-top:25px; }
+        .terminal-box p { margin:2px 0; color:#4ade80; }
+        .pill-ok { color:#4ade80; } .pill-bad { color:#E2231A; }
     </style>""", unsafe_allow_html=True)
 
     # --- Header ---
@@ -101,167 +115,209 @@ if __name__ == "__main__":
     with c2:
         st.markdown(f"<h1>Project Collector. <span style='font-size:14px;opacity:0.5;'>{portal.VERSION}</span></h1>", unsafe_allow_html=True)
 
-    fd = st.session_state.form_data
+    fd = ss.form_data
 
-    # ============================================================
-    # PAGE 1 — COLLECT EVERYTHING
-    # ============================================================
-    if st.session_state.page == 1:
-        # --- API key + model (required for AI generation) ---
+    # ========================================================
+    # PAGE 1 — COLLECT + VALIDATE + MC + GENERATE
+    # ========================================================
+    if ss.page == 1:
+        # --- AI engine / key ---
         st.markdown('<div class="sec-header">AI Engine</div>', unsafe_allow_html=True)
-
-        # Read the key from Streamlit Secrets (Settings -> Secrets -> GEMINI_API_KEYS).
-        # Falls back to manual entry if the secret is not set.
         secret_key = ""
         try:
             secret_key = st.secrets.get("GEMINI_API_KEYS", "") or st.secrets.get("GEMINI_API_KEY", "")
         except Exception:
             secret_key = ""
-
         if secret_key:
             st.success("🔐 Gemini API key loaded from Streamlit Secrets.")
         else:
-            st.info("No secret found. Paste your Gemini API key below, or add it in "
-                    "Settings → Secrets as  GEMINI_API_KEYS = \"AIza...\"")
-
+            st.info('No secret found. Paste your key below, or add  GEMINI_API_KEYS = "AIza..."  in Settings → Secrets.')
         k1, k2 = st.columns([2, 1])
-        api_key = k1.text_input("Gemini API Key", type="password",
-                                value=st.session_state.get("api_key", "") or secret_key,
-                                help="Loaded from Secrets if set. You can override it here for this session.")
+        api_key = k1.text_input("Gemini API Key", type="password", value=ss.api_key or secret_key)
         model = k2.selectbox("Model", portal.MODELS, index=0)
-        st.session_state.api_key = api_key
+        ss.api_key = api_key
 
-        # --- Identity ---
+        # --- Inputs ---
         client, project, venue, year, month = inputs.render_identity()
-
-        # --- Framework ---
         sel_cat, sel_wwd, sel_sow = inputs.render_framework()
 
-        # --- Strategic brief ---
         st.markdown('<div class="sec-header">Strategic Brief</div>', unsafe_allow_html=True)
-        open_q = st.text_area("Brief / context for the AI (the project's goal, pain points, results)",
-                              value=fd.get("open_question", ""), height=120)
+        open_q = st.text_area("Brief / context for the AI (goal, pain points, results)", value=fd.get("open_question", ""), height=120)
         youtube = st.text_input("YouTube URL (optional)", value=fd.get("youtube", ""))
 
-        # --- Assets ---
         lb, lw, ph, encoded = inputs.render_assets()
 
-        # --- Persist EVERYTHING to session_state.form_data ---
-        st.session_state.form_data = {
+        # --- Persist everything ---
+        ss.form_data = {
             "client": client, "project": project, "venue": venue,
             "year": year, "month": month,
             "category": sel_cat, "what_we_do": sel_wwd, "scope": sel_sow,
             "open_question": open_q, "youtube": youtube,
             "project_id": fd.get("project_id") or generate_project_id(client, project),
         }
+        fd = ss.form_data
 
-        # --- Process assets to base64 dicts the handler expects ---
         logo_black = inputs.process_for_db(lb, is_logo=True) if lb else None
         logo_white = inputs.process_for_db(lw, is_logo=True) if lw else None
         photos = []
         if ph:
             for p in ph[:8]:
-                processed = inputs.process_for_db(p, is_logo=False)
-                if processed:
-                    photos.append(processed["data"])  # base64 string
-        st.session_state.assets = {
+                pr = inputs.process_for_db(p, is_logo=False)
+                if pr:
+                    photos.append(pr["data"])
+        ss.assets = {
             "logo_black": logo_black["data"] if logo_black else None,
             "logo_white": logo_white["data"] if logo_white else None,
             "photos": photos,
-            "hero_index": st.session_state.hero_index,
+            "hero_index": ss.hero_index,
         }
 
-        score = gate.calculate(st.session_state.form_data,
-                               assets_ready=bool(photos),
-                               mc_ready=bool(st.session_state.ai_result))
-        st.progress(score / 100, text=f"Readiness: {score}%")
+        # --- Validation checklist ---
+        miss = missing_inputs(fd, ss.assets)
+        st.markdown('<div class="sec-header">Readiness Check</div>', unsafe_allow_html=True)
+        if miss:
+            st.markdown("Missing before you can generate questions:")
+            for m in miss:
+                st.markdown(f"- <span class='pill-bad'>✗ {m}</span>", unsafe_allow_html=True)
+        else:
+            st.markdown("<span class='pill-ok'>✓ All required inputs present. You can generate the 15 MC questions.</span>", unsafe_allow_html=True)
 
-        col_a, col_b = st.columns([1, 1])
-        # --- Generate AI content ---
-        if col_a.button("🧠 GENERATE AI CONTENT", use_container_width=True):
-            if not api_key:
-                st.error("Enter your Gemini API Key first.")
-            elif not (client and project):
-                st.error("Client and Project are required.")
+        inputs_ready = (len(miss) == 0)
+
+        # ----- STAGE 2: Generate 15 MC questions -----
+        st.markdown('<div class="sec-header">Step 1 — Strategic Diagnostic (15 MC)</div>', unsafe_allow_html=True)
+        gen_mc = st.button("🧩 GENERATE 15 MC QUESTIONS", disabled=not (inputs_ready and api_key), use_container_width=True)
+        if not api_key:
+            st.caption("Enter your Gemini API key to enable this.")
+        if gen_mc:
+            ov = breathing_overlay("GENERATING 15 DIAGNOSTIC QUESTIONS")
+            core = f"{fd.get('open_question','')} | Scope: {', '.join(fd.get('scope', []))}"
+            qs = diag.get_questions(api_key, model, fd.get("project", ""), core, ss.assets["photos"])
+            if not qs and model != "gemini-1.5-flash":
+                qs = diag.get_questions(api_key, "gemini-1.5-flash", fd.get("project", ""), core, ss.assets["photos"])
+            ov.empty()
+            if qs:
+                ss.mc_questions = qs[:15]
+                ss.mc_answers = {}
+                ss.ai_result = None  # reset content if questions regenerated
+                portal.log(f"Generated {len(ss.mc_questions)} MC questions.")
             else:
-                form_ctx = dict(st.session_state.form_data)
-                form_ctx["date"] = f"{year} {month}"
-                steps = [(portal.ICONS["BRAIN"], "GENERATING CASE STUDY + SOCIAL COPY")]
-                result = portal.run_with_overlay(steps, sync.generate_ai_content, api_key, model, form_ctx)
+                portal.log("MC generation FAILED.")
+                st.error("Could not generate questions. Exact reason from Google:")
+                st.code(AIDiagnostic.last_error or "No detail captured.", language="text")
 
-                # Auto-retry once with the most reliably available model if the chosen one fails
-                if not result and model != "gemini-1.5-flash":
-                    portal.log(f"{model} failed, retrying with gemini-1.5-flash...")
-                    result = portal.run_with_overlay(
-                        [(portal.ICONS["BRAIN"], "RETRYING WITH gemini-1.5-flash")],
-                        sync.generate_ai_content, api_key, "gemini-1.5-flash", form_ctx)
+        # ----- Answer the 15 MC -----
+        answered = 0
+        if ss.mc_questions:
+            st.markdown("Answer all questions below. Progress reaches 100% when all are answered.")
+            for i, item in enumerate(ss.mc_questions):
+                q = item.get("q", f"Question {i+1}")
+                opts = item.get("opts", [])
+                key = f"mc_{i}"
+                choice = st.radio(f"{i+1}. {q}", options=opts, index=None, key=key)
+                if choice is not None:
+                    ss.mc_answers[i] = choice
+            answered = len([v for v in ss.mc_answers.values() if v])
+            total = len(ss.mc_questions)
+            pct = int((answered / total) * 100) if total else 0
+            st.progress(pct / 100, text=f"Content readiness: {answered}/{total} answered ({pct}%)")
 
-                if result:
-                    st.session_state.ai_result = result
-                    portal.log("AI content generated.")
-                    st.success("AI content ready. Review below, then proceed.")
-                else:
-                    portal.log("AI generation FAILED.")
-                    st.error("AI generation failed. Exact reason from Google's API below:")
-                    st.code(sync.last_error or "No error detail captured.", language="text")
+        mc_complete = bool(ss.mc_questions) and answered == len(ss.mc_questions) and len(ss.mc_questions) > 0
 
-        if col_b.button("PROCEED TO REVIEW & SYNC →", type="primary", use_container_width=True):
-            st.session_state.page = 2
-            st.rerun()
+        # ----- STAGE 3: Generate AI content (only at 100%) -----
+        st.markdown('<div class="sec-header">Step 2 — Generate Content</div>', unsafe_allow_html=True)
+        gen_content = st.button("🧠 GENERATE AI CONTENT", disabled=not mc_complete, type="primary", use_container_width=True)
+        if not mc_complete:
+            st.caption("Answer all 15 questions (reach 100%) to enable content generation.")
+        if gen_content:
+            ov = breathing_overlay("GENERATING CASE STUDY + SOCIAL COPY")
+            # Build answered MC list with q + chosen answer
+            mc_payload = [{"q": ss.mc_questions[i].get("q", ""), "a": ss.mc_answers.get(i, "")}
+                          for i in range(len(ss.mc_questions))]
+            form_ctx = dict(fd)
+            form_ctx["date"] = f"{fd.get('year','')} {fd.get('month','')}"
+            result = sync.generate_ai_content(api_key, model, form_ctx, mc_payload)
+            if not result and model != "gemini-1.5-flash":
+                portal.log(f"{model} failed, retrying with gemini-1.5-flash...")
+                result = sync.generate_ai_content(api_key, "gemini-1.5-flash", form_ctx, mc_payload)
+            ov.empty()
+            if result:
+                ss.ai_result = result
+                portal.log("AI content generated.")
+                st.success("AI content ready. Review below, then proceed to sync.")
+            else:
+                portal.log("AI generation FAILED.")
+                st.error("AI generation failed. Exact reason from Google:")
+                st.code(sync.last_error or "No detail captured.", language="text")
 
-        # --- Show AI preview if available ---
-        if st.session_state.ai_result:
+        # --- Preview generated content ---
+        if ss.ai_result:
             st.markdown("---")
-            sync.render_ui(st.session_state.ai_result)
+            sync.render_ui(ss.ai_result)
+            st.markdown("---")
+            if st.button("PROCEED TO REVIEW & SYNC →", type="primary", use_container_width=True):
+                ss.page = 2
+                st.rerun()
 
-    # ============================================================
-    # PAGE 2 — REVIEW + REAL SYNC
-    # ============================================================
-    elif st.session_state.page == 2:
+    # ========================================================
+    # PAGE 2 — REVIEW + GATED SYNC
+    # ========================================================
+    elif ss.page == 2:
         if st.button("← BACK"):
-            st.session_state.page = 1
+            ss.page = 1
             st.rerun()
 
-        f = st.session_state.form_data
+        miss = missing_inputs(fd, ss.assets)
+        mc_complete = bool(ss.mc_questions) and len([v for v in ss.mc_answers.values() if v]) == len(ss.mc_questions)
+        content_ready = bool(ss.ai_result)
+        all_ready = (not miss) and mc_complete and content_ready
+
         st.markdown('<div class="sec-header">Review</div>', unsafe_allow_html=True)
         st.write({
-            "project_id": f.get("project_id"),
-            "client": f.get("client"), "project": f.get("project"),
-            "venue": f.get("venue"), "date": f"{f.get('year','')} {f.get('month','')}",
-            "category": f.get("category"), "what_we_do": f.get("what_we_do"),
-            "scope_count": len(f.get("scope", [])),
-            "photos": len(st.session_state.assets.get("photos", [])),
-            "hero_index": st.session_state.assets.get("hero_index"),
-            "ai_content_ready": bool(st.session_state.ai_result),
+            "project_id": fd.get("project_id"),
+            "client": fd.get("client"), "project": fd.get("project"),
+            "venue": fd.get("venue"), "date": f"{fd.get('year','')} {fd.get('month','')}",
+            "category": fd.get("category"), "what_we_do": fd.get("what_we_do"),
+            "scope_count": len(fd.get("scope", [])),
+            "photos": len(ss.assets.get("photos", [])),
+            "hero_index": ss.assets.get("hero_index"),
+            "logo_black": bool(ss.assets.get("logo_black")),
+            "logo_white": bool(ss.assets.get("logo_white")),
+            "mc_complete": mc_complete,
+            "content_ready": content_ready,
         })
 
-        if not st.session_state.ai_result:
-            st.warning("No AI content generated yet. You can still sync the raw data, "
-                       "but social/web/FAQ columns will be empty. Go BACK to generate first.")
+        st.markdown('<div class="sec-header">Sync Gate</div>', unsafe_allow_html=True)
+        gate_items = [
+            ("All required inputs", not miss),
+            ("15 MC answered (100%)", mc_complete),
+            ("AI content generated", content_ready),
+        ]
+        for label, ok in gate_items:
+            cls = "pill-ok" if ok else "pill-bad"
+            mark = "✓" if ok else "✗"
+            st.markdown(f"- <span class='{cls}'>{mark} {label}</span>", unsafe_allow_html=True)
+        if miss:
+            st.caption("Missing inputs: " + ", ".join(miss))
 
-        if st.button("🚀 EXECUTE MASTER SYNC", type="primary"):
-            if not (f.get("client") and f.get("project")):
-                st.error("Client and Project are required before sync.")
+        do_sync = st.button("🚀 EXECUTE MASTER SYNC", disabled=not all_ready, type="primary")
+        if not all_ready:
+            st.caption("Sync is blocked until all three gate items are complete.")
+        if do_sync:
+            ov = breathing_overlay("WRITING TO MASTER DB")
+            result = sync.push_to_gas(fd, ss.ai_result or {}, ss.assets or {})
+            ov.empty()
+            if isinstance(result, dict) and result.get("ok"):
+                portal.log(f"Sync OK (HTTP {result.get('status')}).")
+                st.success("✅ Sync Complete — written to Master DB. Now run CMS Sync in the Sheet to push to GitHub.")
+                st.json(result.get("response"))
             else:
-                steps = [(portal.ICONS["DB"], "WRITING TO MASTER DB")]
-                ai_payload = st.session_state.ai_result or {}
-                assets = st.session_state.assets or {}
-                # THE REAL CALL — this is what v18.9.12 was missing.
-                result = portal.run_with_overlay(steps, sync.push_to_gas, f, ai_payload, assets)
+                detail = result.get("response") if isinstance(result, dict) else result
+                portal.log("Sync FAILED.")
+                st.error("❌ Sync failed. Details below.")
+                st.json({"status": result.get("status") if isinstance(result, dict) else None, "detail": detail})
 
-                if isinstance(result, dict) and result.get("ok"):
-                    portal.log(f"Sync OK (HTTP {result.get('status')}).")
-                    st.success("✅ Sync Complete — data written to Master DB. "
-                               "Now run the CMS Sync in the Sheet to push to GitHub.")
-                    st.json(result.get("response"))
-                else:
-                    detail = result.get("response") if isinstance(result, dict) else result
-                    portal.log("Sync FAILED.")
-                    st.error("❌ Sync failed. Details below.")
-                    st.json({"status": result.get("status") if isinstance(result, dict) else None,
-                             "detail": detail})
-
-    # --- Persistent Terminal ---
+    # --- Terminal ---
     st.markdown('<div class="terminal-box">' +
-                "".join([f"<p>{log}</p>" for log in st.session_state.terminal_logs]) +
+                "".join([f"<p>{log}</p>" for log in ss.terminal_logs]) +
                 '</div>', unsafe_allow_html=True)

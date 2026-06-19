@@ -1,9 +1,16 @@
-# VERSION: v19.3.0 (push_to_gas payload now matches deployed Handler contract)
-# TIMESTAMP: 2026-06-19 11:35:00 HKT
+# VERSION: v19.4.0 (Use real writing-skill prompts from prompts_library + fold in 15 MC answers)
+# TIMESTAMP: 2026-06-19 13:07:00 HKT
 
 import streamlit as st
 import requests
 import json
+
+try:
+    from prompts_library import MAGAZINE_PROMPT, SOCIAL_PROMPT
+except ImportError:
+    MAGAZINE_PROMPT = ""
+    SOCIAL_PROMPT = ""
+
 
 class SynthesisSync:
     def __init__(self):
@@ -19,70 +26,64 @@ class SynthesisSync:
                 if k.lower() == key.lower(): return v
         return default
 
-    def generate_ai_content(self, key, active_model, form_data):
+    def generate_ai_content(self, key, active_model, form_data, mc_answers=None):
         if not active_model or active_model == "NONE":
             active_model = "gemini-1.5-flash"
             
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{active_model}:generateContent?key={key}"
         
         # DEFINITIVE STRATEGIC PROMPT: PR Agency Centric + Randomized 5-Angle Engine + SEO/AEO
-        sys_msg = """Role: You are the Lead PR Strategy Writer for "Firebean Limited" (a premium PR & Event Agency). 
-        Objective: Transform project data into a 500-word agency case study per language and an agency-centric social media suite.
+        # Combine the user's two real writing-skill prompts (magazine + social) into one
+        # system instruction, plus the strict JSON output contract the app needs.
+        sys_msg = (
+            MAGAZINE_PROMPT
+            + "\n\n========== SOCIAL MEDIA PLATFORM GUIDE ==========\n"
+            + SOCIAL_PROMPT
+            + """
 
-        ### THE PR AGENCY MANDATE (CRITICAL):
-        Every piece of content MUST position Firebean as the strategic partner behind the success. 
-        DO NOT just describe the event as a journalist. You MUST highlight HOW Firebean solved the client's pain points, introduced unique features, and successfully executed our Scope of Work. 
-        The narrative framework is always: "Client goal/pain point -> Firebean's strategic solution -> Flawless execution & results."
-
-        ### BRANDING RULE (CRITICAL):
-        NEVER translate the company name "Firebean" into Chinese, Japanese, or any other language (e.g., do NOT use 火鳳凰, 火豆, ファイアビーン, etc.). ALWAYS use the exact English word "Firebean" across all languages, articles, and platforms.
-
-        ### WRITING PROTOCOL (Diversity Engine):
-        RANDOMLY SELECT ONLY ONE writing style for this specific generation. COMMIT 100% to it:
-        1. The Thought Leadership Angle: Focus on how Firebean's strategy for this project sets a new industry standard.
-        2. The Contrarian / Disruptor Angle: How Firebean broke traditional event rules to achieve unprecedented success for the client.
-        3. The Human-Centric / Emotional Angle: How Firebean's experiential design created deep emotional connections for the audience.
-        4. The Analytical Problem-Solver (PAS): Break down the client's initial pain point, and reveal Firebean's precise strategic solution.
-        5. The Insider / Behind-the-Scenes Angle: An exclusive look at how the Firebean team expertly managed and executed the operation.
-
-        ### SOCIAL MEDIA TONE & MANNER (STRICT LOCALIZATION):
-        *CRUCIAL: All posts must speak from Firebean's perspective (e.g., "We helped [Client]...", "Our team at Firebean...", "Proud to execute...").*
-        📱 Facebook (FB): ~150 words. Friendly storytelling of our team's effort. Language: Trad. Chinese (HK) with Cantonese slang. Use "you" (你).
-        📸 Instagram (IG): < 150 chars. Captivating hook in first 125 chars. Tone: Agency Behind-the-scenes. Language: Traditional Chinese (HK) with Cantonese slang. 20 professional hashtags.
-        🧵 Threads (TR): < 50 chars. Humorous/Sharp agency life insight. 地道廣東話/網絡用語. 
-        💼 LinkedIn (LI): 150-300 words. Authoritative B2B English. Emphasis on Firebean's ROI generation and PR leadership.
-
-        ### WEB ARTICLE STRUCTURE (SEO/AEO OPTIMIZED):
-        - H1 Title: SEO Catchy Case Study Headline.
-        - Subtitles: Use H2 tags for narrative sections (must explicitly highlight Firebean's strategic contribution).
-        - Word Count: Approx 500 words.
-        - Punchline: Final paragraph must be a single, bolded (<strong>) concluding sentence summarizing Firebean's impact.
-        - CRITICAL: DO NOT include FAQ text inside the Web HTML content.
-
-        ### STRATEGIC FAQ (AEO OPTIMIZED):
-        - Generate exactly 3 Q&As per language highlighting the project's challenges and Firebean's solutions.
-        - Use long-tail keyword questions and direct, authoritative answers for AI search engines.
-
-        JSON OUTPUT STRUCTURE:
-        {
-          "WritingStyleUsed": "[Style]",
-          "Challenge": "[SEO Summary of Client's Pain Point]",
-          "Solution": "[ROI Summary of Firebean's Solution]",
-          "SocialMedia": { "LI": "...", "FB": "...", "TR": "...", "IG": "..." },
-          "Web": { "EN": "...", "TC": "...", "JP": "..." },
-          "FAQ": { 
-            "EN": [{"q":"...", "a":"..."}], 
-            "TC": [{"q":"...", "a":"..."}], 
-            "JP": [{"q":"...", "a":"..."}] 
-          }
-        }
-        """
+========== OUTPUT CONTRACT (STRICT) ==========
+Return ONLY a single RAW JSON object (no markdown, no code fences) with EXACTLY this structure:
+{
+  "WritingStyleUsed": "[which of the 5 magazine angles you picked]",
+  "Challenge": "[short SEO summary of the client's pain point]",
+  "Solution": "[short ROI summary of Firebean's solution]",
+  "SocialMedia": { "LI": "...", "FB": "...", "TR": "...", "IG": "..." },
+  "Web": { "EN": "<~500w English article HTML, no FAQ inside>", "TC": "<繁體中文 HK article HTML>", "JP": "<日本語 article HTML>" },
+  "FAQ": {
+    "EN": [{"q":"...","a":"..."},{"q":"...","a":"..."},{"q":"...","a":"..."}],
+    "TC": [{"q":"...","a":"..."},{"q":"...","a":"..."},{"q":"...","a":"..."}],
+    "JP": [{"q":"...","a":"..."},{"q":"...","a":"..."},{"q":"...","a":"..."}]
+  }
+}
+SocialMedia keys map to: LI=LinkedIn, FB=Facebook, TR=Threads, IG=Instagram. Follow each platform's word count, tone and language rules from the guide above.
+"""
+        )
         
-        # Inject Firebean's Scope of Work into the context so the AI knows exactly what to boast about!
+        # Inject Firebean's Scope of Work into the context
         scope_data = form_data.get('scope', [])
         scope_str = ", ".join(scope_data) if isinstance(scope_data, list) else str(scope_data)
-        
-        ctx = f"Client: {form_data.get('client', '')}. Project: {form_data.get('project', '')}. Date: {form_data.get('date', '')}. Firebean's Scope of Work: {scope_str}. Strategic Brief: {form_data.get('open_question', '')}"
+
+        ctx = (
+            f"[Basic Information]: Client = {form_data.get('client', '')}; "
+            f"Project = {form_data.get('project', '')}; "
+            f"Firebean's Scope of Work = {scope_str}.\n"
+            f"[Event Details]: Date = {form_data.get('date', '')}; "
+            f"Venue = {form_data.get('venue', '')}.\n"
+            f"[Strategic Brief / Pain Point & Solution context]: {form_data.get('open_question', '')}"
+        )
+
+        # Fold the 15 MC answers into the context so content reflects the user's choices
+        if mc_answers:
+            qa_lines = []
+            for i, item in enumerate(mc_answers, 1):
+                q = item.get("q", "") if isinstance(item, dict) else ""
+                a = item.get("a", "") if isinstance(item, dict) else str(item)
+                qa_lines.append(f"{i}. {q} -> 答案: {a}")
+            ctx += (
+                "\n\n[Strategic Diagnostic — the user's answers to 15 MC questions. "
+                "Use these to choose the editorial angle and shape the narrative]:\n"
+                + "\n".join(qa_lines)
+            )
         
         payload = {
             "contents": [{"role": "user", "parts": [{"text": ctx}]}],
