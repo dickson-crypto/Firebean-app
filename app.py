@@ -80,9 +80,11 @@ def breathing_overlay(text):
                       display:flex; flex-direction:column; justify-content:center; align-items:center;
                       text-align:center; padding:24px; box-sizing:border-box;
                       animation: fb-glow 2s ease-in-out infinite; }}
-        /* Icon stack: all icons share the same spot; only one visible per phase. */
-        .fb-iconwrap {{ position:relative; width:96px; height:96px; margin-bottom:26px; }}
-        .fb-ico {{ position:absolute; top:0; left:0; width:96px; height:96px;
+        /* Icon stack: all icons share the same spot; only one visible per phase.
+           Force a fixed 72px so Streamlit's global SVG styles can't blow it up. */
+        .fb-iconwrap {{ position:relative; width:72px; height:72px; margin-bottom:26px; }}
+        .fb-iconwrap svg.fb-ico {{ width:72px !important; height:72px !important; }}
+        .fb-ico {{ position:absolute; top:0; left:0; width:72px; height:72px;
                    opacity:0; animation: fb-cycle 3.6s ease-in-out infinite; }}
         .fb-ico.i1 {{ animation-delay: 0s; }}
         .fb-ico.i2 {{ animation-delay: 1.2s; }}
@@ -93,11 +95,23 @@ def breathing_overlay(text):
         </style>
         <div class="fb-overlay">
             <div class="fb-circle">
-                <svg class="fb-runner" viewBox="0 0 24 24" fill="#FFFFFF" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                    <circle cx="13.5" cy="4.5" r="2"/>
-                    <path d="M12.9 6.6c-.5-.2-1.1-.1-1.5.3L8.1 10.1c-.3.3-.4.7-.3 1.1l.9 2.9-2.4 4.1c-.3.5-.1 1.1.4 1.4.5.3 1.1.1 1.4-.4l2.6-4.4c.2-.3.2-.7.1-1l-.5-1.7 1.7-1.6.9 2.4c.1.4.5.7.9.7h3.5c.6 0 1-.4 1-1s-.4-1-1-1h-2.8l-1.3-3.6c-.1-.4-.4-.7-.8-.8l.9-.9z"/>
-                    <path d="M5.5 8.5l-1.8.6c-.5.2-.8.7-.6 1.3.2.5.7.8 1.3.6l2.2-.7-1.1-1.8z"/>
-                </svg>
+                <div class="fb-iconwrap">
+                    <!-- Action 1: running man (gathering) -->
+                    <svg class="fb-ico i1" width="72" height="72" viewBox="0 0 24 24" fill="#FFFFFF" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <circle cx="13.5" cy="4.5" r="2"/>
+                        <path d="M12.9 6.6c-.5-.2-1.1-.1-1.5.3L8.1 10.1c-.3.3-.4.7-.3 1.1l.9 2.9-2.4 4.1c-.3.5-.1 1.1.4 1.4.5.3 1.1.1 1.4-.4l2.6-4.4c.2-.3.2-.7.1-1l-.5-1.7 1.7-1.6.9 2.4c.1.4.5.7.9.7h3.5c.6 0 1-.4 1-1s-.4-1-1-1h-2.8l-1.3-3.6c-.1-.4-.4-.7-.8-.8l.9-.9z"/>
+                        <path d="M5.5 8.5l-1.8.6c-.5.2-.8.7-.6 1.3.2.5.7.8 1.3.6l2.2-.7-1.1-1.8z"/>
+                    </svg>
+                    <!-- Action 2: pencil writing (composing) -->
+                    <svg class="fb-ico i2" width="72" height="72" viewBox="0 0 24 24" fill="#FFFFFF" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25z"/>
+                        <path d="M20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34a.9959.9959 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
+                    </svg>
+                    <!-- Action 3: check / done (finalising) -->
+                    <svg class="fb-ico i3" width="72" height="72" viewBox="0 0 24 24" fill="#FFFFFF" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <path d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                    </svg>
+                </div>
                 <p class="fb-label">{text}</p>
                 <p class="fb-sub">AI is processing... please wait</p>
             </div>

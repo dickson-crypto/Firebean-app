@@ -348,7 +348,9 @@ WEB FIELD RULE (must match the firebean.net website layout 100%): each Web langu
             # Framework (Handler reads data.what_we_do)
             "category": _join(form.get("category")),
             "what_we_do": _join(form.get("what_we_do")),
-            "scope": "\n".join(form.get("scope", [])) if isinstance(form.get("scope"), list) else form.get("scope", ""),
+            # Join multiple scopes with ", " (comma) NOT newlines, so the website shows
+            # "Concept Development, Branding Strategy, ..." instead of rendering <br> tags.
+            "scope": ", ".join([s for s in form.get("scope", []) if s]) if isinstance(form.get("scope"), list) else form.get("scope", ""),
             "youtube": form.get("youtube", ""),
             "open_question": form.get("open_question", ""),
 
