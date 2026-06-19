@@ -1,5 +1,5 @@
-# VERSION: v19.0.0 (Full gated flow: validate -> 15 MC -> 100% -> generate -> sync)
-# TIMESTAMP: 2026-06-19 13:07:00 HKT
+# VERSION: v19.0.1 (Brief now REQUIRED; YouTube optional/not counted; EVERGREEN social content)
+# TIMESTAMP: 2026-06-19 13:25:00 HKT
 #
 # FLOW (as specified by Dickson):
 #   STAGE 1  Collect + validate ALL inputs (client, project, scope, logo B/W, 1-8 photos, hero pick).
@@ -87,6 +87,7 @@ def missing_inputs(fd, assets):
     if not fd.get("client"):       missing.append("Client name")
     if not fd.get("project"):      missing.append("Project name")
     if not fd.get("scope"):        missing.append("Scope of Work (tick at least one)")
+    if not fd.get("open_question"): missing.append("Brief / context (required — main source for the AI)")
     if not assets.get("logo_black"): missing.append("Logo Black")
     if not assets.get("logo_white"): missing.append("Logo White")
     if not assets.get("photos"):   missing.append("At least 1 photo (up to 8)")
@@ -142,8 +143,9 @@ if __name__ == "__main__":
         sel_cat, sel_wwd, sel_sow = inputs.render_framework()
 
         st.markdown('<div class="sec-header">Strategic Brief</div>', unsafe_allow_html=True)
-        open_q = st.text_area("Brief / context for the AI (goal, pain points, results)", value=fd.get("open_question", ""), height=120)
-        youtube = st.text_input("YouTube URL (optional)", value=fd.get("youtube", ""))
+        open_q = st.text_area("Brief / context for the AI — REQUIRED (goal, pain points, results)", value=fd.get("open_question", ""), height=120,
+                              help="This is a main source the AI studies to write the MC questions and the final content.")
+        youtube = st.text_input("YouTube URL (optional — not counted toward progress)", value=fd.get("youtube", ""))
 
         lb, lw, ph, encoded = inputs.render_assets()
 

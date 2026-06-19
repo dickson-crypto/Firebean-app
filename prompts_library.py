@@ -39,7 +39,14 @@ Output the article in 3 languages:
 """
 
 # ── 2. SOCIAL MEDIA PLATFORM GUIDE (FB / IG / Threads / LinkedIn) ──
-SOCIAL_PROMPT = """作為一間香港公關公司 (Firebean)，要為項目在 2026 年的社交媒體上突圍而出，一式一樣的「官方公關稿」已經無法吸引受眾。請根據各平台的演算法、受眾特徵及互動模式，度身訂造文案。所有貼文必須以 Firebean 的視角撰寫（例如：「我哋幫 [Client]...」、「Firebean 團隊...」）。
+SOCIAL_PROMPT = """作為一間香港公關公司 (Firebean)，要為項目在社交媒體上突圍而出，一式一樣的「官方公關稿」已經無法吸引受眾。請根據各平台的演算法、受眾特徵及互動模式，度身訂造文案。所有貼文必須以 Firebean 的視角撰寫（例如：「我哋幫 [Client]...」、「Firebean 團隊...」）。
+
+⚠️ 重要（EVERGREEN 原則 — 適用於所有社交平台貼文）：
+這是一個「活動亮點回顧 (Event Highlight & Recap)」願景，內容會在未來陸續發佈。所以：
+- 絕對不要提及任何具體日期、時間、年份或「即將舉行 / 剛剛結束」這類時間性字眼。
+- 不要寫 CTA 報名 / 票務 / 「錢快報名」等時效性号召。
+- 內容要 long-lasting，讓受眾隨時看都不會有「過時 / out of date」的感覺。
+- 重點放在：Firebean 作為 PR 顧問的專業洞察、策略思維及執行力，以及項目的永恆價值。
 
 📱 FB (Facebook) — 廣泛觸及與資訊大本營：
 - 建議字數：約 100 - 250 字。精簡易讀但足以說好一個故事。
