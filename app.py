@@ -1,5 +1,5 @@
-# VERSION: v18.10.1 (Read Gemini key from Streamlit Secrets: GEMINI_API_KEYS)
-# TIMESTAMP: 2026-06-19 12:08:00 HKT
+# VERSION: v18.10.2 (Surface real Gemini API errors + model auto-retry)
+# TIMESTAMP: 2026-06-19 12:23:00 HKT
 #
 # WHAT CHANGED vs v18.9.12:
 #   - v18.9.12's "EXECUTE MASTER SYNC" button ran `run_with_overlay(steps, lambda: True)`
@@ -30,7 +30,7 @@ except ImportError as e:
 
 class FirebeanPortal:
     def __init__(self):
-        self.VERSION = "v18.10.1"
+        self.VERSION = "v18.10.2"
         self.MODELS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
         self.ICONS = {
             "DB": '<svg width="120" height="120" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>',
@@ -188,13 +188,22 @@ if __name__ == "__main__":
                 form_ctx["date"] = f"{year} {month}"
                 steps = [(portal.ICONS["BRAIN"], "GENERATING CASE STUDY + SOCIAL COPY")]
                 result = portal.run_with_overlay(steps, sync.generate_ai_content, api_key, model, form_ctx)
+
+                # Auto-retry once with the most reliably available model if the chosen one fails
+                if not result and model != "gemini-1.5-flash":
+                    portal.log(f"{model} failed, retrying with gemini-1.5-flash...")
+                    result = portal.run_with_overlay(
+                        [(portal.ICONS["BRAIN"], "RETRYING WITH gemini-1.5-flash")],
+                        sync.generate_ai_content, api_key, "gemini-1.5-flash", form_ctx)
+
                 if result:
                     st.session_state.ai_result = result
                     portal.log("AI content generated.")
                     st.success("AI content ready. Review below, then proceed.")
                 else:
-                    portal.log("AI generation FAILED (check key/model/quota).")
-                    st.error("AI generation failed. Check your API key, model access, or quota.")
+                    portal.log("AI generation FAILED.")
+                    st.error("AI generation failed. Exact reason from Google's API below:")
+                    st.code(sync.last_error or "No error detail captured.", language="text")
 
         if col_b.button("PROCEED TO REVIEW & SYNC →", type="primary", use_container_width=True):
             st.session_state.page = 2

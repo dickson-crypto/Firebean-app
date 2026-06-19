@@ -9,6 +9,7 @@ class SynthesisSync:
     def __init__(self):
         # Using your latest deployment URL
         self.GAS_URL = "https://script.google.com/macros/s/AKfycbycZnD493RrdTPwUJvXBiGNfg6hf0_AHGzo99ZkeeDtlM66TZFbObWbJVuEfOPe-6Fk/exec"
+        self.last_error = ""  # holds the most recent generation error for display
 
     def get_ci(self, d, default, *keys):
         """Case-insensitive dictionary lookup to prevent AI key errors."""
@@ -92,11 +93,31 @@ class SynthesisSync:
         try:
             res = requests.post(url, json=payload, timeout=90)
             if res.status_code == 200:
-                raw = res.json()['candidates'][0]['content']['parts'][0]['text']
+                data = res.json()
+                # The model can return no candidate if the prompt is blocked (safety/recitation)
+                cands = data.get("candidates") or []
+                if not cands:
+                    self.last_error = f"No candidate returned. Raw response: {json.dumps(data)[:500]}"
+                    return None
+                parts = cands[0].get("content", {}).get("parts", [])
+                if not parts:
+                    reason = cands[0].get("finishReason", "UNKNOWN")
+                    self.last_error = f"Empty content (finishReason={reason}). Raw: {json.dumps(data)[:500]}"
+                    return None
+                raw = parts[0].get("text", "")
                 clean = raw.replace("```json", "").replace("```", "").strip()
-                return json.loads(clean)
+                try:
+                    return json.loads(clean)
+                except json.JSONDecodeError as je:
+                    self.last_error = f"Model returned non-JSON text: {je}. First 300 chars: {clean[:300]}"
+                    return None
+            else:
+                # Surface the actual Google API error (bad key / wrong model / quota)
+                self.last_error = f"HTTP {res.status_code} from Gemini: {res.text[:600]}"
+                return None
+        except Exception as e:
+            self.last_error = f"Request exception: {type(e).__name__}: {e}"
             return None
-        except Exception: return None
 
     def render_ui(self, gc):
         style = gc.get('WritingStyleUsed', 'Standard')
