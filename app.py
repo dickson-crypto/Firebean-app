@@ -1,5 +1,5 @@
-# VERSION: v19.0.1 (Brief now REQUIRED; YouTube optional/not counted; EVERGREEN social content)
-# TIMESTAMP: 2026-06-19 13:25:00 HKT
+# VERSION: v19.1.0 (MC questions now MULTI-SELECT; bigger breathing red circle with white text centered inside)
+# TIMESTAMP: 2026-06-19 16:20:00 HKT
 #
 # FLOW (as specified by Dickson):
 #   STAGE 1  Collect + validate ALL inputs (client, project, scope, logo B/W, 1-8 photos, hero pick).
@@ -57,19 +57,26 @@ def breathing_overlay(text):
     o.markdown(f"""
         <style>
         @keyframes fb-breathe {{
-            0%   {{ transform: scale(0.75); opacity: 0.55; box-shadow: 0 0 0 0 rgba(226,35,26,0.7); }}
-            50%  {{ transform: scale(1.15); opacity: 1;    box-shadow: 0 0 60px 30px rgba(226,35,26,0.45); }}
-            100% {{ transform: scale(0.75); opacity: 0.55; box-shadow: 0 0 0 0 rgba(226,35,26,0.7); }}
+            0%   {{ transform: scale(0.82); box-shadow: 0 0 0 0 rgba(226,35,26,0.75); }}
+            50%  {{ transform: scale(1.12); box-shadow: 0 0 90px 45px rgba(226,35,26,0.45); }}
+            100% {{ transform: scale(0.82); box-shadow: 0 0 0 0 rgba(226,35,26,0.75); }}
         }}
         .fb-overlay {{ position:fixed; top:0; left:0; width:100vw; height:100vh; background:#121212;
                        z-index:9999; display:flex; flex-direction:column; justify-content:center; align-items:center; }}
-        .fb-circle {{ width:160px; height:160px; border-radius:50%; background:#E2231A;
-                      animation: fb-breathe 1.6s ease-in-out infinite; margin-bottom:40px; }}
+        /* Bigger breathing red circle with the status text centered INSIDE it (white). */
+        .fb-circle {{ width:300px; height:300px; border-radius:50%; background:#E2231A;
+                      display:flex; flex-direction:column; justify-content:center; align-items:center;
+                      text-align:center; padding:24px; box-sizing:border-box;
+                      animation: fb-breathe 1.8s ease-in-out infinite; }}
+        .fb-circle .fb-label {{ color:#FFFFFF; font-weight:800; letter-spacing:1px;
+                                 font-size:20px; line-height:1.3; margin:0; }}
+        .fb-circle .fb-sub {{ color:rgba(255,255,255,0.85); font-size:12px; margin-top:10px; }}
         </style>
         <div class="fb-overlay">
-            <div class="fb-circle"></div>
-            <h2 style="color:white; letter-spacing:1px;">{text}</h2>
-            <p style="color:#888;">AI is processing... please wait</p>
+            <div class="fb-circle">
+                <p class="fb-label">{text}</p>
+                <p class="fb-sub">AI is processing... please wait</p>
+            </div>
         </div>
     """, unsafe_allow_html=True)
     return o
@@ -208,17 +215,18 @@ if __name__ == "__main__":
                 st.error("Could not generate questions. Exact reason from Google:")
                 st.code(AIDiagnostic.last_error or "No detail captured.", language="text")
 
-        # ----- Answer the 15 MC -----
+        # ----- Answer the 15 MC (multi-select: each question accepts more than one answer) -----
         answered = 0
         if ss.mc_questions:
-            st.markdown("Answer all questions below. Progress reaches 100% when all are answered.")
+            st.markdown("Answer all questions below. You may pick **more than one** answer per question. Progress reaches 100% when every question has at least one answer.")
             for i, item in enumerate(ss.mc_questions):
                 q = item.get("q", f"Question {i+1}")
                 opts = item.get("opts", [])
                 key = f"mc_{i}"
-                choice = st.radio(f"{i+1}. {q}", options=opts, index=None, key=key)
-                if choice is not None:
-                    ss.mc_answers[i] = choice
+                choice = st.multiselect(f"{i+1}. {q}", options=opts, default=None, key=key,
+                                        placeholder="可選擇一個或多個答案 (select one or more)")
+                # choice is always a list; store it (empty list = unanswered)
+                ss.mc_answers[i] = choice
             answered = len([v for v in ss.mc_answers.values() if v])
             total = len(ss.mc_questions)
             pct = int((answered / total) * 100) if total else 0
@@ -234,7 +242,12 @@ if __name__ == "__main__":
         if gen_content:
             ov = breathing_overlay("GENERATING CASE STUDY + SOCIAL COPY")
             # Build answered MC list with q + chosen answer
-            mc_payload = [{"q": ss.mc_questions[i].get("q", ""), "a": ss.mc_answers.get(i, "")}
+            def _ans_str(v):
+                # mc_answers values are now lists (multi-select); join into one readable string
+                if isinstance(v, list):
+                    return "; ".join(str(x) for x in v)
+                return str(v) if v else ""
+            mc_payload = [{"q": ss.mc_questions[i].get("q", ""), "a": _ans_str(ss.mc_answers.get(i, []))}
                           for i in range(len(ss.mc_questions))]
             form_ctx = dict(fd)
             form_ctx["date"] = f"{fd.get('year','')} {fd.get('month','')}"

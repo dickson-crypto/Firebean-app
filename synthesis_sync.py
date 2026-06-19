@@ -1,5 +1,9 @@
-# VERSION: v19.6.0 (Point GAS_URL to the current Apps Script /exec deployment)
-# TIMESTAMP: 2026-06-19 14:08:00 HKT
+# VERSION: v20.0.0 (Realign push_to_gas payload to Handler.gs v12.1.0 read contract)
+# TIMESTAMP: 2026-06-19 15:55:00 HKT
+# CHANGE: Top-level keys client/project/what_we_do (not *_name/category_what);
+#         ai_content = {SocialMedia, Web, FAQ(arrays)}; assets nested under data.assets
+#         with key "photos" (not top-level images). Fixes empty Master DB cells,
+#         missing Drive folder, and "Project Recap" fallback name.
 
 import streamlit as st
 import requests
@@ -196,25 +200,51 @@ SocialMedia keys map to: LI=LinkedIn, FB=Facebook, TR=Threads, IG=Instagram. Fol
         faq_data = ai.get("FAQ") or ai.get("faq") or {}
         sm_data = ai.get("SocialMedia") or ai.get("social_media") or {}
 
-        # AI content keyed EXACTLY as the deployed handler reads it
+        def _faq_arr(*keys):
+            """Return FAQ as a clean list of {q, a} dicts (Handler.sanitizeFaq expects arrays)."""
+            raw = self.get_ci(faq_data, [], *keys)
+            out = []
+            if isinstance(raw, list):
+                for f in raw:
+                    if isinstance(f, dict):
+                        q = f.get("q", "") or f.get("Q", "")
+                        a = f.get("a", "") or f.get("A", "")
+                        if q or a:
+                            out.append({"q": q, "a": a})
+            return out
+
+        # ai_content keyed EXACTLY as Handler.gs v12.1.0 reads it:
+        #   data.ai_content.SocialMedia.{LI,FB,TR,IG}
+        #   data.ai_content.Web.{EN,TC,JP}
+        #   data.ai_content.FAQ.{EN,TC,JP}  (arrays of {q,a})
         ai_content = {
-            "1_google_slide": ai.get("google_slide", ""),
-            "5_linkedin_post": self.get_ci(sm_data, "", "LI", "linkedin"),
-            "2_facebook_post": self.get_ci(sm_data, "", "FB", "facebook"),
-            "3_threads_post": self.get_ci(sm_data, "", "TR", "threads"),
-            "4_instagram_post": self.get_ci(sm_data, "", "IG", "instagram"),
-            "6_website": {
-                "en": self.get_ci(web_data, "", "EN", "en"),
-                "tc": self.get_ci(web_data, "", "TC", "tc"),
-                "jp": self.get_ci(web_data, "", "JP", "jp"),
+            "SocialMedia": {
+                "LI": self.get_ci(sm_data, "", "LI", "linkedin"),
+                "FB": self.get_ci(sm_data, "", "FB", "facebook"),
+                "TR": self.get_ci(sm_data, "", "TR", "threads"),
+                "IG": self.get_ci(sm_data, "", "IG", "instagram"),
+            },
+            "Web": {
+                "EN": self.get_ci(web_data, "", "EN", "en"),
+                "TC": self.get_ci(web_data, "", "TC", "tc"),
+                "JP": self.get_ci(web_data, "", "JP", "jp"),
+            },
+            "FAQ": {
+                "EN": _faq_arr("EN", "en"),
+                "TC": _faq_arr("TC", "tc"),
+                "JP": _faq_arr("JP", "jp"),
             },
         }
 
-        # Assets: handler reads logo_black / logo_white / images[] / hero_index at TOP level
+        # Assets MUST be nested under data.assets with key "photos".
+        # Handler reads data.assets.{logo_black, logo_white, photos[], hero_index}.
         photos = assets.get("photos") or assets.get("images") or []
-        logo_black = assets.get("logo_black")
-        logo_white = assets.get("logo_white")
-        hero_index = assets.get("hero_index", 0)
+        assets_block = {
+            "logo_black": assets.get("logo_black"),
+            "logo_white": assets.get("logo_white"),
+            "photos": photos,
+            "hero_index": assets.get("hero_index", 0),
+        }
 
         def _join(v):
             return ", ".join(v) if isinstance(v, list) else (v or "")
@@ -223,16 +253,16 @@ SocialMedia keys map to: LI=LinkedIn, FB=Facebook, TR=Threads, IG=Instagram. Fol
             "action": "sync_project",
             "project_id": form.get("project_id", ""),
 
-            # Identity (handler reads *_name)
-            "client_name": form.get("client", ""),
-            "project_name": form.get("project", ""),
+            # Identity (Handler reads data.project / data.client)
+            "client": form.get("client", ""),
+            "project": form.get("project", ""),
             "venue": form.get("venue", ""),
             "date": event_date,
             "sort_date": sort_date,
 
-            # Framework
+            # Framework (Handler reads data.what_we_do)
             "category": _join(form.get("category")),
-            "category_what": _join(form.get("what_we_do")),
+            "what_we_do": _join(form.get("what_we_do")),
             "scope": "\n".join(form.get("scope", [])) if isinstance(form.get("scope"), list) else form.get("scope", ""),
             "youtube": form.get("youtube", ""),
             "open_question": form.get("open_question", ""),
@@ -241,18 +271,11 @@ SocialMedia keys map to: LI=LinkedIn, FB=Facebook, TR=Threads, IG=Instagram. Fol
             "challenge": ai.get("Challenge", "") or ai.get("challenge", ""),
             "solution": ai.get("Solution", "") or ai.get("solution", ""),
 
+            # Nested AI content (SocialMedia / Web / FAQ-arrays)
             "ai_content": ai_content,
 
-            # FAQ flattened to flat fields (handler reads faq_en / faq_tc / faq_jp)
-            "faq_en": self._faq_to_string(self.get_ci(faq_data, [], "EN", "en")),
-            "faq_tc": self._faq_to_string(self.get_ci(faq_data, [], "TC", "tc")),
-            "faq_jp": self._faq_to_string(self.get_ci(faq_data, [], "JP", "jp")),
-
-            # Assets at TOP level
-            "logo_black": logo_black,
-            "logo_white": logo_white,
-            "images": photos,
-            "hero_index": hero_index,
+            # Nested assets block — triggers Drive folder + photo upload
+            "assets": assets_block,
         }
 
         try:

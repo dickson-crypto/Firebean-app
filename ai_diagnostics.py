@@ -1,5 +1,5 @@
-# VERSION: v19.0.0 (15 MC questions driven by Firebean writing styles + photos; error surfacing)
-# TIMESTAMP: 2026-06-19 13:07:00 HKT
+# VERSION: v19.1.0 (MC questions framed for MULTI-SELECT: more than one answer allowed)
+# TIMESTAMP: 2026-06-19 16:15:00 HKT
 
 import requests
 import json
@@ -42,6 +42,8 @@ METHODOLOGY (CRITICAL):
 2. 分析性 (Analysis) — the remaining questions: Critically analyze the visual quality of the provided photos and contrast them with the stated strategic goal. Ask sharp, execution-focused questions to find strategic gaps (e.g. hero photo choice, brand visibility, mood).
 
 Each question MUST have exactly 3 answer options.
+
+MULTI-SELECT (IMPORTANT): The user is allowed to choose MORE THAN ONE option per question. Therefore design the options so that they can sensibly co-exist (the user may pick one, two, or all three). Avoid mutually-exclusive yes/no framings; prefer options that represent complementary angles, priorities, or attributes the user can combine. Where helpful, phrase the question so multiple selections make sense (e.g. 「以下哪些…（可多選）」).
 
 Format: Return ONLY a RAW JSON array of EXACTLY 15 questions in this exact structure:
 [{{"q":"[Question in Traditional Chinese]", "opts":["[Option A]", "[Option B]", "[Option C]"]}}]
