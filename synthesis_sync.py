@@ -1,5 +1,5 @@
-# VERSION: v19.5.0 (Inject project-specific firebean.net profile URL into LinkedIn/Facebook posts)
-# TIMESTAMP: 2026-06-19 13:30:00 HKT
+# VERSION: v19.6.0 (Point GAS_URL to the current Apps Script /exec deployment)
+# TIMESTAMP: 2026-06-19 14:08:00 HKT
 
 import streamlit as st
 import requests
@@ -15,7 +15,7 @@ except ImportError:
 class SynthesisSync:
     def __init__(self):
         # Using your latest deployment URL
-        self.GAS_URL = "https://script.google.com/macros/s/AKfycbycZnD493RrdTPwUJvXBiGNfg6hf0_AHGzo99ZkeeDtlM66TZFbObWbJVuEfOPe-6Fk/exec"
+        self.GAS_URL = "https://script.google.com/macros/s/AKfycbw6UuXZqhoFYtEiGYPJmFAWCis9IN-M-NVYN8hEo-Ux6UKKloihhv4yScS6ocGEJ9Em/exec"
         self.last_error = ""  # holds the most recent generation error for display
 
     def get_ci(self, d, default, *keys):
