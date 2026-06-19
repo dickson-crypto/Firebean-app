@@ -1,5 +1,5 @@
-# VERSION: v19.1.0 (MC questions now MULTI-SELECT; bigger breathing red circle with white text centered inside)
-# TIMESTAMP: 2026-06-19 16:20:00 HKT
+# VERSION: v19.2.0 (Near-fullscreen red overlay + animated running-man icon, static text; MC = radio-style multi-select via st.pills)
+# TIMESTAMP: 2026-06-19 16:30:00 HKT
 #
 # FLOW (as specified by Dickson):
 #   STAGE 1  Collect + validate ALL inputs (client, project, scope, logo B/W, 1-8 photos, hero pick).
@@ -28,7 +28,7 @@ except ImportError as e:
 
 class FirebeanPortal:
     def __init__(self):
-        self.VERSION = "v19.0.0"
+        self.VERSION = "v19.2.0"
         self.MODELS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
         self.init_session()
 
@@ -52,28 +52,46 @@ class FirebeanPortal:
 
 
 def breathing_overlay(text):
-    """Return an st.empty() showing a BREATHING RED CIRCLE fullscreen overlay."""
+    """Return an st.empty() showing a NEAR-FULLSCREEN red circle overlay.
+    The circle's outer glow pulses softly, but the status TEXT is static (no breathing).
+    A running-man icon animates inside the circle (above the text)."""
     o = st.empty()
     o.markdown(f"""
         <style>
-        @keyframes fb-breathe {{
-            0%   {{ transform: scale(0.82); box-shadow: 0 0 0 0 rgba(226,35,26,0.75); }}
-            50%  {{ transform: scale(1.12); box-shadow: 0 0 90px 45px rgba(226,35,26,0.45); }}
-            100% {{ transform: scale(0.82); box-shadow: 0 0 0 0 rgba(226,35,26,0.75); }}
+        /* Soft glow pulse on the circle only — the circle itself does NOT resize, text stays still */
+        @keyframes fb-glow {{
+            0%   {{ box-shadow: 0 0 40px 10px rgba(226,35,26,0.45); }}
+            50%  {{ box-shadow: 0 0 110px 55px rgba(226,35,26,0.65); }}
+            100% {{ box-shadow: 0 0 40px 10px rgba(226,35,26,0.45); }}
+        }}
+        /* Running-man bob + slight forward lean */
+        @keyframes fb-run {{
+            0%   {{ transform: translateY(0) rotate(-2deg); }}
+            25%  {{ transform: translateY(-6px) rotate(2deg); }}
+            50%  {{ transform: translateY(0) rotate(-2deg); }}
+            75%  {{ transform: translateY(-6px) rotate(2deg); }}
+            100% {{ transform: translateY(0) rotate(-2deg); }}
         }}
         .fb-overlay {{ position:fixed; top:0; left:0; width:100vw; height:100vh; background:#121212;
                        z-index:9999; display:flex; flex-direction:column; justify-content:center; align-items:center; }}
-        /* Bigger breathing red circle with the status text centered INSIDE it (white). */
-        .fb-circle {{ width:300px; height:300px; border-radius:50%; background:#E2231A;
+        /* Near-fullscreen circle = largest inscribed circle (min of viewport height/width) */
+        .fb-circle {{ width:min(92vh, 92vw); height:min(92vh, 92vw); border-radius:50%; background:#E2231A;
                       display:flex; flex-direction:column; justify-content:center; align-items:center;
                       text-align:center; padding:24px; box-sizing:border-box;
-                      animation: fb-breathe 1.8s ease-in-out infinite; }}
+                      animation: fb-glow 2s ease-in-out infinite; }}
+        .fb-runner {{ width:84px; height:84px; margin-bottom:24px;
+                      animation: fb-run 0.7s ease-in-out infinite; transform-origin:center bottom; }}
         .fb-circle .fb-label {{ color:#FFFFFF; font-weight:800; letter-spacing:1px;
-                                 font-size:20px; line-height:1.3; margin:0; }}
-        .fb-circle .fb-sub {{ color:rgba(255,255,255,0.85); font-size:12px; margin-top:10px; }}
+                                 font-size:clamp(22px, 3.2vw, 38px); line-height:1.25; margin:0; }}
+        .fb-circle .fb-sub {{ color:rgba(255,255,255,0.9); font-size:clamp(12px, 1.4vw, 16px); margin-top:14px; }}
         </style>
         <div class="fb-overlay">
             <div class="fb-circle">
+                <svg class="fb-runner" viewBox="0 0 24 24" fill="#FFFFFF" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <circle cx="13.5" cy="4.5" r="2"/>
+                    <path d="M12.9 6.6c-.5-.2-1.1-.1-1.5.3L8.1 10.1c-.3.3-.4.7-.3 1.1l.9 2.9-2.4 4.1c-.3.5-.1 1.1.4 1.4.5.3 1.1.1 1.4-.4l2.6-4.4c.2-.3.2-.7.1-1l-.5-1.7 1.7-1.6.9 2.4c.1.4.5.7.9.7h3.5c.6 0 1-.4 1-1s-.4-1-1-1h-2.8l-1.3-3.6c-.1-.4-.4-.7-.8-.8l.9-.9z"/>
+                    <path d="M5.5 8.5l-1.8.6c-.5.2-.8.7-.6 1.3.2.5.7.8 1.3.6l2.2-.7-1.1-1.8z"/>
+                </svg>
                 <p class="fb-label">{text}</p>
                 <p class="fb-sub">AI is processing... please wait</p>
             </div>
@@ -215,18 +233,29 @@ if __name__ == "__main__":
                 st.error("Could not generate questions. Exact reason from Google:")
                 st.code(AIDiagnostic.last_error or "No detail captured.", language="text")
 
-        # ----- Answer the 15 MC (multi-select: each question accepts more than one answer) -----
+        # ----- Answer the 15 MC (radio-button style, but MORE THAN ONE answer allowed) -----
         answered = 0
         if ss.mc_questions:
-            st.markdown("Answer all questions below. You may pick **more than one** answer per question. Progress reaches 100% when every question has at least one answer.")
+            st.markdown("Answer all questions below. Tap the options like radio buttons — **you may select more than one** per question. Progress reaches 100% when every question has at least one answer.")
             for i, item in enumerate(ss.mc_questions):
                 q = item.get("q", f"Question {i+1}")
                 opts = item.get("opts", [])
                 key = f"mc_{i}"
-                choice = st.multiselect(f"{i+1}. {q}", options=opts, default=None, key=key,
-                                        placeholder="可選擇一個或多個答案 (select one or more)")
+                st.markdown(f"**{i+1}. {q}**")
+                # st.pills = radio-button-look clickable options that support multi-select.
+                # Fall back to multiselect on older Streamlit versions that lack st.pills.
+                if hasattr(st, "pills"):
+                    choice = st.pills(
+                        label=f"q{i+1}", options=opts, selection_mode="multi",
+                        default=None, key=key, label_visibility="collapsed",
+                    )
+                else:
+                    choice = st.multiselect(
+                        f"{i+1}. {q}", options=opts, default=None, key=key,
+                        placeholder="可選擇一個或多個答案 (select one or more)",
+                    )
                 # choice is always a list; store it (empty list = unanswered)
-                ss.mc_answers[i] = choice
+                ss.mc_answers[i] = choice or []
             answered = len([v for v in ss.mc_answers.values() if v])
             total = len(ss.mc_questions)
             pct = int((answered / total) * 100) if total else 0
