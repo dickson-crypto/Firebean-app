@@ -1,5 +1,5 @@
-# VERSION: v19.4.0 (Use real writing-skill prompts from prompts_library + fold in 15 MC answers)
-# TIMESTAMP: 2026-06-19 13:07:00 HKT
+# VERSION: v19.5.0 (Inject project-specific firebean.net profile URL into LinkedIn/Facebook posts)
+# TIMESTAMP: 2026-06-19 13:30:00 HKT
 
 import streamlit as st
 import requests
@@ -31,14 +31,22 @@ class SynthesisSync:
             active_model = "gemini-1.5-flash"
             
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{active_model}:generateContent?key={key}"
-        
+
+        # Build the project's dedicated website profile link from its project_id.
+        # Format requested by Dickson: https://firebean.net/profile.html?id=<lowercased project_id>
+        pid = str(form_data.get("project_id", "")).strip()
+        profile_url = f"https://firebean.net/profile.html?id={pid.lower()}" if pid else "https://www.firebean.net"
+
         # DEFINITIVE STRATEGIC PROMPT: PR Agency Centric + Randomized 5-Angle Engine + SEO/AEO
         # Combine the user's two real writing-skill prompts (magazine + social) into one
         # system instruction, plus the strict JSON output contract the app needs.
+        # Substitute the {profile_url} placeholder so LinkedIn/Facebook posts carry the
+        # project-specific traffic-driving link.
+        social_prompt = SOCIAL_PROMPT.replace("{profile_url}", profile_url)
         sys_msg = (
             MAGAZINE_PROMPT
             + "\n\n========== SOCIAL MEDIA PLATFORM GUIDE ==========\n"
-            + SOCIAL_PROMPT
+            + social_prompt
             + """
 
 ========== OUTPUT CONTRACT (STRICT) ==========

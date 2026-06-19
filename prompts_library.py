@@ -1,5 +1,5 @@
-# VERSION: v1.0.0 (Firebean writing-skill prompts: magazine 5-style + social platform guide)
-# TIMESTAMP: 2026-06-19 13:07:00 HKT
+# VERSION: v1.1.0 (Social: EVERGREEN + mandatory hashtags & {profile_url} link on LinkedIn/Facebook)
+# TIMESTAMP: 2026-06-19 13:30:00 HKT
 #
 # Single source of truth for all AI prompts used by the app:
 #   - MAGAZINE_PROMPT  -> drives the 500-word, 5-style, 3-language web article + FAQ
@@ -52,7 +52,9 @@ SOCIAL_PROMPT = """作為一間香港公關公司 (Firebean)，要為項目在�
 - 建議字數：約 100 - 250 字。精簡易讀但足以說好一個故事。
 - 語氣：親切有溫度、故事化互動，像對話，多用「你」。
 - 語文：香港繁體中文（可適度夾雜廣東話口語）。
-- 內容：從情感出發分享活動精彩回顧；必須包含明確 CTA（時間、地點、票務/連結）。
+- 內容：從情感出發分享活動精彩回顧（不要提及日期/時間/年份，遵守 EVERGREEN 原則）。
+- 【必須】貼文結尾要加入 5-8 個相關的繁體中文/英文 Hashtags（例如行業、活動類型、Firebean、PR、公關）。
+- 【必須】貼文結尾要加入導流連結：「了解更多項目詳情 👉 {profile_url}」，引導受眾去 Firebean 的專屬項目頁。
 
 📸 IG (Instagram) — 視覺衝擊與真實幕後花絮：
 - 建議字數：嚴格少於 150 字。頭兩行（首 125 字元）必須抓住眼球。
@@ -71,6 +73,10 @@ SOCIAL_PROMPT = """作為一間香港公關公司 (Firebean)，要為項目在�
 - 語氣：權威 B2B、專業顧問風格。強調數據、ROI 與行業領導地位。
 - 語文：權威 B2B English（必要時雙語，先英後中）。
 - 內容：思想領導力 — 分享項目初衷、克服的商業挑戰、為何對行業重要；突顯 Networking 價值。
+- 【必須】貼文結尾要加入 5-8 個專業 Hashtags（例如 #PublicRelations #Firebean #BrandStrategy 及相關行業標籤）。
+- 【必須】貼文結尾要加入導流連結：「Read the full project story 👉 {profile_url}」，引導受眾去 Firebean 的專屬項目頁。
+
+🔗 連結與 Hashtag 規則（重要）：上方的 {profile_url} 是這個項目的專屬網站連結，必須原樣 (verbatim) 放進 LinkedIn 及 Facebook 貼文，不要改寫或刪除。Threads 與 Instagram 不需強制加此連結。
 
 協同策略：同一 PR 項目出街 — LinkedIn 講行業願景與數據；Facebook 賣溫情故事與報名資訊；Instagram 晒團隊真實籌備花絮；Threads 用幽默問題引網民討論。
 """
