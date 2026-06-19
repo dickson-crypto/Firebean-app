@@ -1,5 +1,5 @@
-# VERSION: v19.2.1 (PR Agency Perspective & Brand Name Lock)
-# TIMESTAMP: 2026-04-06 08:15:00 HKT
+# VERSION: v19.3.0 (push_to_gas payload now matches deployed Handler contract)
+# TIMESTAMP: 2026-06-19 11:35:00 HKT
 
 import streamlit as st
 import requests
@@ -131,8 +131,24 @@ class SynthesisSync:
                     st.markdown('<div style="height:10px"></div>', unsafe_allow_html=True)
                 st.markdown("</div>", unsafe_allow_html=True)
 
+    def _faq_to_string(self, faq_list):
+        """Flatten a list of {q, a} dicts into a single readable string for the sheet cell."""
+        if not faq_list:
+            return ""
+        if isinstance(faq_list, str):
+            return faq_list
+        lines = []
+        for f in faq_list:
+            if isinstance(f, dict):
+                q = f.get("q", "") or f.get("Q", "")
+                a = f.get("a", "") or f.get("A", "")
+                lines.append(f"Q: {q}\nA: {a}")
+        return "\n\n".join(lines)
+
     def push_to_gas(self, form, ai, assets):
-        """Unified normalization to ensure perfect mapping to GAS Columns."""
+        """Build a payload matching the deployed doPost handler (sync-to-github.gs)."""
+        ai = ai or {}
+        assets = assets or {}
         event_date = f"{form.get('year', '')} {form.get('month', '')}".strip()
         
         # Construct sort_date in YYYY-MM-DD format for database sorting
@@ -142,7 +158,7 @@ class SynthesisSync:
             "SEP": "09", "OCT": "10", "NOV": "11", "DEC": "12"
         }
         yr = form.get('year', '')
-        mo_str = form.get('month', '').upper()
+        mo_str = str(form.get('month', '')).upper()
         mo_num = month_map.get(mo_str, "01")
         sort_date = f"{yr}-{mo_num}-01" if yr else ""
 
@@ -150,41 +166,72 @@ class SynthesisSync:
         faq_data = ai.get("FAQ") or ai.get("faq") or {}
         sm_data = ai.get("SocialMedia") or ai.get("social_media") or {}
 
-        normalized_ai = {
-            "Challenge": ai.get("Challenge", ""),
-            "Solution": ai.get("Solution", ""),
-            "SocialMedia": {
-                "LI": self.get_ci(sm_data, "", "LI", "linkedin"),
-                "FB": self.get_ci(sm_data, "", "FB", "facebook"),
-                "TR": self.get_ci(sm_data, "", "TR", "threads"),
-                "IG": self.get_ci(sm_data, "", "IG", "instagram")
+        # AI content keyed EXACTLY as the deployed handler reads it
+        ai_content = {
+            "1_google_slide": ai.get("google_slide", ""),
+            "5_linkedin_post": self.get_ci(sm_data, "", "LI", "linkedin"),
+            "2_facebook_post": self.get_ci(sm_data, "", "FB", "facebook"),
+            "3_threads_post": self.get_ci(sm_data, "", "TR", "threads"),
+            "4_instagram_post": self.get_ci(sm_data, "", "IG", "instagram"),
+            "6_website": {
+                "en": self.get_ci(web_data, "", "EN", "en"),
+                "tc": self.get_ci(web_data, "", "TC", "tc"),
+                "jp": self.get_ci(web_data, "", "JP", "jp"),
             },
-            "Web": {
-                "EN": self.get_ci(web_data, "", "EN", "en"),
-                "TC": self.get_ci(web_data, "", "TC", "tc"),
-                "JP": self.get_ci(web_data, "", "JP", "jp")
-            },
-            "FAQ": {
-                "EN": self.get_ci(faq_data, [], "EN", "en"),
-                "TC": self.get_ci(faq_data, [], "TC", "tc"),
-                "JP": self.get_ci(faq_data, [], "JP", "jp")
-            }
         }
 
+        # Assets: handler reads logo_black / logo_white / images[] / hero_index at TOP level
+        photos = assets.get("photos") or assets.get("images") or []
+        logo_black = assets.get("logo_black")
+        logo_white = assets.get("logo_white")
+        hero_index = assets.get("hero_index", 0)
+
+        def _join(v):
+            return ", ".join(v) if isinstance(v, list) else (v or "")
+
         payload = {
-            **form,
+            "action": "sync_project",
+            "project_id": form.get("project_id", ""),
+
+            # Identity (handler reads *_name)
+            "client_name": form.get("client", ""),
+            "project_name": form.get("project", ""),
+            "venue": form.get("venue", ""),
             "date": event_date,
             "sort_date": sort_date,
-            "category": ", ".join(form.get('category', [])),
-            "what_we_do": ", ".join(form.get('what_we_do', [])),
-            "scope": "\n".join(form.get('scope', [])),
-            "ai_content": normalized_ai,
-            "assets": assets if assets else {"logo_black": None, "logo_white": None, "photos": [], "hero_index": 0},
-            "challenge": normalized_ai["Challenge"],
-            "solution": normalized_ai["Solution"]
+
+            # Framework
+            "category": _join(form.get("category")),
+            "category_what": _join(form.get("what_we_do")),
+            "scope": "\n".join(form.get("scope", [])) if isinstance(form.get("scope"), list) else form.get("scope", ""),
+            "youtube": form.get("youtube", ""),
+            "open_question": form.get("open_question", ""),
+
+            # Strategy
+            "challenge": ai.get("Challenge", "") or ai.get("challenge", ""),
+            "solution": ai.get("Solution", "") or ai.get("solution", ""),
+
+            "ai_content": ai_content,
+
+            # FAQ flattened to flat fields (handler reads faq_en / faq_tc / faq_jp)
+            "faq_en": self._faq_to_string(self.get_ci(faq_data, [], "EN", "en")),
+            "faq_tc": self._faq_to_string(self.get_ci(faq_data, [], "TC", "tc")),
+            "faq_jp": self._faq_to_string(self.get_ci(faq_data, [], "JP", "jp")),
+
+            # Assets at TOP level
+            "logo_black": logo_black,
+            "logo_white": logo_white,
+            "images": photos,
+            "hero_index": hero_index,
         }
-        
+
         try:
-            res = requests.post(self.GAS_URL, json=payload, timeout=90)
-            return res.status_code == 200
-        except Exception: return False
+            res = requests.post(self.GAS_URL, json=payload, timeout=120)
+            ok = res.status_code == 200
+            try:
+                body = res.json()
+            except Exception:
+                body = res.text
+            return {"ok": ok, "status": res.status_code, "response": body}
+        except Exception as e:
+            return {"ok": False, "status": None, "response": str(e)}
