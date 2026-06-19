@@ -51,10 +51,19 @@ Do NOT wrap in markdown or ```json tags. Return the array and nothing else."""
 
         parts = [{"text": f"Project: {project}. Strategic Core Brief: {core_text}"}]
 
-        # Attach up to 4 photos (base64 JPEG) so the analysis questions reference real visuals
+        # Attach up to 4 photos so the analysis questions reference real visuals.
+        # Photos are now FULL dicts {data, mimeType, ext}; still accept bare base64
+        # strings for backward-compat.
         if images:
             for b in images[:4]:
-                parts.append({"inlineData": {"mimeType": "image/jpeg", "data": b}})
+                if isinstance(b, dict):
+                    data = b.get("data")
+                    mime = b.get("mimeType", "image/jpeg")
+                else:
+                    data = b
+                    mime = "image/jpeg"
+                if data:
+                    parts.append({"inlineData": {"mimeType": mime, "data": data}})
 
         payload = {
             "contents": [{"role": "user", "parts": parts}],

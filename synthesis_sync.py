@@ -57,20 +57,24 @@ class SynthesisSync:
 Return ONLY a single RAW JSON object (no markdown, no code fences) with EXACTLY this structure:
 {
   "WritingStyleUsed": "[which of the 5 magazine angles you picked]",
-  "Challenge": "[short SEO summary of the client's pain point]",
-  "Solution": "[short ROI summary of Firebean's solution]",
-  "SocialMedia": { "LI": "...", "FB": "...", "TR": "...", "IG": "..." },
   "Web": {
-    "EN": "<h1>Editorial headline</h1><h2>One-sentence subtitle/deck</h2><p>Para 1</p><p>Para 2</p><p>Para 3</p><p>Para 4</p><p><strong>Punchline</strong></p>",
+    "EN": "<h1>Editorial headline</h1><h2>Subtitle/deck</h2><p>Para 1</p><p>Para 2</p><p>Para 3</p><p>Para 4</p><p><strong>Punchline</strong></p>",
     "TC": "<h1>標題</h1><h2>副標題</h2><p>段落一</p><p>段落二</p><p>段落三</p><p>段落四</p><p><strong>金句結尾</strong></p>",
     "JP": "<h1>見出し</h1><h2>サブタイトル</h2><p>段落1</p><p>段落2</p><p>段落3</p><p>段落4</p><p><strong>パンチライン</strong></p>"
   },
+  "SocialMedia": { "LI": "...", "FB": "...", "TR": "...", "IG": "..." },
+  "Challenge": "[short SEO summary of the client's pain point]",
+  "Solution": "[short ROI summary of Firebean's solution]",
   "FAQ": {
     "EN": [{"q":"...","a":"..."},{"q":"...","a":"..."},{"q":"...","a":"..."}],
     "TC": [{"q":"...","a":"..."},{"q":"...","a":"..."},{"q":"...","a":"..."}],
     "JP": [{"q":"...","a":"..."},{"q":"...","a":"..."},{"q":"...","a":"..."}]
   }
 }
+FIELD ORDER IS DELIBERATE: emit "Web" FIRST (right after WritingStyleUsed) so the
+most important article content is never lost if the response is long. The three Web
+languages (EN, TC, JP) are MANDATORY and must each be a non-empty HTML string —
+never return an empty Web object.
 SocialMedia keys map to: LI=LinkedIn, FB=Facebook, TR=Threads, IG=Instagram. Follow each platform's word count, tone and language rules from the guide above.
 
 WEB FIELD RULE (must match the firebean.net website layout 100%): each Web language value MUST be a valid HTML string that (1) STARTS with one <h1> editorial headline, (2) is followed by one <h2> subtitle/deck, (3) contains AT LEAST 4 standalone <p> paragraphs so the website can insert project photos after the 1st, 2nd and 3rd <p>, and (4) ENDS with the punchline as <p><strong>...</strong></p>. Do NOT include any <img> tags, do NOT put FAQ text in Web, do NOT use Markdown.
@@ -103,14 +107,27 @@ WEB FIELD RULE (must match the firebean.net website layout 100%): each Web langu
                 + "\n".join(qa_lines)
             )
         
+        # The article is long: 3 languages x ~500-word HTML + 4 social posts + 9 FAQ.
+        # Without a high token cap the JSON gets TRUNCATED (finishReason=MAX_TOKENS),
+        # and the Web.{EN,TC,JP} block was the part being dropped -> empty Web in the
+        # app preview AND in the Master DB. Fix: raise maxOutputTokens to the ceiling
+        # and disable 2.5-flash thinking (thinking tokens eat the same budget).
+        gen_cfg = {
+            "responseMimeType": "application/json",
+            "maxOutputTokens": 8192,
+            "temperature": 0.9,
+        }
+        if "2.5" in str(active_model):
+            gen_cfg["thinkingConfig"] = {"thinkingBudget": 0}
+
         payload = {
             "contents": [{"role": "user", "parts": [{"text": ctx}]}],
             "systemInstruction": {"parts": [{"text": sys_msg}]},
-            "generationConfig": {"responseMimeType": "application/json"}
+            "generationConfig": gen_cfg,
         }
         
         try:
-            res = requests.post(url, json=payload, timeout=90)
+            res = requests.post(url, json=payload, timeout=120)
             if res.status_code == 200:
                 data = res.json()
                 # The model can return no candidate if the prompt is blocked (safety/recitation)
@@ -118,9 +135,9 @@ WEB FIELD RULE (must match the firebean.net website layout 100%): each Web langu
                 if not cands:
                     self.last_error = f"No candidate returned. Raw response: {json.dumps(data)[:500]}"
                     return None
+                reason = cands[0].get("finishReason", "UNKNOWN")
                 parts = cands[0].get("content", {}).get("parts", [])
                 if not parts:
-                    reason = cands[0].get("finishReason", "UNKNOWN")
                     self.last_error = f"Empty content (finishReason={reason}). Raw: {json.dumps(data)[:500]}"
                     return None
                 raw = parts[0].get("text", "")
@@ -128,7 +145,17 @@ WEB FIELD RULE (must match the firebean.net website layout 100%): each Web langu
                 try:
                     return json.loads(clean)
                 except json.JSONDecodeError as je:
-                    self.last_error = f"Model returned non-JSON text: {je}. First 300 chars: {clean[:300]}"
+                    # Most common cause: output truncated mid-JSON (MAX_TOKENS).
+                    # RESCUE the content so the Web article is never silently lost.
+                    rescued = self._rescue_json(clean)
+                    if rescued and (rescued.get("Web") or rescued.get("SocialMedia")):
+                        note = " (output was truncated — recovered partial content; consider regenerating)" if reason == "MAX_TOKENS" else ""
+                        self.last_error = f"Model JSON was malformed but content was recovered{note}."
+                        return rescued
+                    self.last_error = (
+                        f"Model returned non-JSON text (finishReason={reason}): {je}. "
+                        f"First 300 chars: {clean[:300]}"
+                    )
                     return None
             else:
                 # Surface the actual Google API error (bad key / wrong model / quota)
@@ -137,6 +164,58 @@ WEB FIELD RULE (must match the firebean.net website layout 100%): each Web langu
         except Exception as e:
             self.last_error = f"Request exception: {type(e).__name__}: {e}"
             return None
+
+    def _rescue_json(self, text):
+        """Best-effort recovery when the model's JSON is truncated/malformed.
+        1) Trim to the last balanced closing brace and parse.
+        2) Otherwise regex-extract the Web {EN,TC,JP} blocks from the raw text so the
+           Web article is never silently lost. Returns a (possibly partial) dict or None."""
+        import re as _re
+        if not text:
+            return None
+        # Strategy 1: balanced-brace trim
+        depth = 0
+        last_ok = -1
+        in_str = False
+        esc = False
+        for idx, ch in enumerate(text):
+            if esc:
+                esc = False
+                continue
+            if ch == "\\":
+                esc = True
+                continue
+            if ch == '"':
+                in_str = not in_str
+                continue
+            if in_str:
+                continue
+            if ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    last_ok = idx
+        if last_ok > 0:
+            try:
+                return json.loads(text[: last_ok + 1])
+            except Exception:
+                pass
+        # Strategy 2: regex-recover the Web language blocks + simple top-level strings
+        out = {}
+        web = {}
+        for lang in ("EN", "TC", "JP"):
+            m = _re.search(r'"' + lang + r'"\s*:\s*"(<h1>.*?)"\s*[,}\]]', text, _re.S)
+            if m:
+                val = m.group(1).replace('\\"', '"').replace("\\n", "").replace("\\/", "/")
+                web[lang] = val
+        if web:
+            out["Web"] = web
+        for fld in ("WritingStyleUsed", "Challenge", "Solution"):
+            m = _re.search(r'"' + fld + r'"\s*:\s*"(.*?)"\s*[,}]', text, _re.S)
+            if m:
+                out[fld] = m.group(1).replace('\\"', '"')
+        return out or None
 
     def render_ui(self, gc):
         style = gc.get('WritingStyleUsed', 'Standard')

@@ -64,13 +64,14 @@ def breathing_overlay(text):
             50%  {{ box-shadow: 0 0 110px 55px rgba(226,35,26,0.65); }}
             100% {{ box-shadow: 0 0 40px 10px rgba(226,35,26,0.45); }}
         }}
-        /* Running-man bob + slight forward lean */
-        @keyframes fb-run {{
-            0%   {{ transform: translateY(0) rotate(-2deg); }}
-            25%  {{ transform: translateY(-6px) rotate(2deg); }}
-            50%  {{ transform: translateY(0) rotate(-2deg); }}
-            75%  {{ transform: translateY(-6px) rotate(2deg); }}
-            100% {{ transform: translateY(0) rotate(-2deg); }}
+        /* Each icon fades in, holds, then fades out. 3 icons => 3.6s loop, staggered
+           by 1.2s so exactly one "action" is visible at a time (a working sequence). */
+        @keyframes fb-cycle {{
+            0%    {{ opacity:0; transform:scale(0.8); }}
+            6%    {{ opacity:1; transform:scale(1); }}
+            27%   {{ opacity:1; transform:scale(1); }}
+            33%   {{ opacity:0; transform:scale(0.8); }}
+            100%  {{ opacity:0; transform:scale(0.8); }}
         }}
         .fb-overlay {{ position:fixed; top:0; left:0; width:100vw; height:100vh; background:#121212;
                        z-index:9999; display:flex; flex-direction:column; justify-content:center; align-items:center; }}
@@ -79,8 +80,13 @@ def breathing_overlay(text):
                       display:flex; flex-direction:column; justify-content:center; align-items:center;
                       text-align:center; padding:24px; box-sizing:border-box;
                       animation: fb-glow 2s ease-in-out infinite; }}
-        .fb-runner {{ width:84px; height:84px; margin-bottom:24px;
-                      animation: fb-run 0.7s ease-in-out infinite; transform-origin:center bottom; }}
+        /* Icon stack: all icons share the same spot; only one visible per phase. */
+        .fb-iconwrap {{ position:relative; width:96px; height:96px; margin-bottom:26px; }}
+        .fb-ico {{ position:absolute; top:0; left:0; width:96px; height:96px;
+                   opacity:0; animation: fb-cycle 3.6s ease-in-out infinite; }}
+        .fb-ico.i1 {{ animation-delay: 0s; }}
+        .fb-ico.i2 {{ animation-delay: 1.2s; }}
+        .fb-ico.i3 {{ animation-delay: 2.4s; }}
         .fb-circle .fb-label {{ color:#FFFFFF; font-weight:800; letter-spacing:1px;
                                  font-size:clamp(22px, 3.2vw, 38px); line-height:1.25; margin:0; }}
         .fb-circle .fb-sub {{ color:rgba(255,255,255,0.9); font-size:clamp(12px, 1.4vw, 16px); margin-top:14px; }}
@@ -184,18 +190,22 @@ if __name__ == "__main__":
         }
         fd = ss.form_data
 
+        # IMPORTANT: keep the FULL asset dict {data, mimeType, ext} for every asset.
+        # Handler.gs saveFile() reads assetData.data / .mimeType / .ext, so passing a
+        # bare base64 string makes saveFile() return "" and the file never uploads.
+        # (This is why photos were NOT landing in the Drive folder even though logos did.)
         logo_black = inputs.process_for_db(lb, is_logo=True) if lb else None
         logo_white = inputs.process_for_db(lw, is_logo=True) if lw else None
         photos = []
         if ph:
             for p in ph[:8]:
                 pr = inputs.process_for_db(p, is_logo=False)
-                if pr:
-                    photos.append(pr["data"])
+                if pr and pr.get("data"):
+                    photos.append(pr)  # full dict {data, mimeType, ext}
         ss.assets = {
-            "logo_black": logo_black["data"] if logo_black else None,
-            "logo_white": logo_white["data"] if logo_white else None,
-            "photos": photos,
+            "logo_black": logo_black if logo_black else None,   # full dict, not just .data
+            "logo_white": logo_white if logo_white else None,   # full dict, not just .data
+            "photos": photos,                                   # list of full dicts
             "hero_index": ss.hero_index,
         }
 
