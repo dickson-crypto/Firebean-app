@@ -160,7 +160,71 @@ if __name__ == "__main__":
     ss = st.session_state
 
     st.markdown("""<style>
-        .stApp { background-color: #121212; color: white; }
+        /* ---- Firebean dark theme hardening ------------------------------------
+           Streamlit Cloud had no .streamlit/config.toml, so the app inherited the
+           LIGHT theme: widget labels, captions and help tooltips rendered in
+           near-black (#31333F) on top of the black .stApp background and were
+           effectively invisible. The rules below force readable light-on-dark
+           text regardless of which theme Streamlit decides to serve. */
+        .stApp, [data-testid="stAppViewContainer"] { background-color: #121212; color: #F5F5F5; }
+
+        /* Widget labels ("Gemini API Key", "Model", every st.text_input/selectbox/
+           radio/checkbox label) — the main reported problem. */
+        label, .stApp label,
+        [data-testid="stWidgetLabel"], [data-testid="stWidgetLabel"] p,
+        [data-testid="stWidgetLabel"] span, [data-testid="stWidgetLabel"] div {
+            color: #E8E8E8 !important; opacity: 1 !important; font-weight: 600;
+        }
+
+        /* Body copy, markdown, lists, captions */
+        .stApp p, .stApp span, .stApp li, .stApp div,
+        [data-testid="stMarkdownContainer"], [data-testid="stMarkdownContainer"] p {
+            color: #E8E8E8;
+        }
+        [data-testid="stCaptionContainer"], [data-testid="stCaptionContainer"] p,
+        .stCaption, small {
+            color: #C9CFD6 !important; opacity: 1 !important;
+        }
+
+        /* Headings */
+        .stApp h1, .stApp h2, .stApp h3, .stApp h4 { color: #FFFFFF !important; }
+
+        /* Help "?" tooltips and expander/tab labels were also near-black */
+        [data-testid="stTooltipIcon"] svg, [data-testid="stTooltipIcon"] { color: #A9AFB8 !important; fill: #A9AFB8 !important; }
+        [data-testid="stExpander"] summary, [data-testid="stExpander"] summary p,
+        button[data-baseweb="tab"] p, button[data-baseweb="tab"] div { color: #E8E8E8 !important; }
+
+        /* Alerts: st.info / st.warning / st.success / st.error */
+        [data-testid="stAlert"], [data-testid="stAlert"] p, [data-testid="stAlert"] div,
+        [data-testid="stNotificationContentInfo"] p,
+        [data-testid="stNotificationContentSuccess"] p,
+        [data-testid="stNotificationContentWarning"] p,
+        [data-testid="stNotificationContentError"] p { color: #F5F5F5 !important; }
+
+        /* Inputs sit on the dark secondaryBackground, so their text must be LIGHT.
+           (Setting it dark here made the typed value and the selectbox value
+           invisible — the actual bug the user reported for the Model dropdown.) */
+        .stApp input, .stApp textarea,
+        [data-testid="stTextInputField"], [data-testid="stNumberInputField"],
+        [data-testid="stSelectbox"] div[data-baseweb="select"],
+        [data-testid="stSelectbox"] div[data-baseweb="select"] div,
+        [data-testid="stSelectbox"] div[data-baseweb="select"] span {
+            color: #F5F5F5 !important; -webkit-text-fill-color: #F5F5F5 !important;
+        }
+        .stApp input::placeholder, .stApp textarea::placeholder { color: #9AA1AA !important; -webkit-text-fill-color: #9AA1AA !important; }
+
+        /* Dropdown popover for selectbox/multiselect */
+        [data-baseweb="popover"] div[role="listbox"], [data-baseweb="popover"] ul,
+        ul[role="listbox"], li[role="option"], div[role="option"] {
+            background-color: #1E1E1E !important; color: #F5F5F5 !important;
+        }
+        li[role="option"] *, div[role="option"] * { color: #F5F5F5 !important; }
+        li[role="option"]:hover, div[role="option"]:hover { background-color: #2A2A2A !important; }
+
+        /* Sidebar */
+        [data-testid="stSidebar"], [data-testid="stSidebar"] * { color: #E8E8E8; }
+
+        /* Brand accents */
         .sec-header { font-size: 18px; font-weight: 900; color: #E2231A; text-transform: uppercase; letter-spacing: 1px; margin: 20px 0 10px; border-bottom: 1px solid #333; padding-bottom: 6px; }
         .terminal-box { background:#000; padding:15px; border-left:4px solid #E2231A; height:160px; overflow-y:auto; font-family:monospace; font-size:12px; margin-top:25px; }
         .terminal-box p { margin:2px 0; color:#4ade80; }
@@ -172,7 +236,7 @@ if __name__ == "__main__":
     with c1:
         st.image("https://raw.githubusercontent.com/dickson-crypto/Firebean-app/main/Firebeanlogo2026.png")
     with c2:
-        st.markdown(f"<h1>Project Collector. <span style='font-size:14px;opacity:0.5;'>{portal.VERSION}</span></h1>", unsafe_allow_html=True)
+        st.markdown(f"<h1>Project Collector. <span style='font-size:14px;color:#C9CFD6;font-weight:400;'>{portal.VERSION}</span></h1>", unsafe_allow_html=True)
 
     fd = ss.form_data
 

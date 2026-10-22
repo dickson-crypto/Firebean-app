@@ -1,0 +1,17 @@
+[theme]
+# Firebean brand dark theme.
+# Without this file Streamlit falls back to its LIGHT theme, whose default text
+# colour is near-black (#31333F). app.py paints .stApp #121212, so every widget
+# label, caption and help tooltip ended up dark-grey on black and was unreadable.
+base = "dark"
+primaryColor = "#E2231A"
+backgroundColor = "#121212"
+secondaryBackgroundColor = "#1E1E1E"
+textColor = "#F5F5F5"
+font = "sans serif"
+
+[server]
+headless = true
+
+[browser]
+gatherUsageStats = false
