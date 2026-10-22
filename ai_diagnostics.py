@@ -25,7 +25,7 @@ class AIDiagnostic:
     @staticmethod
     def get_questions(key, active_model, project, core_text, images):
         if not active_model or active_model == "NONE":
-            active_model = "gemini-1.5-flash"
+            active_model = "gemini-flash-latest"  # was gemini-1.5-flash (RETIRED, 404)
 
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{active_model}:generateContent?key={key}"
 

@@ -1,4 +1,4 @@
-# VERSION: v19.2.0 (Near-fullscreen red overlay + animated running-man icon, static text; MC = radio-style multi-select via st.pills)
+# VERSION: v19.3.0 (MODEL FIX: pinned/dead Gemini names -> gemini-flash-latest alias; dead fallback repaired. Prev: v19.2.0 Near-fullscreen red overlay + animated running-man icon, static text; MC = radio-style multi-select via st.pills)
 # TIMESTAMP: 2026-06-19 16:30:00 HKT
 #
 # FLOW (as specified by Dickson):
@@ -28,8 +28,13 @@ except ImportError as e:
 
 class FirebeanPortal:
     def __init__(self):
-        self.VERSION = "v19.2.0"
-        self.MODELS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
+        self.VERSION = "v19.3.0"
+        # Use Google's MOVING alias so a future deprecation cannot break the portal again.
+        # Verified live 2026-10-22: gemini-flash-latest -> gemini-3.8-flash (OK).
+        # RETIRED and removed: gemini-2.0-flash (404), gemini-1.5-flash (404).
+        # gemini-2.5-flash-lite kept as a second option; both accept thinkingBudget:0.
+        # (Do NOT use gemini-flash-lite-latest here - it rejects thinkingBudget:0 with HTTP 400.)
+        self.MODELS = ["gemini-flash-latest", "gemini-2.5-flash-lite"]
         self.init_session()
 
     def init_session(self):
@@ -252,8 +257,8 @@ if __name__ == "__main__":
             ov = breathing_overlay("GENERATING 15 DIAGNOSTIC QUESTIONS")
             core = f"{fd.get('open_question','')} | Scope: {', '.join(fd.get('scope', []))}"
             qs = diag.get_questions(api_key, model, fd.get("project", ""), core, ss.assets["photos"])
-            if not qs and model != "gemini-1.5-flash":
-                qs = diag.get_questions(api_key, "gemini-1.5-flash", fd.get("project", ""), core, ss.assets["photos"])
+            if not qs and model != "gemini-flash-latest":
+                qs = diag.get_questions(api_key, "gemini-flash-latest", fd.get("project", ""), core, ss.assets["photos"])
             ov.empty()
             if qs:
                 ss.mc_questions = qs[:15]
@@ -313,9 +318,9 @@ if __name__ == "__main__":
             form_ctx = dict(fd)
             form_ctx["date"] = f"{fd.get('year','')} {fd.get('month','')}"
             result = sync.generate_ai_content(api_key, model, form_ctx, mc_payload)
-            if not result and model != "gemini-1.5-flash":
-                portal.log(f"{model} failed, retrying with gemini-1.5-flash...")
-                result = sync.generate_ai_content(api_key, "gemini-1.5-flash", form_ctx, mc_payload)
+            if not result and model != "gemini-flash-latest":
+                portal.log(f"{model} failed, retrying with gemini-flash-latest...")
+                result = sync.generate_ai_content(api_key, "gemini-flash-latest", form_ctx, mc_payload)
             ov.empty()
             if result:
                 ss.ai_result = result
