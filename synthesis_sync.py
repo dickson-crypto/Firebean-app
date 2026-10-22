@@ -1,4 +1,4 @@
-# VERSION: v20.1.0 (Output contract: Web HTML structure <h1>title+<h2>subtitle+>=4<p>+<strong>punchline to fit website photo layout)
+# VERSION: v20.2.0 (MODEL FIX: dead gemini-1.5-flash fallback -> gemini-flash-latest; thinkingConfig now applied to EVERY model, not gated on the "2.5" substring; 400-retry without thinkingConfig. Prev v20.1.0: Web HTML structure contract)
 # TIMESTAMP: 2026-06-19 15:55:00 HKT
 # CHANGE: Top-level keys client/project/what_we_do (not *_name/category_what);
 #         ai_content = {SocialMedia, Web, FAQ(arrays)}; assets nested under data.assets
@@ -32,7 +32,7 @@ class SynthesisSync:
 
     def generate_ai_content(self, key, active_model, form_data, mc_answers=None):
         if not active_model or active_model == "NONE":
-            active_model = "gemini-1.5-flash"
+            active_model = "gemini-flash-latest"  # was gemini-1.5-flash (RETIRED, 404)
             
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{active_model}:generateContent?key={key}"
 
@@ -117,8 +117,15 @@ WEB FIELD RULE (must match the firebean.net website layout 100%): each Web langu
             "maxOutputTokens": 8192,
             "temperature": 0.9,
         }
-        if "2.5" in str(active_model):
-            gen_cfg["thinkingConfig"] = {"thinkingBudget": 0}
+        # Disable thinking on EVERY model we ship - it is NOT optional. Verified live
+        # 2026-10-22: gemini-flash-latest (gemini-3.8-flash), gemini-2.5-flash and
+        # gemini-2.5-flash-lite all accept thinkingBudget:0; without it thinking
+        # tokens are drawn from this same 8192 budget and truncate the JSON
+        # (finishReason=MAX_TOKENS, empty Web).
+        # NEVER gate this on a substring of the model name: the old
+        # `if "2.5" in active_model` check silently stopped matching once the
+        # model moved to the -latest alias, which re-introduces the truncation bug.
+        gen_cfg["thinkingConfig"] = {"thinkingBudget": 0}
 
         payload = {
             "contents": [{"role": "user", "parts": [{"text": ctx}]}],
@@ -128,6 +135,11 @@ WEB FIELD RULE (must match the firebean.net website layout 100%): each Web langu
         
         try:
             res = requests.post(url, json=payload, timeout=120)
+            # Defensive: if a future -latest model ever rejects thinkingConfig,
+            # retry once without it instead of failing the whole generation.
+            if res.status_code == 400 and "thinkingConfig" in payload.get("generationConfig", {}):
+                payload["generationConfig"].pop("thinkingConfig", None)
+                res = requests.post(url, json=payload, timeout=120)
             if res.status_code == 200:
                 data = res.json()
                 # The model can return no candidate if the prompt is blocked (safety/recitation)
