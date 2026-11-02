@@ -1,5 +1,5 @@
 # VERSION: v19.4.0 (PROVIDER FALLBACK: AI calls now go through ai_backend — Google Gemini first, automatic fal.ai fallback if Google has no credit / is rate-limited / the model is retired; retired gemini-2.5-flash-lite removed from the Model list. Prev: v19.3.0 MODEL FIX)
-# TIMESTAMP: 2026-06-19 16:30:00 HKT
+# TIMESTAMP: 2026-11-02 12:00:00 HKT
 #
 # FLOW (as specified by Dickson):
 #   STAGE 1  Collect + validate ALL inputs (client, project, scope, logo B/W, 1-8 photos, hero pick).
@@ -28,7 +28,7 @@ except ImportError as e:
 
 class FirebeanPortal:
     def __init__(self):
-        self.VERSION = "v19.3.0"
+        self.VERSION = "v19.4.0"
         # Use Google's MOVING alias so a future deprecation cannot break the portal again.
         # Verified live 2026-10-22: gemini-flash-latest -> gemini-3.8-flash (OK).
         # RETIRED and removed: gemini-2.0-flash (404), gemini-1.5-flash (404).
