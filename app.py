@@ -1,5 +1,5 @@
-# VERSION: v19.4.0 (PROVIDER FALLBACK: AI calls now go through ai_backend — Google Gemini first, automatic fal.ai fallback if Google has no credit / is rate-limited / the model is retired; retired gemini-2.5-flash-lite removed from the Model list. Prev: v19.3.0 MODEL FIX)
-# TIMESTAMP: 2026-11-02 12:00:00 HKT
+# VERSION: v19.4.1 (fal-only mode: the app now runs with NO Gemini key when FAL_KEY is in Secrets — the Generate button is enabled and the panel says who will answer. Prev v19.4.0: PROVIDER FALLBACK via ai_backend)
+# TIMESTAMP: 2026-11-02 14:00:00 HKT
 #
 # FLOW (as specified by Dickson):
 #   STAGE 1  Collect + validate ALL inputs (client, project, scope, logo B/W, 1-8 photos, hero pick).
@@ -26,9 +26,18 @@ except ImportError as e:
     st.stop()
 
 
+def fal_secret_ready():
+    """True when FAL_KEY is configured in Streamlit Secrets (enables the fal.ai
+    backup — and lets the app run with NO Gemini key at all)."""
+    try:
+        return bool(st.secrets.get("FAL_KEY", ""))
+    except Exception:
+        return False
+
+
 class FirebeanPortal:
     def __init__(self):
-        self.VERSION = "v19.4.0"
+        self.VERSION = "v19.4.1"
         # Use Google's MOVING alias so a future deprecation cannot break the portal again.
         # Verified live 2026-10-22: gemini-flash-latest -> gemini-3.8-flash (OK).
         # RETIRED and removed: gemini-2.0-flash (404), gemini-1.5-flash (404).
@@ -255,12 +264,12 @@ if __name__ == "__main__":
             secret_key = ""
         if secret_key:
             st.success("🔐 Gemini API key loaded from Streamlit Secrets.")
+        elif fal_secret_ready():
+            st.info("No Gemini key in Secrets — this app will run on the 🔁 fal.ai backup provider. "
+                    "Add  GEMINI_API_KEYS = \"AIza...\"  anytime to put Gemini back in front.")
         else:
             st.info('No secret found. Paste your key below, or add  GEMINI_API_KEYS = "AIza..."  in Settings → Secrets.')
-        try:
-            fal_ok = bool(st.secrets.get("FAL_KEY", ""))
-        except Exception:
-            fal_ok = False
+        fal_ok = fal_secret_ready()
         st.caption(
             "🔁 Backup provider: fal.ai — ACTIVE (FAL_KEY found in Secrets)."
             if fal_ok else
@@ -326,9 +335,12 @@ if __name__ == "__main__":
 
         # ----- STAGE 2: Generate 15 MC questions -----
         st.markdown('<div class="sec-header">Step 1 — Strategic Diagnostic (15 MC)</div>', unsafe_allow_html=True)
-        gen_mc = st.button("🧩 GENERATE 15 MC QUESTIONS", disabled=not (inputs_ready and api_key), use_container_width=True)
-        if not api_key:
-            st.caption("Enter your Gemini API key to enable this.")
+        ai_key_ready = bool(api_key) or fal_secret_ready()
+        gen_mc = st.button("🧩 GENERATE 15 MC QUESTIONS", disabled=not (inputs_ready and ai_key_ready), use_container_width=True)
+        if not ai_key_ready:
+            st.caption("Enter a Gemini API key, or add  FAL_KEY  in Settings → Secrets to run on the fal.ai backup provider.")
+        elif not api_key:
+            st.caption("No Gemini key — this run will use the fal.ai backup provider (google/gemini-2.5-flash).")
         if gen_mc:
             ov = breathing_overlay("GENERATING 15 DIAGNOSTIC QUESTIONS")
             core = f"{fd.get('open_question','')} | Scope: {', '.join(fd.get('scope', []))}"

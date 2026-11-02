@@ -15,15 +15,22 @@ All AI calls go through `ai_backend.py`:
 To enable the fallback, add **one line** in Settings → Secrets:
 
 ```toml
-FAL_KEY = "<your fal.ai key>"
+FAL_KEY="<your fal.ai key>"
 ```
 
-Get it from https://fal.ai/dashboard/keys. Without it the app still runs on Google
-only (and you can paste a fal key straight into the key box to test it).
+Get it from https://fal.ai/dashboard/keys — copy the key with the **copy button**; the
+value is longer than the short id shown in the list (it contains a `:` — a truncated id
+returns HTTP 401 "Authentication is required").
+
+**No Gemini key is fine**: with `FAL_KEY` present the app runs entirely on fal.ai. Add
+`GEMINI_API_KEYS = "AIza..."` back at any time and Gemini automatically becomes the primary
+provider again — no code change needed.
 
 ## Recent Updates
 
-- **2026-11-02: AI provider fallback (v19.4.0 / synthesis v20.3.0 / diagnostics v19.2.0)**
+- **2026-11-02: AI provider fallback (v19.4.1 / synthesis v20.3.0 / diagnostics v19.2.0)**
+  - fal-only mode: with `FAL_KEY` in Secrets but no Gemini key the portal still generates
+    (the Generate button used to stay disabled on an empty key — fixed).
   - New `ai_backend.py`: Google Gemini → automatic fal.ai fallback, defensive JSON
     parsing (fences, trailing commas, missing commas) + one firmer retry, and a
     normalizer that lifts `Challenge`/`Solution`/`FAQ` back to the top level if the
