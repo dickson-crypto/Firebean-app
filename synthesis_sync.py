@@ -1,5 +1,5 @@
-# VERSION: v20.2.0 (MODEL FIX: dead gemini-1.5-flash fallback -> gemini-flash-latest; thinkingConfig now applied to EVERY model, not gated on the "2.5" substring; 400-retry without thinkingConfig. Prev v20.1.0: Web HTML structure contract)
-# TIMESTAMP: 2026-06-19 15:55:00 HKT
+# VERSION: v20.3.0 (PROVIDER FALLBACK: generation now goes through ai_backend — Google Gemini first, automatic fal.ai fallback when Google has no credit / is rate-limited / the model is retired. Prev v20.2.0)
+# TIMESTAMP: 2026-11-02 12:00:00 HKT
 # CHANGE: Top-level keys client/project/what_we_do (not *_name/category_what);
 #         ai_content = {SocialMedia, Web, FAQ(arrays)}; assets nested under data.assets
 #         with key "photos" (not top-level images). Fixes empty Master DB cells,
@@ -8,6 +8,7 @@
 import streamlit as st
 import requests
 import json
+import ai_backend
 
 try:
     from prompts_library import MAGAZINE_PROMPT, SOCIAL_PROMPT
@@ -21,6 +22,7 @@ class SynthesisSync:
         # Using your latest deployment URL
         self.GAS_URL = "https://script.google.com/macros/s/AKfycbw6UuXZqhoFYtEiGYPJmFAWCis9IN-M-NVYN8hEo-Ux6UKKloihhv4yScS6ocGEJ9Em/exec"
         self.last_error = ""  # holds the most recent generation error for display
+        self.provider = ""    # "google" or "fal" — which provider actually answered
 
     def get_ci(self, d, default, *keys):
         """Case-insensitive dictionary lookup to prevent AI key errors."""
@@ -33,8 +35,6 @@ class SynthesisSync:
     def generate_ai_content(self, key, active_model, form_data, mc_answers=None):
         if not active_model or active_model == "NONE":
             active_model = "gemini-flash-latest"  # was gemini-1.5-flash (RETIRED, 404)
-            
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{active_model}:generateContent?key={key}"
 
         # Build the project's dedicated website profile link from its project_id.
         # Format requested by Dickson: https://firebean.net/profile.html?id=<lowercased project_id>
@@ -107,75 +107,44 @@ WEB FIELD RULE (must match the firebean.net website layout 100%): each Web langu
                 + "\n".join(qa_lines)
             )
         
-        # The article is long: 3 languages x ~500-word HTML + 4 social posts + 9 FAQ.
-        # Without a high token cap the JSON gets TRUNCATED (finishReason=MAX_TOKENS),
-        # and the Web.{EN,TC,JP} block was the part being dropped -> empty Web in the
-        # app preview AND in the Master DB. Fix: raise maxOutputTokens to the ceiling
-        # and disable 2.5-flash thinking (thinking tokens eat the same budget).
-        gen_cfg = {
-            "responseMimeType": "application/json",
-            "maxOutputTokens": 8192,
-            "temperature": 0.9,
-        }
-        # Disable thinking on EVERY model we ship - it is NOT optional. Verified live
-        # 2026-10-22: gemini-flash-latest (gemini-3.8-flash), gemini-2.5-flash and
-        # gemini-2.5-flash-lite all accept thinkingBudget:0; without it thinking
-        # tokens are drawn from this same 8192 budget and truncate the JSON
-        # (finishReason=MAX_TOKENS, empty Web).
-        # NEVER gate this on a substring of the model name: the old
-        # `if "2.5" in active_model` check silently stopped matching once the
-        # model moved to the -latest alias, which re-introduces the truncation bug.
-        gen_cfg["thinkingConfig"] = {"thinkingBudget": 0}
+        # The article is long: 3 languages x ~500-word HTML + 4 social posts + 9 FAQ,
+        # so the token cap must stay high or the JSON is truncated mid-way
+        # (finishReason=MAX_TOKENS -> empty Web). Token cap + thinkingConfig are now
+        # handled inside ai_backend.generate() for BOTH providers (Google and fal.ai).
 
-        payload = {
-            "contents": [{"role": "user", "parts": [{"text": ctx}]}],
-            "systemInstruction": {"parts": [{"text": sys_msg}]},
-            "generationConfig": gen_cfg,
-        }
-        
-        try:
-            res = requests.post(url, json=payload, timeout=120)
-            # Defensive: if a future -latest model ever rejects thinkingConfig,
-            # retry once without it instead of failing the whole generation.
-            if res.status_code == 400 and "thinkingConfig" in payload.get("generationConfig", {}):
-                payload["generationConfig"].pop("thinkingConfig", None)
-                res = requests.post(url, json=payload, timeout=120)
-            if res.status_code == 200:
-                data = res.json()
-                # The model can return no candidate if the prompt is blocked (safety/recitation)
-                cands = data.get("candidates") or []
-                if not cands:
-                    self.last_error = f"No candidate returned. Raw response: {json.dumps(data)[:500]}"
-                    return None
-                reason = cands[0].get("finishReason", "UNKNOWN")
-                parts = cands[0].get("content", {}).get("parts", [])
-                if not parts:
-                    self.last_error = f"Empty content (finishReason={reason}). Raw: {json.dumps(data)[:500]}"
-                    return None
-                raw = parts[0].get("text", "")
-                clean = raw.replace("```json", "").replace("```", "").strip()
-                try:
-                    return json.loads(clean)
-                except json.JSONDecodeError as je:
-                    # Most common cause: output truncated mid-JSON (MAX_TOKENS).
-                    # RESCUE the content so the Web article is never silently lost.
-                    rescued = self._rescue_json(clean)
-                    if rescued and (rescued.get("Web") or rescued.get("SocialMedia")):
-                        note = " (output was truncated — recovered partial content; consider regenerating)" if reason == "MAX_TOKENS" else ""
-                        self.last_error = f"Model JSON was malformed but content was recovered{note}."
-                        return rescued
-                    self.last_error = (
-                        f"Model returned non-JSON text (finishReason={reason}): {je}. "
-                        f"First 300 chars: {clean[:300]}"
-                    )
-                    return None
-            else:
-                # Surface the actual Google API error (bad key / wrong model / quota)
-                self.last_error = f"HTTP {res.status_code} from Gemini: {res.text[:600]}"
-                return None
-        except Exception as e:
-            self.last_error = f"Request exception: {type(e).__name__}: {e}"
+        # Route the SAME request through ai_backend: Google Gemini first, with an
+        # AUTOMATIC fallback to fal.ai (fal-ai/any-llm) when Google runs out of
+        # prepaid credit (HTTP 402), gets rate-limited (429) or the model is
+        # retired (404). The fal key comes from Streamlit Secrets (FAL_KEY) — or
+        # from a fal key pasted into the "Gemini API Key" box.
+        # MAX_TOKENS note: the article is long (3 languages x ~500-word HTML + 4
+        # social posts + 9 FAQ) so the cap stays at 8192, and thinking is disabled
+        # inside ai_backend — thinking tokens come out of the same budget and were
+        # truncating the JSON (finishReason=MAX_TOKENS, empty Web).
+        raw, reason, err, provider = ai_backend.generate(
+            key, active_model, sys_msg, ctx,
+            images=None, max_tokens=8192, temperature=0.9, json_mode=True,
+        )
+        self.provider = provider
+        if raw is None:
+            self.last_error = err or "Unknown generation error."
             return None
+        parsed = ai_backend.parse_json_loose(raw)
+        if parsed is not None:
+            return ai_backend.normalize_content(parsed)
+        clean = ai_backend._strip_fences(raw)
+        # Most common cause: output truncated mid-JSON (MAX_TOKENS).
+        # RESCUE the content so the Web article is never silently lost.
+        rescued = self._rescue_json(clean)
+        if rescued and (rescued.get("Web") or rescued.get("SocialMedia")):
+            note = " (output was truncated — recovered partial content; consider regenerating)" if reason == "MAX_TOKENS" else ""
+            self.last_error = f"Model JSON was malformed but content was recovered{note}."
+            return rescued
+        self.last_error = (
+            f"Model returned non-JSON text (finishReason={reason}). "
+            f"First 300 chars: {clean[:300]}"
+        )
+        return None
 
     def _rescue_json(self, text):
         """Best-effort recovery when the model's JSON is truncated/malformed.

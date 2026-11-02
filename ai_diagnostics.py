@@ -1,8 +1,9 @@
-# VERSION: v19.1.0 (MC questions framed for MULTI-SELECT: more than one answer allowed)
-# TIMESTAMP: 2026-06-19 16:15:00 HKT
+# VERSION: v19.2.0 (PROVIDER FALLBACK: questions now go through ai_backend — Google Gemini first, automatic fal.ai fallback when Google has no credit / is rate-limited / the model is retired)
+# TIMESTAMP: 2026-11-02 12:00:00 HKT
 
 import requests
 import json
+import ai_backend
 
 try:
     from prompts_library import WRITING_STYLES
@@ -21,13 +22,12 @@ class AIDiagnostic:
     final content toward the right editorial angle and surface strategic gaps."""
 
     last_error = ""
+    provider = ""  # "google" or "fal" — which provider actually answered last
 
     @staticmethod
     def get_questions(key, active_model, project, core_text, images):
         if not active_model or active_model == "NONE":
             active_model = "gemini-flash-latest"  # was gemini-1.5-flash (RETIRED, 404)
-
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{active_model}:generateContent?key={key}"
 
         styles_str = "; ".join(WRITING_STYLES)
 
@@ -49,56 +49,27 @@ Format: Return ONLY a RAW JSON array of EXACTLY 15 questions in this exact struc
 [{{"q":"[Question in Traditional Chinese]", "opts":["[Option A]", "[Option B]", "[Option C]"]}}]
 Do NOT wrap in markdown or ```json tags. Return the array and nothing else."""
 
-        parts = [{"text": f"Project: {project}. Strategic Core Brief: {core_text}"}]
-
-        # Attach up to 4 photos so the analysis questions reference real visuals.
-        # Photos are now FULL dicts {data, mimeType, ext}; still accept bare base64
-        # strings for backward-compat.
-        if images:
-            for b in images[:4]:
-                if isinstance(b, dict):
-                    data = b.get("data")
-                    mime = b.get("mimeType", "image/jpeg")
-                else:
-                    data = b
-                    mime = "image/jpeg"
-                if data:
-                    parts.append({"inlineData": {"mimeType": mime, "data": data}})
-
-        payload = {
-            "contents": [{"role": "user", "parts": parts}],
-            "systemInstruction": {"parts": [{"text": sys_prompt}]},
-            "generationConfig": {"responseMimeType": "application/json"},
-        }
-
-        try:
-            res = requests.post(url, json=payload, timeout=120)
-            if res.status_code == 200:
-                data = res.json()
-                cands = data.get("candidates") or []
-                if not cands:
-                    AIDiagnostic.last_error = f"No candidate returned. Raw: {json.dumps(data)[:500]}"
-                    return None
-                p = cands[0].get("content", {}).get("parts", [])
-                if not p:
-                    reason = cands[0].get("finishReason", "UNKNOWN")
-                    AIDiagnostic.last_error = f"Empty content (finishReason={reason}). Raw: {json.dumps(data)[:500]}"
-                    return None
-                raw = p[0].get("text", "")
-                clean = raw.replace("```json", "").replace("```", "").strip()
-                try:
-                    questions = json.loads(clean)
-                except json.JSONDecodeError as je:
-                    AIDiagnostic.last_error = f"Non-JSON from model: {je}. First 300 chars: {clean[:300]}"
-                    return None
-                # Validate shape
-                if not isinstance(questions, list) or not questions:
-                    AIDiagnostic.last_error = f"Expected a list of questions, got: {str(questions)[:300]}"
-                    return None
-                return questions
-            else:
-                AIDiagnostic.last_error = f"HTTP {res.status_code} from Gemini: {res.text[:600]}"
-                return None
-        except Exception as e:
-            AIDiagnostic.last_error = f"Request exception: {type(e).__name__}: {e}"
+        payload_text = f"Project: {project}. Strategic Core Brief: {core_text}"
+        # Route through ai_backend: Google Gemini first, automatic fal.ai fallback
+        # (fal-ai/any-llm/vision) when Google has no credit / is rate-limited /
+        # the model is retired. Photos are forwarded as base64 — fal accepts data URLs.
+        raw, reason, err, provider = ai_backend.generate(
+            key, active_model, sys_prompt, payload_text,
+            images=(images or [])[:4], max_tokens=8192, temperature=0.9, json_mode=True,
+        )
+        AIDiagnostic.provider = provider
+        if raw is None:
+            AIDiagnostic.last_error = err or "Unknown generation error."
             return None
+        questions = ai_backend.parse_json_loose(raw)
+        if questions is None:
+            AIDiagnostic.last_error = (
+                f"Non-JSON from model (provider={provider}). First 300 chars: "
+                f"{ai_backend._strip_fences(raw)[:300]}"
+            )
+            return None
+        # Validate shape
+        if not isinstance(questions, list) or not questions:
+            AIDiagnostic.last_error = f"Expected a list of questions, got: {str(questions)[:300]}"
+            return None
+        return questions

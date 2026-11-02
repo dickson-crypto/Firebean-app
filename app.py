@@ -1,4 +1,4 @@
-# VERSION: v19.3.0 (MODEL FIX: pinned/dead Gemini names -> gemini-flash-latest alias; dead fallback repaired. Prev: v19.2.0 Near-fullscreen red overlay + animated running-man icon, static text; MC = radio-style multi-select via st.pills)
+# VERSION: v19.4.0 (PROVIDER FALLBACK: AI calls now go through ai_backend — Google Gemini first, automatic fal.ai fallback if Google has no credit / is rate-limited / the model is retired; retired gemini-2.5-flash-lite removed from the Model list. Prev: v19.3.0 MODEL FIX)
 # TIMESTAMP: 2026-06-19 16:30:00 HKT
 #
 # FLOW (as specified by Dickson):
@@ -32,9 +32,11 @@ class FirebeanPortal:
         # Use Google's MOVING alias so a future deprecation cannot break the portal again.
         # Verified live 2026-10-22: gemini-flash-latest -> gemini-3.8-flash (OK).
         # RETIRED and removed: gemini-2.0-flash (404), gemini-1.5-flash (404).
-        # gemini-2.5-flash-lite kept as a second option; both accept thinkingBudget:0.
-        # (Do NOT use gemini-flash-lite-latest here - it rejects thinkingBudget:0 with HTTP 400.)
-        self.MODELS = ["gemini-flash-latest", "gemini-2.5-flash-lite"]
+        # Verified live 2026-11-02: gemini-flash-latest -> OK.
+        # RETIRED and removed: gemini-2.0-flash (404), gemini-1.5-flash (404),
+        # gemini-2.5-flash-lite (404 "no longer available to new users").
+        # If the selected model ever dies, ai_backend falls back to fal.ai.
+        self.MODELS = ["gemini-flash-latest"]
         self.init_session()
 
     def init_session(self):
@@ -255,6 +257,16 @@ if __name__ == "__main__":
             st.success("🔐 Gemini API key loaded from Streamlit Secrets.")
         else:
             st.info('No secret found. Paste your key below, or add  GEMINI_API_KEYS = "AIza..."  in Settings → Secrets.')
+        try:
+            fal_ok = bool(st.secrets.get("FAL_KEY", ""))
+        except Exception:
+            fal_ok = False
+        st.caption(
+            "🔁 Backup provider: fal.ai — ACTIVE (FAL_KEY found in Secrets)."
+            if fal_ok else
+            "🔁 Backup provider: fal.ai — not configured. Optional: add  FAL_KEY = \"...\"  "
+            "in Settings → Secrets, or paste your fal key into the key box below."
+        )
         k1, k2 = st.columns([2, 1])
         api_key = k1.text_input("Gemini API Key", type="password", value=ss.api_key or secret_key)
         model = k2.selectbox("Model", portal.MODELS, index=0)
@@ -388,11 +400,12 @@ if __name__ == "__main__":
             ov.empty()
             if result:
                 ss.ai_result = result
-                portal.log("AI content generated.")
-                st.success("AI content ready. Review below, then proceed to sync.")
+                prov = getattr(sync, "provider", "") or "google"
+                portal.log(f"AI content generated (provider: {prov}).")
+                st.success(f"AI content ready (provider: {'fal.ai' if prov == 'fal' else 'Google Gemini'}). Review below, then proceed to sync.")
             else:
                 portal.log("AI generation FAILED.")
-                st.error("AI generation failed. Exact reason from Google:")
+                st.error("AI generation failed. Exact reason from the provider:")
                 st.code(sync.last_error or "No detail captured.", language="text")
 
         # --- Preview generated content ---
