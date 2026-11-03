@@ -219,8 +219,13 @@ def generate(key, model, system, user_text, images=None, max_tokens=8192,
     When json_mode is on and the answer does not parse as JSON, one automatic
     retry is made with a firmer "valid JSON only" instruction.
     """
-    fal_key = resolve_fal_key(fal_key) or (key if is_fal_key(key) else "")
-    key = "" if is_fal_key(key) else (key or "").strip()
+    typed = (key or "").strip()
+    fal_key = resolve_fal_key(fal_key) or (typed if is_fal_key(typed) else "")
+    # A fal key typed into the key box may be tried as a backup for the stored one —
+    # so a good key can be used immediately even while Streamlit Secrets still holds
+    # a stale/truncated FAL_KEY (which happens in practice).
+    alt_fal = typed if (is_fal_key(typed) and typed != fal_key) else ""
+    key = "" if is_fal_key(key) else typed
 
     text = reason = err = provider = None
     for attempt in range(2):
@@ -231,6 +236,14 @@ def generate(key, model, system, user_text, images=None, max_tokens=8192,
                                 "Return ONLY valid raw JSON — no prose, no markdown, "
                                 "no trailing commas.")
             temp = min(temperature, 0.6)
+
+        def _try_fal():
+            t, r, e = _fal_call(fal_key, model, sys_msg, user_text, images, max_tokens, temp)
+            if t is None and alt_fal and ("401" in (e or "") or "403" in (e or "")):
+                t2, r2, e2 = _fal_call(alt_fal, model, sys_msg, user_text, images, max_tokens, temp)
+                if t2 is not None:
+                    return t2, r2, None
+            return t, r, e
 
         if key:
             text, reason, err = _google_call(key, model, sys_msg, user_text, images,
@@ -243,16 +256,14 @@ def generate(key, model, system, user_text, images=None, max_tokens=8192,
                 if not (retry and fal_key):
                     return None, reason, err, "google"
                 g_err = err
-                text, reason, err = _fal_call(fal_key, model, sys_msg, user_text, images,
-                                              max_tokens, temp)
+                text, reason, err = _try_fal()
                 provider = "fal"
                 if text is None:
                     return None, reason, ((err or "") + (" | Google said: " + (g_err or "") if g_err else "")), "fal"
         else:
             if not fal_key:
                 return None, None, "No API key available (Google or fal.ai).", "none"
-            text, reason, err = _fal_call(fal_key, model, sys_msg, user_text, images,
-                                          max_tokens, temp)
+            text, reason, err = _try_fal()
             provider = "fal"
             if text is None:
                 return None, reason, err, "fal"

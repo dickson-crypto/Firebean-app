@@ -1,4 +1,4 @@
-# VERSION: v19.4.2 (one-click "🔍 TEST AI CONNECTION" button — pings the live provider and reports the exact rejection, with the fal "key looks truncated" hint; the MC failure banner now names the provider that actually answered instead of always blaming Google. Prev v19.4.1: fal-only mode)
+# VERSION: v19.4.3 (a full fal key pasted into the key box is now used automatically when the stored FAL_KEY is rejected (401/403) — you can work without touching Secrets. Prev v19.4.2: TEST AI CONNECTION button + honest provider label)
 # TIMESTAMP: 2026-11-02 14:00:00 HKT
 #
 # FLOW (as specified by Dickson):
@@ -38,7 +38,7 @@ def fal_secret_ready():
 
 class FirebeanPortal:
     def __init__(self):
-        self.VERSION = "v19.4.2"
+        self.VERSION = "v19.4.3"
         # Use Google's MOVING alias so a future deprecation cannot break the portal again.
         # Verified live 2026-10-22: gemini-flash-latest -> gemini-3.8-flash (OK).
         # RETIRED and removed: gemini-2.0-flash (404), gemini-1.5-flash (404).
@@ -275,8 +275,10 @@ if __name__ == "__main__":
             "🔁 Backup provider: fal.ai — ACTIVE (FAL_KEY found in Secrets)."
             if fal_ok else
             "🔁 Backup provider: fal.ai — not configured. Optional: add  FAL_KEY = \"...\"  "
-            "in Settings → Secrets, or paste your fal key into the key box below."
+            "in Settings → Secrets, or paste the FULL fal key (it contains a ':') into the key box below."
         )
+        st.caption("Trouble generating? Press **🔍 TEST AI CONNECTION** — it pings the live provider and "
+                   "shows the exact reason (a fal key that is only the short dashboard id is rejected with 401).")
         k1, k2 = st.columns([2, 1])
         api_key = k1.text_input("Gemini API Key", type="password", value=ss.api_key or secret_key)
         model = k2.selectbox("Model", portal.MODELS, index=0)
