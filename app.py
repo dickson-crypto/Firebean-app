@@ -1,4 +1,4 @@
-# VERSION: v19.4.3 (a full fal key pasted into the key box is now used automatically when the stored FAL_KEY is rejected (401/403) — you can work without touching Secrets. Prev v19.4.2: TEST AI CONNECTION button + honest provider label)
+# VERSION: v19.4.4 (an empty Gemini reply with finishReason=MAX_TOKENS is retried with a bigger token budget — a thinking model could swallow the budget and look like a hard failure; the TEST ping now budgets 256 tokens instead of 16. Prev v19.4.3: fal key typed in the box is used when the stored one 401s)
 # TIMESTAMP: 2026-11-02 14:00:00 HKT
 #
 # FLOW (as specified by Dickson):
@@ -38,7 +38,7 @@ def fal_secret_ready():
 
 class FirebeanPortal:
     def __init__(self):
-        self.VERSION = "v19.4.3"
+        self.VERSION = "v19.4.4"
         # Use Google's MOVING alias so a future deprecation cannot break the portal again.
         # Verified live 2026-10-22: gemini-flash-latest -> gemini-3.8-flash (OK).
         # RETIRED and removed: gemini-2.0-flash (404), gemini-1.5-flash (404).
@@ -286,7 +286,7 @@ if __name__ == "__main__":
         if st.button("🔍 TEST AI CONNECTION", help="Sends one tiny request so you know — before filling anything in — whether the keys really work."):
             with st.spinner("Pinging the AI provider…"):
                 _t, _f, _e, _p = ai_backend.generate(api_key, model, "You only reply with the word PONG.",
-                                                     "Reply with exactly: PONG", max_tokens=16, temperature=0.0)
+                                                     "Reply with exactly: PONG", max_tokens=256, temperature=0.0)
             who = {"google": "Google Gemini", "fal": "fal.ai", "none": "no provider"}.get(_p, _p or "the provider")
             if _t:
                 st.success(f"✅ {who} replied — generation will work. (Using {'the fal.ai backup' if _p == 'fal' else who}.)")

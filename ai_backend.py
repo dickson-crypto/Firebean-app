@@ -111,6 +111,21 @@ def _google_call(key, model, system, user_text, images, max_tokens, temperature,
         reason = cands[0].get("finishReason", "UNKNOWN")
         p = cands[0].get("content", {}).get("parts", [])
         if not p:
+            # A thinking model can silently swallow a small maxOutputTokens budget
+            # (observed on gemini-flash-latest). Retry once with a much bigger budget.
+            if reason == "MAX_TOKENS":
+                gen_cfg["thinkingConfig"] = {"thinkingBudget": 0}
+                gen_cfg["maxOutputTokens"] = max(int(max_tokens) * 8, 1024)
+                try:
+                    res2 = requests.post(url, json=payload, timeout=120)
+                    if res2.status_code == 200:
+                        c2 = (res2.json().get("candidates") or [{}])[0]
+                        p2 = c2.get("content", {}).get("parts") or []
+                        if p2:
+                            return p2[0].get("text", ""), c2.get("finishReason", "UNKNOWN"), None
+                        reason = c2.get("finishReason", reason)
+                except Exception:
+                    pass
             return None, reason, f"Empty content (finishReason={reason}). Raw: {json.dumps(data)[:500]}"
         return p[0].get("text", ""), reason, None
     except Exception as e:
