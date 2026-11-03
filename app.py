@@ -1,4 +1,4 @@
-# VERSION: v19.4.1 (fal-only mode: the app now runs with NO Gemini key when FAL_KEY is in Secrets — the Generate button is enabled and the panel says who will answer. Prev v19.4.0: PROVIDER FALLBACK via ai_backend)
+# VERSION: v19.4.2 (one-click "🔍 TEST AI CONNECTION" button — pings the live provider and reports the exact rejection, with the fal "key looks truncated" hint; the MC failure banner now names the provider that actually answered instead of always blaming Google. Prev v19.4.1: fal-only mode)
 # TIMESTAMP: 2026-11-02 14:00:00 HKT
 #
 # FLOW (as specified by Dickson):
@@ -21,6 +21,7 @@ try:
     from progress_logic import ProgressGate
     from ai_diagnostics import AIDiagnostic
     from synthesis_sync import SynthesisSync
+    import ai_backend
 except ImportError as e:
     st.error(f"Module Error: {e}")
     st.stop()
@@ -37,7 +38,7 @@ def fal_secret_ready():
 
 class FirebeanPortal:
     def __init__(self):
-        self.VERSION = "v19.4.1"
+        self.VERSION = "v19.4.2"
         # Use Google's MOVING alias so a future deprecation cannot break the portal again.
         # Verified live 2026-10-22: gemini-flash-latest -> gemini-3.8-flash (OK).
         # RETIRED and removed: gemini-2.0-flash (404), gemini-1.5-flash (404).
@@ -280,6 +281,16 @@ if __name__ == "__main__":
         api_key = k1.text_input("Gemini API Key", type="password", value=ss.api_key or secret_key)
         model = k2.selectbox("Model", portal.MODELS, index=0)
         ss.api_key = api_key
+        if st.button("🔍 TEST AI CONNECTION", help="Sends one tiny request so you know — before filling anything in — whether the keys really work."):
+            with st.spinner("Pinging the AI provider…"):
+                _t, _f, _e, _p = ai_backend.generate(api_key, model, "You only reply with the word PONG.",
+                                                     "Reply with exactly: PONG", max_tokens=16, temperature=0.0)
+            who = {"google": "Google Gemini", "fal": "fal.ai", "none": "no provider"}.get(_p, _p or "the provider")
+            if _t:
+                st.success(f"✅ {who} replied — generation will work. (Using {'the fal.ai backup' if _p == 'fal' else who}.)")
+            else:
+                st.error(f"❌ {who} rejected the request — this is why generation fails:")
+                st.code(_e or "No detail captured.", language="text")
 
         # --- Inputs ---
         client, project, venue, year, month = inputs.render_identity()
@@ -355,7 +366,8 @@ if __name__ == "__main__":
                 portal.log(f"Generated {len(ss.mc_questions)} MC questions.")
             else:
                 portal.log("MC generation FAILED.")
-                st.error("Could not generate questions. Exact reason from Google:")
+                st.error(f"Could not generate questions. Exact reason from "
+                         f"{'Google Gemini' if AIDiagnostic.provider == 'google' else ('fal.ai' if AIDiagnostic.provider == 'fal' else 'the provider')}:")
                 st.code(AIDiagnostic.last_error or "No detail captured.", language="text")
 
         # ----- Answer the 15 MC (radio-button style, but MORE THAN ONE answer allowed) -----

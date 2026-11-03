@@ -144,7 +144,12 @@ def _fal_call(fal_key, model, system, user_text, images, max_tokens, temperature
                                      "Content-Type": "application/json"},
                             timeout=300)
         if res.status_code != 200:
-            return None, None, f"HTTP {res.status_code} from fal.ai: {res.text[:600]}"
+            hint = ""
+            if res.status_code in (401, 403):
+                hint = ("   <-- KEY REJECTED. A fal key is LONGER than the id shown in the "
+                        "dashboard list and contains a ':' — copy the WHOLE value with the "
+                        "copy button at https://fal.ai/dashboard/keys")
+            return None, None, f"HTTP {res.status_code} from fal.ai: {res.text[:600]}{hint}"
         data = res.json()
         text = data.get("output")
         if not text:
